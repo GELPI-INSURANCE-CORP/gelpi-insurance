@@ -1,0 +1,330 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1b2a4a; background: #f5f6f8; -webkit-font-smoothing: antialiased; }
+    a { color: #1f4fa3; text-decoration: none; } a:hover { color: #163b7f; }
+    * { box-sizing: border-box; }
+    .nav-parent { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; color: #ffffff; background: #1f4fa3; }
+    .nav-parent svg { width: 16px; height: 16px; stroke: #ffffff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+    .nav-parent .chev { margin-left: auto; width: 14px; height: 14px; stroke: rgba(255,255,255,0.75); }
+    .nav-sub { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 0 20px; padding-left: 12px; border-left: 1px solid #e2e5eb; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: #4b5563; }
+    .nav-item.active { background: #eef3fb; color: #1c3f8a; font-weight: 500; }
+    .nav-item.active::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: #1f4fa3; flex-shrink: 0; }
+    .card { background: #ffffff; border: 1px solid #e2e5eb; border-radius: 12px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e2e5eb; }
+    .card-title { font-size: 15px; font-weight: 600; color: #1b2a4a; margin: 0; }
+    .kpi { background: #ffffff; border: 1px solid #e2e5eb; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 4px; }
+    .kpi-label { font-size: 13px; color: #6b7280; }
+    .kpi-value { font-size: 26px; font-weight: 600; color: #1b2a4a; letter-spacing: -0.01em; }
+    .kpi-sub { font-size: 12px; font-weight: 500; margin-top: 8px; }
+    .kpi-sub.ok { color: #059669; } .kpi-sub.warn { color: #b45309; } .kpi-sub.bad { color: #dc2626; } .kpi-sub.muted { color: #6b7280; } .kpi-sub.brand { color: #1f4fa3; }
+    table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.tbl th { text-align: left; font-weight: 500; color: #6b7280; padding: 10px 20px; border-bottom: 1px solid #e2e5eb; white-space: nowrap; background: #fafbfc; }
+    table.tbl td { padding: 12px 20px; border-bottom: 1px solid #e2e5eb; vertical-align: middle; color: #1b2a4a; }
+    table.tbl tr:last-child td { border-bottom: 0; }
+    table.tbl td.strong { font-weight: 500; }
+    table.tbl td.muted { color: #6b7280; }
+    table.tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.tbl th.num { text-align: right; }
+    table.tbl tr.selected td { background: #eef3fb; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08); }
+    .badge.ok { background: #ecfdf5; color: #047857; }
+    .badge.warn { background: #fffbeb; color: #b45309; }
+    .badge.bad { background: #fef2f2; color: #b91c1c; }
+    .badge.info { background: #eff6ff; color: #1d4ed8; }
+    .badge.neutral { background: #f1f5f9; color: #475569; }
+    .badge.brand { background: #eef3fb; color: #1c3f8a; }
+    .badge.silver { background: #eceef1; color: #4b5563; }
+    .badge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid transparent; white-space: nowrap; }
+    .btn.primary { background: #1f4fa3; color: #ffffff; }
+    .btn.dark { background: #163b7f; color: #ffffff; }
+    .btn.secondary { background: #ffffff; color: #1b2a4a; border-color: #e2e5eb; }
+    .btn.ghost { background: transparent; color: #6b7280; }
+    .btn.sm { height: 30px; padding: 0 10px; font-size: 12px; }
+    .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e5eb; background: #ffffff; font-size: 13px; color: #1b2a4a; }
+    .chip.active { background: #1f4fa3; color: #ffffff; border-color: #1f4fa3; }
+    .chip svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e2e5eb; padding: 0 20px; }
+    .tab { padding: 12px 4px; margin-right: 20px; font-size: 13px; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px; }
+    .tab.active { color: #1c3f8a; border-bottom-color: #1f4fa3; }
+    .count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 600; }
+    .count.bad { background: #fef2f2; color: #b91c1c; } .count.warn { background: #fffbeb; color: #b45309; } .count.info { background: #eff6ff; color: #1d4ed8; } .count.brand { background: #eef3fb; color: #1c3f8a; }
+    .input { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e5eb; background: #ffffff; font-size: 13px; color: #6b7280; }
+    .input svg { width: 14px; height: 14px; stroke: #6b7280; fill: none; stroke-width: 2; }
+    .avatar { width: 32px; height: 32px; border-radius: 999px; background: #1f4fa3; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+    .avatar.soft { background: #eef3fb; color: #1c3f8a; }
+    .avatar.silver { background: #e6e8ec; color: #4b5563; }
+    .label { font-size: 12px; color: #6b7280; }
+    .value { font-size: 14px; font-weight: 500; color: #1b2a4a; }
+    .ai-note { display: flex; gap: 10px; padding: 12px 14px; border-radius: 10px; background: #eef3fb; border: 1px solid #c9d8f2; font-size: 13px; color: #1c3f8a; line-height: 1.45; }
+    .ai-note svg { width: 16px; height: 16px; stroke: #1f4fa3; fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 1px; }
+    .progress { height: 6px; border-radius: 999px; background: #e6e8ec; overflow: hidden; }
+    .progress > div { height: 100%; background: #1f4fa3; border-radius: 999px; }
+    .divider { height: 1px; background: #e2e5eb; }
+  </style>
+</helmet>
+
+<!-- ROOT FRAME 1440x1200 -->
+<div style="width: 1440px; height: 1200px; display: flex; background: #f5f6f8; overflow: hidden;">
+
+  <!-- SIDEBAR -->
+  <aside style="width: 256px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #e2e5eb; color: #1b2a4a; display: flex; flex-direction: column;">
+    <div style="display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 20px; border-bottom: 1px solid #e2e5eb;">
+      <svg viewBox="0 0 48 56" style="width: 30px; height: 35px; flex-shrink: 0;">
+        <defs>
+          <linearGradient id="gShieldBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6bd0"></stop><stop offset="1" stop-color="#173f8f"></stop></linearGradient>
+          <linearGradient id="gShieldSilver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2e4e8"></stop><stop offset="1" stop-color="#9ca0a8"></stop></linearGradient>
+        </defs>
+        <path d="M24 2 L4 10 V28 C4 42 14 50 24 54 Z" fill="url(#gShieldBlue)"></path>
+        <path d="M24 2 L44 10 V28 C44 42 34 50 24 54 Z" fill="url(#gShieldSilver)"></path>
+        <circle cx="27" cy="15" r="4" fill="#ffffff"></circle>
+        <path d="M12 42 C17 32 24 27 33 22" stroke="#ffffff" stroke-width="5" stroke-linecap="round" fill="none"></path>
+        <path d="M19 30 L27 33" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" fill="none"></path>
+      </svg>
+      <div style="display: flex; flex-direction: column; line-height: 1;">
+        <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 20px; font-weight: 700; letter-spacing: 0.04em; color: #1c3f8a;">GELPI</span>
+        <span style="font-size: 9px; font-weight: 500; letter-spacing: 0.32em; color: #7b7f86; margin-top: 3px;">INSURANCE</span>
+      </div>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; flex-grow: 1;">
+      <div style="display: flex; flex-direction: column;">
+        <a class="nav-parent" href="#"><svg viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg>Comisiones<svg class="chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></a>
+        <div class="nav-sub">
+          <a class="nav-item" href="#">Resumen</a>
+          <a class="nav-item" href="#">Subir Reportes</a>
+          <a class="nav-item" href="#">Conciliación</a>
+          <a class="nav-item" href="#">Agentes</a>
+          <a class="nav-item active" href="#">Clientes (Book)</a>
+          <a class="nav-item" href="#">Oficinas</a>
+          <a class="nav-item" href="#">Bonos</a>
+          <a class="nav-item" href="#">Configuración</a>
+        </div>
+      </div>
+    </nav>
+    <div style="padding: 16px 20px; border-top: 1px solid #e2e5eb; font-size: 11px; color: #9a9ea6;">Gelpi Insurance © 2026</div>
+  </aside>
+
+  <!-- MAIN COLUMN -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <!-- TOPBAR -->
+    <header style="height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; background: #ffffff; border-bottom: 1px solid #e2e5eb;">
+      <h1 style="font-size: 18px; font-weight: 600; margin: 0; color: #1b2a4a;">Clientes (Active Business Book)</h1>
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <div class="input" style="width: 280px;"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>Buscar cliente, póliza o agente…</div>
+        <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+          <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke: #6b7280; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          <span style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 999px; background: #1f4fa3;"></span>
+        </div>
+        <div class="avatar">JG</div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main style="flex-grow: 1; padding: 32px; display: flex; flex-direction: column; gap: 24px; overflow: hidden;">
+
+      <!-- BANNER DE ALERTA -->
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 10px; background: #fef2f2; border-left: 4px solid #b91c1c; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; stroke: #b91c1c; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <span style="font-size: 13px; font-weight: 500; color: #1b2a4a;">3 pólizas activas sin agente u oficina asignada</span>
+        </div>
+        <a href="#" style="display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: #b91c1c; flex-shrink: 0;">Ver<svg viewBox="0 0 24 24" style="width: 12px; height: 12px; stroke: #b91c1c; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round;"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></a>
+      </div>
+
+      <!-- TOOLBAR -->
+      <div style="display: flex; flex-direction: column; gap: 12px; flex-shrink: 0;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; row-gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 8px;">
+            <div class="input" style="width: 300px;"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>Buscar por número de póliza, nombre de cliente o teléfono…</div>
+            <div class="chip" style="gap: 8px;">
+              <div style="width: 32px; height: 18px; border-radius: 999px; background: #e6e8ec; display: flex; align-items: center; padding: 2px; flex-shrink: 0;">
+                <div style="width: 14px; height: 14px; border-radius: 999px; background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.2);"></div>
+              </div>
+              <span>Sin agente asignado</span>
+            </div>
+            <div class="input" style="width: 130px; justify-content: space-between; color: #1b2a4a;"><span>Oficina: Todas</span><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+            <div class="input" style="width: 120px; justify-content: space-between; color: #1b2a4a;"><span>Agente: Todos</span><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+            <div class="input" style="width: 150px; justify-content: space-between; color: #1b2a4a;"><span>Aseguradora: Todas</span><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+            <div class="input" style="width: 130px; justify-content: space-between; color: #1b2a4a;"><span>Estado: Todos</span><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <button type="button" class="btn secondary" title="Guarda una copia de cómo estaba el libro maestro hoy, para auditar qué versión se usó al conciliar septiembre — incluye versiones que vinieron de &quot;Actualizar Active Business Book&quot; en Subir Reportes"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>Congelar snapshot del ABB</button>
+            <button type="button" class="btn secondary"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Exportar libro completo</button>
+            <button type="button" class="btn primary"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>Alta manual de cliente/póliza</button>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 8px;">
+          <span class="label" style="margin-right: 2px;">Ramo:</span>
+          <div class="chip active">Todos</div>
+          <div class="chip">Auto</div>
+          <div class="chip">Hogar</div>
+          <div class="chip">Comercial</div>
+          <div class="chip">Motocicleta</div>
+          <div class="chip">Bote</div>
+          <div class="chip">Inquilinos</div>
+          <div class="chip">Inundación</div>
+          <div class="chip">Umbrella</div>
+          <div class="chip">Vida</div>
+        </div>
+      </div>
+
+      <!-- FILA PRINCIPAL: TABLA + PANEL -->
+      <div style="display: flex; gap: 24px; flex-grow: 1; min-height: 0;">
+
+        <!-- TABLA -->
+        <div class="card" style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+          <div class="card-head">
+            <h2 class="card-title">Pólizas del Active Business Book</h2>
+            <span class="badge neutral">7 resultados</span>
+          </div>
+          <table class="tbl" style="table-layout: fixed; word-break: break-word;">
+            <colgroup>
+              <col style="width: 17%;">
+              <col style="width: 17%;">
+              <col style="width: 12%;">
+              <col style="width: 21%;">
+              <col style="width: 14%;">
+              <col style="width: 19%;">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Póliza / Ramo</th>
+                <th>Aseguradora</th>
+                <th>Agente / Oficina</th>
+                <th>Vigencia / Estado</th>
+                <th>Origen / Actualizado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="selected">
+                <td class="strong">Yolanda Castellanos</td>
+                <td><div style="font-weight: 500;">934857211-3</div><span class="badge brand" style="margin-top: 4px;">Auto</span></td>
+                <td>Progressive</td>
+                <td><div class="strong" style="font-weight: 500;">Yaneisy Pérez</div><div class="muted" style="font-size: 12px; margin-top: 2px;">Gelpi Insurance Hialeah</div></td>
+                <td><div>20/08/2026</div><span class="badge ok" style="margin-top: 4px;">Activa</span></td>
+                <td class="muted" style="font-size: 12px;"><div>Venta interna</div><div style="margin-top: 2px;">14-sep-2026 (reasignada hoy)</div></td>
+              </tr>
+              <tr>
+                <td class="strong">Lázaro Valdés</td>
+                <td><div style="font-weight: 500;">NG-8834471</div><span class="badge brand" style="margin-top: 4px;">Auto</span></td>
+                <td>National General</td>
+                <td><div class="strong" style="font-weight: 500;">Yanet Suárez</div><div class="muted" style="font-size: 12px; margin-top: 2px;">Gelpi Insurance Kendall</div></td>
+                <td><div>05/09/2026</div><span class="badge ok" style="margin-top: 4px;">Activa</span></td>
+                <td class="muted" style="font-size: 12px;"><div>Venta interna</div><div style="margin-top: 2px;">10-sep-2026</div></td>
+              </tr>
+              <tr>
+                <td class="strong" style="display: flex; align-items: center; gap: 6px;">Lázaro Valdés<svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #b91c1c; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></td>
+                <td><div style="font-weight: 500;">887701235-0</div><span class="badge brand" style="margin-top: 4px;">Auto</span></td>
+                <td>Progressive</td>
+                <td><div class="strong" style="font-weight: 500;">Yanet Suárez</div><div class="muted" style="font-size: 12px; margin-top: 2px;">Gelpi Insurance Kendall</div></td>
+                <td><div>22/08/2026</div><span class="badge ok" style="margin-top: 4px;">Activa</span></td>
+                <td class="muted" style="font-size: 12px;"><div>Venta interna</div><div style="margin-top: 2px;">10-sep-2026</div></td>
+              </tr>
+              <tr>
+                <td colspan="6" style="padding: 10px 20px 10px 44px; background: #fef2f2; border-left: 3px solid #b91c1c;">
+                  <div style="display: flex; align-items: flex-start; gap: 10px; font-size: 12.5px; color: #1b2a4a; line-height: 1.5;">
+                    <span class="badge bad" style="flex-shrink: 0; margin-top: 1px;">En conflicto</span>
+                    <span>El reporte de ventas de Westchester (11-sep-2026) reclama esta póliza para Mercedes Junco / Osvaldo Delgado — <a href="#" style="font-weight: 600;">Resolver conflicto</a></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="strong">Damaris Ochoa</td>
+                <td><div style="font-weight: 500;">BW-772104455</div><span class="badge brand" style="margin-top: 4px;">Auto</span></td>
+                <td>Bristol West</td>
+                <td><div class="strong" style="font-weight: 500;">Carlos Alberto Reyes</div><div class="muted" style="font-size: 12px; margin-top: 2px;">Gelpi Insurance Hialeah</div></td>
+                <td><div>10/09/2026</div><span class="badge ok" style="margin-top: 4px;">Activa</span></td>
+                <td class="muted" style="font-size: 12px;"><div>Venta interna</div><div style="margin-top: 2px;">11-sep-2026</div></td>
+              </tr>
+              <tr>
+                <td class="strong">Odalys Barrientos</td>
+                <td><div style="font-weight: 500;">FL-CIT-0938217</div><span class="badge brand" style="margin-top: 4px;">Hogar</span></td>
+                <td>Citizens</td>
+                <td><div class="strong" style="font-weight: 500;">Jennifer Rodríguez</div><div class="muted" style="font-size: 12px; margin-top: 2px;">Gelpi Insurance Homestead</div></td>
+                <td><div>15/06/2026</div><span class="badge neutral" style="margin-top: 4px;">Cancelada</span></td>
+                <td class="muted" style="font-size: 12px;"><div>Alta manual</div><div style="margin-top: 2px;">02-sep-2026</div></td>
+              </tr>
+              <tr>
+                <td class="strong" style="display: flex; align-items: center; gap: 6px;">Reinier Fonseca<svg viewBox="0 0 24 24" style="width: 13px; height: 13px; stroke: #b45309; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></td>
+                <td><div class="muted" style="font-style: italic;">— (sin póliza en el ABB)</div><span class="badge brand" style="margin-top: 4px;">Auto</span></td>
+                <td>GEICO</td>
+                <td><div class="muted" style="font-size: 12px;">— Sin asignar —</div><div class="muted" style="font-size: 12px; margin-top: 2px;">— Sin asignar —</div></td>
+                <td><div class="muted">—</div><span class="badge warn" style="margin-top: 4px;">Sin datos</span></td>
+                <td class="muted" style="font-size: 12px;"><div>—</div><div style="margin-top: 2px;">—</div></td>
+              </tr>
+              <tr>
+                <td colspan="6" style="padding: 10px 20px 10px 44px; background: #fffbeb; border-left: 3px solid #b45309;">
+                  <div style="display: flex; align-items: flex-start; gap: 10px; font-size: 12.5px; color: #1b2a4a; line-height: 1.5;">
+                    <span class="badge warn" style="flex-shrink: 0; margin-top: 1px;">Sin match</span>
+                    <span>Llegó comisión de $187.55 sin match — <a href="#" style="font-weight: 600;">Ver en Conciliación</a></span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="strong">Alexis Bermúdez</td>
+                <td><div style="font-weight: 500;">5567-02-19-4</div><span class="badge brand" style="margin-top: 4px;">Auto</span></td>
+                <td>GEICO</td>
+                <td><div class="strong" style="font-weight: 500;">Yaneisy Pérez</div><div class="muted" style="font-size: 12px; margin-top: 2px;">Gelpi Insurance Hialeah</div></td>
+                <td><div>05/09/2026</div><span class="badge ok" style="margin-top: 4px;">Activa</span></td>
+                <td class="muted" style="font-size: 12px;"><div>Venta interna</div><div style="margin-top: 2px;">01-sep-2026</div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- PANEL: HISTORIAL DE REASIGNACIONES -->
+        <div class="card" style="width: 320px; flex-shrink: 0; display: flex; flex-direction: column;">
+          <div class="card-head">
+            <h2 class="card-title">Historial de reasignaciones</h2>
+            <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #6b7280; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px;">
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;"><span class="label">Cliente</span><span class="value">Yolanda Castellanos</span></div>
+              <div style="display: flex; justify-content: space-between; align-items: center;"><span class="label">Póliza</span><span class="value">934857211-3</span></div>
+              <div style="display: flex; justify-content: space-between; align-items: center;"><span class="label">Aseguradora</span><span class="value">Progressive</span></div>
+              <div style="display: flex; justify-content: space-between; align-items: center;"><span class="label">Estado actual</span><span class="badge ok">Activa</span></div>
+              <div style="display: flex; justify-content: space-between; align-items: center;"><span class="label">Asignado a</span><span class="value" style="text-align: right;">Yaneisy Pérez</span></div>
+              <div style="display: flex; justify-content: space-between; align-items: center;"><span class="label">Oficina</span><span class="value" style="text-align: right;">Gelpi Insurance Hialeah</span></div>
+            </div>
+            <div class="divider"></div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <span class="label" style="font-weight: 600; letter-spacing: 0.02em;">LÍNEA DE TIEMPO</span>
+              <div style="display: flex; gap: 10px;">
+                <div class="avatar soft" style="width: 28px; height: 28px; font-size: 11px;">JG</div>
+                <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 13px; font-weight: 600; color: #1b2a4a;">Jose Gelpi</span>
+                    <span class="label">14-sep-2026 09:12</span>
+                  </div>
+                  <div style="font-size: 12.5px; color: #1b2a4a; line-height: 1.5;">Reasignó la póliza 934857211-3 de Sin atribuir (reportada por Progressive a nombre de la agencia) a Yaneisy Pérez / Gelpi Insurance Hialeah.</div>
+                </div>
+              </div>
+            </div>
+            <div class="ai-note">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+              <span>Motivo: Confirmado vía Conciliación, match exacto de póliza + primera reasignación de alias, score 96%.</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

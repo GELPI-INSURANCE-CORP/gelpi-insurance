@@ -1,0 +1,396 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowRight,
+  Calendar,
+  ChevronDown,
+  Copy,
+  Loader2,
+  ShieldAlert,
+  UploadCloud,
+  UserCog,
+  Users,
+} from "lucide-react";
+import clsx from "clsx";
+import { Badge, Button, Card, CardHead, Chip, EmptyState } from "@/components/ui";
+import type { Tone } from "@/components/ui/Badge";
+import { money } from "@/lib/format";
+import {
+  type ExcepcionRow,
+  type ResumenKpis,
+  getExcepcionesPendientesCount,
+  getExcepcionesTop,
+  getResumenKpis,
+  rangoDelMes,
+} from "@/lib/queries/resumen";
+
+const UMBRAL_ATRASADA_DIAS = 10;
+
+function primerDiaDelMes(offsetMeses: number): Date {
+  const hoy = new Date();
+  return new Date(hoy.getFullYear(), hoy.getMonth() - offsetMeses, 1);
+}
+
+function etiquetaMes(d: Date): string {
+  const s = d.toLocaleDateString("es-US", { month: "long", year: "numeric" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function etiquetaTipoExcepcion(tipo: ExcepcionRow["tipo"]): { texto: string; tone: Tone; icon: React.ReactNode } {
+  switch (tipo) {
+    case "mismatch":
+      return { texto: "Mismatch", tone: "warn", icon: <AlertCircle size={12} /> };
+    case "sin_identificar":
+      return { texto: "Sin identificar", tone: "bad", icon: <AlertTriangle size={12} /> };
+    case "duplicado":
+      return { texto: "Duplicado sospechoso", tone: "silver", icon: <Copy size={12} /> };
+    case "conflicto_venta":
+      return { texto: "Conflicto de venta", tone: "info", icon: <ShieldAlert size={12} /> };
+    default:
+      return { texto: tipo, tone: "neutral", icon: undefined };
+  }
+}
+
+function nombreExcepcion(e: ExcepcionRow): string {
+  const quien = e.nombre_asegurado_crudo || e.numero_poliza_crudo || e.productor_crudo || "Sin datos";
+  return e.aseguradora ? `${e.aseguradora} · ${quien}` : quien;
+}
+
+function sugerenciaTexto(e: ExcepcionRow): string | null {
+  if (!e.agente_sugerido) return null;
+  const partes = [e.agente_sugerido, e.oficina_sugerida].filter(Boolean).join(", ");
+  const score = e.score != null ? ` (${Math.round(e.score)}%)` : "";
+  const explicacion = e.explicacion ? ` — ${e.explicacion}` : "";
+  return `Sugerencia: ${partes}${score}${explicacion}`;
+}
+
+export default function ResumenPage() {
+  const router = useRouter();
+  const [mes, setMes] = useState<Date>(() => primerDiaDelMes(0));
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const [kpis, setKpis] = useState<ResumenKpis | null>(null);
+  const [excepciones, setExcepciones] = useState<ExcepcionRow[]>([]);
+  const [totalPendientes, setTotalPendientes] = useState(0);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuAbierto(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  useEffect(() => {
+    let activo = true;
+    setCargando(true);
+    setError(null);
+    const { desde, hasta } = rangoDelMes(mes);
+
+    Promise.all([getResumenKpis(desde, hasta), getExcepcionesTop(5), getExcepcionesPendientesCount()])
+      .then(([k, ex, n]) => {
+        if (!activo) return;
+        setKpis(k);
+        setExcepciones(ex);
+        setTotalPendientes(n);
+      })
+      .catch((err: unknown) => {
+        if (!activo) return;
+        console.error(err);
+        setError(err instanceof Error ? err.message : "No se pudo cargar el resumen.");
+        setKpis(null);
+        setExcepciones([]);
+        setTotalPendientes(0);
+      })
+      .finally(() => {
+        if (activo) setCargando(false);
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, [mes]);
+
+  const opcionesMes = useMemo(() => Array.from({ length: 12 }, (_, i) => primerDiaDelMes(i)), []);
+  const maxAseguradora = useMemo(
+    () => Math.max(1, ...(kpis?.por_aseguradora ?? []).map((a) => a.comision)),
+    [kpis]
+  );
+  const totalOficinas = kpis?.por_oficina ?? [];
+  const sumaOficinas = useMemo(
+    () => ({
+      comision: totalOficinas.reduce((s, o) => s + o.comision, 0),
+      excepciones: totalOficinas.reduce((s, o) => s + o.excepciones, 0),
+    }),
+    [totalOficinas]
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Saludo + selector de período */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-muted">Gelpi Insurance</span>
+          <span className="text-xl font-semibold text-foreground">Hola, Jose</span>
+        </div>
+        <div className="relative" ref={menuRef}>
+          <Chip icon={<ChevronDown size={14} />} onClick={() => setMenuAbierto((v) => !v)}>
+            <Calendar size={14} />
+            {etiquetaMes(mes)}
+          </Chip>
+          {menuAbierto && (
+            <div className="absolute right-0 top-10 z-20 max-h-72 w-52 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-lg">
+              {opcionesMes.map((d) => (
+                <button
+                  key={d.toISOString()}
+                  type="button"
+                  onClick={() => {
+                    setMes(d);
+                    setMenuAbierto(false);
+                  }}
+                  className={clsx(
+                    "block w-full px-3 py-2 text-left text-[13px] hover:bg-background",
+                    d.getMonth() === mes.getMonth() && d.getFullYear() === mes.getFullYear()
+                      ? "font-semibold text-brand"
+                      : "text-foreground"
+                  )}
+                >
+                  {etiquetaMes(d)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <Card className="border-bad-fg bg-bad-bg px-5 py-4 text-[13px] text-bad-fg">
+          No se pudo cargar el resumen: {error}
+        </Card>
+      )}
+
+      {cargando && !kpis ? (
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="animate-spin text-brand" size={28} />
+        </div>
+      ) : (
+        <>
+          {/* KPI row */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <KpiComisionesConciliadas monto={kpis?.conciliado ?? 0} mes={mes} numOficinas={totalOficinas.length} />
+            <KpiCard label="Sin identificar" value={money(kpis?.sin_identificar.monto ?? 0)} sub={`${kpis?.sin_identificar.n ?? 0} líneas`} subTone="warn" />
+            <KpiCard label="Mismatch pendiente" value={money(kpis?.mismatch.monto ?? 0)} sub={`${kpis?.mismatch.n ?? 0} líneas`} subTone="warn" />
+            <KpiCard label="Duplicados sospechosos" value={money(kpis?.duplicados.monto ?? 0)} sub={`${kpis?.duplicados.n ?? 0} casos`} subTone="muted" />
+            <button
+              type="button"
+              onClick={() => router.push("/comisiones/conciliacion")}
+              className="flex flex-col gap-1 rounded-xl border border-bad-fg bg-bad-bg p-5 text-left transition hover:shadow-sm"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[13px] text-bad-fg">Total en disputa</span>
+                <ArrowRight size={14} className="text-bad-fg" />
+              </div>
+              <div className="text-[28px] font-semibold tracking-tight text-bad-fg">
+                {money(kpis?.total_disputa.monto ?? 0)}
+              </div>
+              <div className="mt-2 text-xs font-medium text-bad-fg">
+                {kpis?.total_disputa.n ?? 0} casos abiertos · Ver en Conciliación
+              </div>
+            </button>
+          </div>
+
+          {/* Excepciones + tabla por oficina */}
+          <div className="grid grid-cols-1 gap-6 items-start lg:grid-cols-5">
+            <div className="lg:col-span-3">
+              <Card>
+                <CardHead
+                  title="Excepciones que necesitan tu atención hoy"
+                  action={<Badge tone="bad">{totalPendientes} abiertas</Badge>}
+                />
+                <div className="px-5 pb-4 pt-2">
+                  <div className="mb-1 text-xs text-muted">Ordenadas por antigüedad y monto</div>
+
+                  {excepciones.length === 0 ? (
+                    <EmptyState
+                      title="No hay excepciones pendientes"
+                      description="Todas las líneas del período están conciliadas o resueltas."
+                    />
+                  ) : (
+                    <div className="flex flex-col">
+                      {excepciones.map((e, i) => {
+                        const badge = e.atrasada
+                          ? { texto: "Atrasada", tone: "bad" as Tone, icon: <AlertTriangle size={12} /> }
+                          : etiquetaTipoExcepcion(e.tipo);
+                        const sugerencia = sugerenciaTexto(e);
+                        return (
+                          <div
+                            key={e.id}
+                            className={clsx("flex flex-col gap-1 py-2.5", i < excepciones.length - 1 && "border-b border-border")}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <Badge tone={badge.tone} icon={badge.icon}>
+                                  {badge.texto}
+                                </Badge>
+                                {e.atrasada && (
+                                  <span className="text-xs text-muted">{etiquetaTipoExcepcion(e.tipo).texto}</span>
+                                )}
+                                <span className="truncate text-sm font-medium text-foreground">{nombreExcepcion(e)}</span>
+                              </div>
+                              <div className="flex flex-shrink-0 items-center gap-4">
+                                <span className="text-sm font-medium text-foreground">{money(e.monto)}</span>
+                                <span className="w-14 text-right text-xs text-muted">
+                                  {e.antiguedad_dias} {e.antiguedad_dias === 1 ? "día" : "días"}
+                                </span>
+                              </div>
+                            </div>
+                            {sugerencia && <div className="pl-[76px] text-xs leading-relaxed text-muted">{sugerencia}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {totalPendientes > 0 && (
+                    <div className="flex justify-end pt-3.5">
+                      <Button variant="secondary" size="sm" href="/comisiones/conciliacion">
+                        Ver las {totalPendientes} en Conciliación
+                        <ArrowRight size={14} />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHead title="Comisiones y excepciones por oficina" />
+                {totalOficinas.length === 0 ? (
+                  <EmptyState title="Sin datos de oficinas" description="Todavía no hay comisiones conciliadas en este período." />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[13px]">
+                      <thead>
+                        <tr className="bg-background">
+                          <th className="whitespace-nowrap px-5 py-2.5 text-left font-medium text-muted">Oficina</th>
+                          <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">Comisión</th>
+                          <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">Excep.</th>
+                          <th className="whitespace-nowrap px-5 py-2.5 text-left font-medium text-muted">Antigüedad</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {totalOficinas.map((o) => (
+                          <tr key={o.oficina_id} className="border-t border-border">
+                            <td className="px-5 py-3 font-medium text-foreground">{o.oficina}</td>
+                            <td className="px-5 py-3 text-right tabular-nums text-foreground">{money(o.comision)}</td>
+                            <td className="px-5 py-3 text-right tabular-nums text-foreground">{o.excepciones}</td>
+                            <td className="px-5 py-3 text-muted">
+                              <span className="mr-2">{o.antiguedad} {o.antiguedad === 1 ? "día" : "días"}</span>
+                              {o.antiguedad >= UMBRAL_ATRASADA_DIAS && o.excepciones > 0 && <Badge tone="bad">Atrasadas</Badge>}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="border-t border-border bg-background">
+                          <td className="px-5 py-3 font-medium text-foreground">{totalOficinas.length} oficinas</td>
+                          <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">{money(sumaOficinas.comision)}</td>
+                          <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">{sumaOficinas.excepciones}</td>
+                          <td className="px-5 py-3 text-muted">—</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            </div>
+          </div>
+
+          {/* Gráfico por aseguradora */}
+          <Card>
+            <CardHead title={`Comisión conciliada por aseguradora — ${etiquetaMes(mes)}`} />
+            <div className="flex flex-col gap-3 px-5 py-4">
+              {(kpis?.por_aseguradora ?? []).length === 0 ? (
+                <EmptyState title="Sin comisión conciliada en este período" />
+              ) : (
+                kpis!.por_aseguradora.map((a) => (
+                  <div key={a.aseguradora} className="grid grid-cols-[110px_minmax(0,1fr)_90px] items-center gap-3 sm:grid-cols-[130px_minmax(0,1fr)_100px]">
+                    <span className="truncate text-xs text-muted">{a.aseguradora}</span>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-neutral-bg">
+                      <div
+                        className="h-full rounded-full bg-brand"
+                        style={{ width: `${Math.max(2, (a.comision / maxAseguradora) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-right text-sm font-medium text-foreground">{money(a.comision)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+
+          {/* Accesos rápidos */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Button variant="dark" href="/comisiones/subir" className="h-14 justify-center text-sm">
+              <UploadCloud size={16} />
+              Subir un reporte
+            </Button>
+            <Button variant="primary" href="/comisiones/conciliacion" className="h-14 justify-center text-sm">
+              <Users size={16} />
+              Ir a Conciliación ({totalPendientes} pendientes)
+            </Button>
+            <Button variant="secondary" href="/comisiones/agentes" className="h-14 justify-center text-sm">
+              <UserCog size={16} />
+              Ver Agentes
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function KpiCard({
+  label,
+  value,
+  sub,
+  subTone,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  subTone: "ok" | "warn" | "bad" | "muted" | "brand";
+}) {
+  const toneClass: Record<typeof subTone, string> = {
+    ok: "text-ok-fg",
+    warn: "text-warn-fg",
+    bad: "text-bad-fg",
+    muted: "text-muted",
+    brand: "text-brand",
+  };
+  return (
+    <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface p-5">
+      <span className="text-[13px] text-muted">{label}</span>
+      <div className="text-[26px] font-semibold tracking-tight text-foreground">{value}</div>
+      <div className={clsx("mt-2 text-xs font-medium", toneClass[subTone])}>{sub}</div>
+    </div>
+  );
+}
+
+function KpiComisionesConciliadas({ monto, mes, numOficinas }: { monto: number; mes: Date; numOficinas: number }) {
+  const mesCorto = mes.toLocaleDateString("es-US", { month: "short", year: "numeric" });
+  return (
+    <KpiCard
+      label="Comisiones conciliadas del período"
+      value={money(monto)}
+      sub={`${mesCorto.charAt(0).toUpperCase() + mesCorto.slice(1)}, ${numOficinas} ${numOficinas === 1 ? "oficina" : "oficinas"}`}
+      subTone="brand"
+    />
+  );
+}

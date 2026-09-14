@@ -1,0 +1,95 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "Resumen",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1220
+    },
+    {
+      "file": "Subir.dc.html",
+      "title": "Subir Reportes",
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 1920
+    },
+    {
+      "file": "Conciliacion.dc.html",
+      "title": "Conciliación",
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 1360
+    },
+    {
+      "file": "Agentes.dc.html",
+      "title": "Agentes",
+      "x": 0,
+      "y": 2060,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "Clientes.dc.html",
+      "title": "Clientes (Active Business Book)",
+      "x": 1520,
+      "y": 2060,
+      "w": 1440,
+      "h": 1200
+    },
+    {
+      "file": "Oficinas.dc.html",
+      "title": "Oficinas y Franquicias",
+      "x": 3040,
+      "y": 2060,
+      "w": 1440,
+      "h": 1000
+    },
+    {
+      "file": "Bonos.dc.html",
+      "title": "Bonos y Contingencias",
+      "x": 0,
+      "y": 3400,
+      "w": 1440,
+      "h": 1100
+    },
+    {
+      "file": "Configuracion.dc.html",
+      "title": "Configuración",
+      "x": 1520,
+      "y": 3400,
+      "w": 1440,
+      "h": 1960
+    },
+    {
+      "file": "Flujo.dc.html",
+      "title": "Cómo funciona la conciliación",
+      "x": 3040,
+      "y": 3400,
+      "w": 1440,
+      "h": 720
+    }
+  ],
+  "annotations": [
+    {
+      "id": "como-leer",
+      "x": 0,
+      "y": -260,
+      "w": 520,
+      "text": "BOCETO · Módulo Comisiones de Gelpi Insurance\n\nFila 1: Resumen → Subir Reportes → Conciliación (el corazón: la bandeja de excepciones).\nFila 2: Agentes (cada agente con TODAS sus comisiones) · Clientes = Active Business Book (la fuente de verdad) · Oficinas.\nFila 3: Bonos · Configuración (alias de la agencia, umbrales) · diagrama del flujo.\n\nTodos los datos son de ejemplo. El caso guía: Progressive reporta la póliza 934857211-3 a nombre de JOSE GELPI; el libro dice que es de Yaneisy Pérez (Hialeah)."
+    },
+    {
+      "id": "preguntas-jose",
+      "x": 1520,
+      "y": -420,
+      "w": 620,
+      "text": "PREGUNTAS ABIERTAS PARA JOSE\n\n1. ¿Los gerentes de oficina van a tener acceso a la app ya en esta primera versión, o por ahora es solo para vos? Y aparte de los gerentes: ¿cada agente individual (no gerente) también necesita su propio login de solo lectura para ver su propia Ficha (comisiones, bonos, excepciones que lo mencionan)? Dejamos un toggle listo y apagado por defecto en Configuración → Acceso de agentes individuales.\n\n2. ¿Hay agentes que venden para más de una oficina/franquicia? Si es así, la Ficha del Agente necesita desglosar comisión por oficina en vez de asumir una sola.\n\n3. ¿Existen splits en cascada — un agente cobra % de lo que vende otro (ej. un manager sobre su equipo)? Si sí, hay que activar el campo supervisor_id del modelo de datos.\n\n4. ¿Cuáles son TODAS las variantes con las que las aseguradoras identifican a la agencia en sus reportes (además de 'Jose Gelpi' y 'Gelpi Insurance LLC')? Esa lista de alias hay que armarla completa antes de encender el matching automático.\n\n5. ¿El umbral propuesto de 90% para auto-conciliar sin revisión te parece correcto? Y en particular: cuando el número de póliza matchea exacto PERO el Productor del reporte es un alias de la agencia (como el caso Yolanda Castellanos), ¿te parece bien que la PRIMERA vez se pida tu confirmación en 1 clic (score 96%) y de ahí en adelante concilie solo? ¿O preferís que directamente concilie automático siempre que el número de póliza matchee exacto, sin excepción?\n\n6. ¿Qué % de override recibe cada gerente de oficina sobre las ventas de su equipo (si aplica), y es el mismo % para todas las oficinas o varía?\n\n7. ¿Con qué frecuencia llegan los reportes de bono/contingencia de cada aseguradora (trimestral, anual, por campaña) para planear cuándo esperar esos archivos?\n\n8. Ya agregamos en Subir Reportes una 4ª opción 'Actualizar Active Business Book' para que la subas como reporte periódico. ¿Con qué frecuencia la vas a usar (semanal/mensual/cada vez que hay cambios), o preferís que el libro se arme solo con Ventas internas + Alta manual y esta opción quede sin usar por ahora?\n\n9. El badge 'Atrasada' a los 10 días lo dejamos aplicando por igual a los 3 tipos de excepción (Mismatch, Sin identificar y Duplicados) — ¿tiene sentido para vos que un Duplicado sospechoso o un Mismatch también se marque 'Atrasado' si nadie lo toca en 10 días, o ese badge solo importa para Sin identificar?"
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

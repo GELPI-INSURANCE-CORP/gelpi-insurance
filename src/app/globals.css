@@ -2,13 +2,19 @@
 
 :root {
   --background: #f5f6f8;
-  --foreground: #14213d;
+  --foreground: #1b2a4a;
   --surface: #ffffff;
   --border: #e2e5eb;
-  --navy: #0f1b3c;
-  --navy-light: #17264f;
-  --gold: #c9a227;
+  --brand: #1f4fa3;
+  --brand-dark: #163b7f;
+  --brand-tint: #eef3fb;
+  --silver: #e6e8ec;
   --muted: #6b7280;
+  --ok-bg: #ecfdf5; --ok-fg: #047857;
+  --warn-bg: #fffbeb; --warn-fg: #b45309;
+  --bad-bg: #fef2f2; --bad-fg: #b91c1c;
+  --info-bg: #eff6ff; --info-fg: #1d4ed8;
+  --neutral-bg: #f1f5f9; --neutral-fg: #475569;
 }
 
 @theme inline {
@@ -16,10 +22,16 @@
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-border: var(--border);
-  --color-navy: var(--navy);
-  --color-navy-light: var(--navy-light);
-  --color-gold: var(--gold);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-tint: var(--brand-tint);
+  --color-silver: var(--silver);
   --color-muted: var(--muted);
+  --color-ok-bg: var(--ok-bg); --color-ok-fg: var(--ok-fg);
+  --color-warn-bg: var(--warn-bg); --color-warn-fg: var(--warn-fg);
+  --color-bad-bg: var(--bad-bg); --color-bad-fg: var(--bad-fg);
+  --color-info-bg: var(--info-bg); --color-info-fg: var(--info-fg);
+  --color-neutral-bg: var(--neutral-bg); --color-neutral-fg: var(--neutral-fg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

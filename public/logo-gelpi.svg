@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 56" width="48" height="56">
+  <defs>
+    <linearGradient id="gShieldBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6bd0"/><stop offset="1" stop-color="#173f8f"/></linearGradient>
+    <linearGradient id="gShieldSilver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2e4e8"/><stop offset="1" stop-color="#9ca0a8"/></linearGradient>
+  </defs>
+  <path d="M24 2 L4 10 V28 C4 42 14 50 24 54 Z" fill="url(#gShieldBlue)"/>
+  <path d="M24 2 L44 10 V28 C44 42 34 50 24 54 Z" fill="url(#gShieldSilver)"/>
+  <circle cx="27" cy="15" r="4" fill="#ffffff"/>
+  <path d="M12 42 C17 32 24 27 33 22" stroke="#ffffff" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <path d="M19 30 L27 33" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+</svg>

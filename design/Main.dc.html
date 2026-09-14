@@ -1,0 +1,390 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1b2a4a; background: #f5f6f8; -webkit-font-smoothing: antialiased; }
+    a { color: #1f4fa3; text-decoration: none; } a:hover { color: #163b7f; }
+    * { box-sizing: border-box; }
+    .nav-parent { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; color: #ffffff; background: #1f4fa3; }
+    .nav-parent svg { width: 16px; height: 16px; stroke: #ffffff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+    .nav-parent .chev { margin-left: auto; width: 14px; height: 14px; stroke: rgba(255,255,255,0.75); }
+    .nav-sub { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 0 20px; padding-left: 12px; border-left: 1px solid #e2e5eb; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: #4b5563; }
+    .nav-item.active { background: #eef3fb; color: #1c3f8a; font-weight: 500; }
+    .nav-item.active::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: #1f4fa3; flex-shrink: 0; }
+    .card { background: #ffffff; border: 1px solid #e2e5eb; border-radius: 12px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e2e5eb; }
+    .card-title { font-size: 15px; font-weight: 600; color: #1b2a4a; margin: 0; }
+    .kpi { background: #ffffff; border: 1px solid #e2e5eb; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 4px; }
+    .kpi-label { font-size: 13px; color: #6b7280; }
+    .kpi-value { font-size: 26px; font-weight: 600; color: #1b2a4a; letter-spacing: -0.01em; }
+    .kpi-sub { font-size: 12px; font-weight: 500; margin-top: 8px; }
+    .kpi-sub.ok { color: #059669; } .kpi-sub.warn { color: #b45309; } .kpi-sub.bad { color: #dc2626; } .kpi-sub.muted { color: #6b7280; } .kpi-sub.brand { color: #1f4fa3; }
+    table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.tbl th { text-align: left; font-weight: 500; color: #6b7280; padding: 10px 20px; border-bottom: 1px solid #e2e5eb; white-space: nowrap; background: #fafbfc; }
+    table.tbl td { padding: 12px 20px; border-bottom: 1px solid #e2e5eb; vertical-align: middle; color: #1b2a4a; }
+    table.tbl tr:last-child td { border-bottom: 0; }
+    table.tbl td.strong { font-weight: 500; }
+    table.tbl td.muted { color: #6b7280; }
+    table.tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.tbl th.num { text-align: right; }
+    table.tbl tr.selected td { background: #eef3fb; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08); }
+    .badge.ok { background: #ecfdf5; color: #047857; }
+    .badge.warn { background: #fffbeb; color: #b45309; }
+    .badge.bad { background: #fef2f2; color: #b91c1c; }
+    .badge.info { background: #eff6ff; color: #1d4ed8; }
+    .badge.neutral { background: #f1f5f9; color: #475569; }
+    .badge.brand { background: #eef3fb; color: #1c3f8a; }
+    .badge.silver { background: #eceef1; color: #4b5563; }
+    .badge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid transparent; white-space: nowrap; }
+    .btn.primary { background: #1f4fa3; color: #ffffff; }
+    .btn.dark { background: #163b7f; color: #ffffff; }
+    .btn.secondary { background: #ffffff; color: #1b2a4a; border-color: #e2e5eb; }
+    .btn.ghost { background: transparent; color: #6b7280; }
+    .btn.sm { height: 30px; padding: 0 10px; font-size: 12px; }
+    .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e5eb; background: #ffffff; font-size: 13px; color: #1b2a4a; }
+    .chip.active { background: #1f4fa3; color: #ffffff; border-color: #1f4fa3; }
+    .chip svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e2e5eb; padding: 0 20px; }
+    .tab { padding: 12px 4px; margin-right: 20px; font-size: 13px; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px; }
+    .tab.active { color: #1c3f8a; border-bottom-color: #1f4fa3; }
+    .count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 600; }
+    .count.bad { background: #fef2f2; color: #b91c1c; } .count.warn { background: #fffbeb; color: #b45309; } .count.info { background: #eff6ff; color: #1d4ed8; } .count.brand { background: #eef3fb; color: #1c3f8a; }
+    .input { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e5eb; background: #ffffff; font-size: 13px; color: #6b7280; }
+    .input svg { width: 14px; height: 14px; stroke: #6b7280; fill: none; stroke-width: 2; }
+    .avatar { width: 32px; height: 32px; border-radius: 999px; background: #1f4fa3; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+    .avatar.soft { background: #eef3fb; color: #1c3f8a; }
+    .avatar.silver { background: #e6e8ec; color: #4b5563; }
+    .label { font-size: 12px; color: #6b7280; }
+    .value { font-size: 14px; font-weight: 500; color: #1b2a4a; }
+    .ai-note { display: flex; gap: 10px; padding: 12px 14px; border-radius: 10px; background: #eef3fb; border: 1px solid #c9d8f2; font-size: 13px; color: #1c3f8a; line-height: 1.45; }
+    .ai-note svg { width: 16px; height: 16px; stroke: #1f4fa3; fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 1px; }
+    .progress { height: 6px; border-radius: 999px; background: #e6e8ec; overflow: hidden; }
+    .progress > div { height: 100%; background: #1f4fa3; border-radius: 999px; }
+    .divider { height: 1px; background: #e2e5eb; }
+  </style>
+</helmet>
+
+<!-- ROOT FRAME 1440x1200 -->
+<div style="width: 1440px; height: 1220px; display: flex; background: #f5f6f8; overflow: hidden;">
+
+  <!-- SIDEBAR -->
+  <aside style="width: 256px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #e2e5eb; color: #1b2a4a; display: flex; flex-direction: column;">
+    <div style="display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 20px; border-bottom: 1px solid #e2e5eb;">
+      <svg viewBox="0 0 48 56" style="width: 30px; height: 35px; flex-shrink: 0;">
+        <defs>
+          <linearGradient id="gShieldBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6bd0"></stop><stop offset="1" stop-color="#173f8f"></stop></linearGradient>
+          <linearGradient id="gShieldSilver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2e4e8"></stop><stop offset="1" stop-color="#9ca0a8"></stop></linearGradient>
+        </defs>
+        <path d="M24 2 L4 10 V28 C4 42 14 50 24 54 Z" fill="url(#gShieldBlue)"></path>
+        <path d="M24 2 L44 10 V28 C44 42 34 50 24 54 Z" fill="url(#gShieldSilver)"></path>
+        <circle cx="27" cy="15" r="4" fill="#ffffff"></circle>
+        <path d="M12 42 C17 32 24 27 33 22" stroke="#ffffff" stroke-width="5" stroke-linecap="round" fill="none"></path>
+        <path d="M19 30 L27 33" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" fill="none"></path>
+      </svg>
+      <div style="display: flex; flex-direction: column; line-height: 1;">
+        <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 20px; font-weight: 700; letter-spacing: 0.04em; color: #1c3f8a;">GELPI</span>
+        <span style="font-size: 9px; font-weight: 500; letter-spacing: 0.32em; color: #7b7f86; margin-top: 3px;">INSURANCE</span>
+      </div>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; flex-grow: 1;">
+      <div style="display: flex; flex-direction: column;">
+        <a class="nav-parent" href="#"><svg viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg>Comisiones<svg class="chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></a>
+        <div class="nav-sub">
+          <a class="nav-item active" href="#">Resumen</a>
+          <a class="nav-item" href="#">Subir Reportes</a>
+          <a class="nav-item" href="#">Conciliación</a>
+          <a class="nav-item" href="#">Agentes</a>
+          <a class="nav-item" href="#">Clientes (Book)</a>
+          <a class="nav-item" href="#">Oficinas</a>
+          <a class="nav-item" href="#">Bonos</a>
+          <a class="nav-item" href="#">Configuración</a>
+        </div>
+      </div>
+    </nav>
+    <div style="padding: 16px 20px; border-top: 1px solid #e2e5eb; font-size: 11px; color: #9a9ea6;">Gelpi Insurance © 2026</div>
+  </aside>
+
+  <!-- MAIN COLUMN -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <!-- TOPBAR -->
+    <header style="height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; background: #ffffff; border-bottom: 1px solid #e2e5eb;">
+      <h1 style="font-size: 18px; font-weight: 600; margin: 0; color: #1b2a4a;">Resumen — Septiembre 2026</h1>
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <div class="input" style="width: 280px;"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>Buscar cliente, póliza o agente…</div>
+        <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+          <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke: #6b7280; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          <span style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 999px; background: #1f4fa3;"></span>
+        </div>
+        <div class="avatar">JG</div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main style="flex-grow: 1; padding: 32px; display: flex; flex-direction: column; gap: 24px; overflow: hidden;">
+
+      <!-- Greeting + period selector -->
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 12px; color: #6b7280;">Gelpi Insurance</span>
+          <span style="font-size: 20px; font-weight: 600; color: #1b2a4a;">Hola, Jose</span>
+        </div>
+        <div class="chip">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          Septiembre 2026
+          <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+      </div>
+
+      <!-- KPI row -->
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px;">
+        <div class="kpi">
+          <div class="kpi-label">Comisiones conciliadas del período</div>
+          <div class="kpi-value">$38,630.00</div>
+          <div class="kpi-sub brand">Sept 2026, 5 oficinas</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Sin identificar</div>
+          <div class="kpi-value">$1,246.35</div>
+          <div class="kpi-sub warn">6 líneas</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Mismatch pendiente</div>
+          <div class="kpi-value">$892.40</div>
+          <div class="kpi-sub warn">3 líneas</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Duplicados sospechosos</div>
+          <div class="kpi-value">$612.40</div>
+          <div class="kpi-sub muted">3 casos</div>
+        </div>
+        <div class="kpi" style="background: #fef2f2; border-color: #b91c1c;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+            <span class="kpi-label" style="color: #b91c1c;">Total en disputa</span>
+            <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: #b91c1c; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </div>
+          <div class="kpi-value" style="color: #b91c1c; font-size: 28px;">$2,751.15</div>
+          <div class="kpi-sub bad">12 casos abiertos · Ver en Conciliación</div>
+        </div>
+      </div>
+
+      <!-- Excepciones + tabla por oficina -->
+      <div style="display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start;">
+
+        <!-- Excepciones que necesitan atención -->
+        <div class="card">
+          <div class="card-head">
+            <h2 class="card-title">Excepciones que necesitan tu atención hoy</h2>
+            <span class="badge bad">12 abiertas</span>
+          </div>
+          <div style="padding: 8px 20px 16px;">
+            <div class="label" style="margin-bottom: 4px;">Ordenadas por antigüedad y monto</div>
+
+            <div style="display: flex; flex-direction: column;">
+
+              <!-- 1 -->
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-bottom: 1px solid #e2e5eb;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                    <span class="badge bad"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>Atrasada</span>
+                    <span class="label">Sin identificar</span>
+                    <span class="value">Citizens · Odalys Barrientos</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+                    <span class="value">$410.00</span>
+                    <span class="label" style="width: 44px; text-align: right;">12 días</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2 -->
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-bottom: 1px solid #e2e5eb;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                    <span class="badge warn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>Mismatch</span>
+                    <span class="value">Progressive · Yolanda Castellanos</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+                    <span class="value">$213.60</span>
+                    <span class="label" style="width: 44px; text-align: right;">6 días</span>
+                  </div>
+                </div>
+                <div class="label" style="padding-left: 76px; line-height: 1.4;">Sugerencia: Yaneisy Pérez, Gelpi Hialeah (96%) — match exacto de póliza, pero primera vez que se reasigna de la agencia a un agente puntual, pide confirmación</div>
+              </div>
+
+              <!-- 3 -->
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-bottom: 1px solid #e2e5eb;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                    <span class="badge warn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>Mismatch</span>
+                    <span class="value">National General · Lázaro Valdés</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+                    <span class="value">$56.00</span>
+                    <span class="label" style="width: 44px; text-align: right;">7 días</span>
+                  </div>
+                </div>
+                <div class="label" style="padding-left: 76px; line-height: 1.4;">Sugerencia: Yanet Suárez, Gelpi Kendall (88%) — número de póliza del statement viene con ruido de escaneo, no matchea exacto contra el ABB</div>
+              </div>
+
+              <!-- 4 -->
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-bottom: 1px solid #e2e5eb;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                    <span class="badge warn"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>Sin identificar</span>
+                    <span class="value">GEICO · Reinier Fonseca</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+                    <span class="value">$187.55</span>
+                    <span class="label" style="width: 44px; text-align: right;">9 días</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 5 -->
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 0;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                    <span class="badge silver"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Duplicado sospechoso</span>
+                    <span class="value">Bristol West · Damaris Ochoa</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 16px; flex-shrink: 0;">
+                    <span class="value">$96.40 (x2)</span>
+                    <span class="label" style="width: 44px; text-align: right;">1 día</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; padding-top: 14px;">
+              <a class="btn secondary sm" href="#">Ver las 12 en Conciliación<svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabla por oficina -->
+        <div class="card">
+          <div class="card-head">
+            <h2 class="card-title">Comisiones y excepciones por oficina</h2>
+          </div>
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Oficina</th>
+                <th class="num">Comisión</th>
+                <th class="num">Excep.</th>
+                <th>Antigüedad</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="strong">Gelpi Insurance Doral</td>
+                <td class="num">$9,840.00</td>
+                <td class="num">2</td>
+                <td class="muted">3 días</td>
+              </tr>
+              <tr>
+                <td class="strong">Gelpi Insurance Hialeah</td>
+                <td class="num">$14,220.00</td>
+                <td class="num">5</td>
+                <td class="muted">6 días</td>
+              </tr>
+              <tr>
+                <td class="strong">Gelpi Insurance Kendall</td>
+                <td class="num">$6,150.00</td>
+                <td class="num">1</td>
+                <td class="muted">1 día</td>
+              </tr>
+              <tr>
+                <td class="strong">Gelpi Insurance Homestead</td>
+                <td class="num">$4,300.00</td>
+                <td class="num">3</td>
+                <td class="muted"><span style="margin-right: 8px;">12 días</span><span class="badge bad">Atrasadas</span></td>
+              </tr>
+              <tr>
+                <td class="strong">Gelpi Insurance Westchester</td>
+                <td class="num">$4,120.00</td>
+                <td class="num">1</td>
+                <td class="muted">2 días</td>
+              </tr>
+              <tr style="background: #fafbfc;">
+                <td class="strong">5 oficinas</td>
+                <td class="num strong">$38,630.00</td>
+                <td class="num strong">12</td>
+                <td class="muted">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Gráfico por aseguradora -->
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">Comisión conciliada por aseguradora — Sept 2026</h2>
+        </div>
+        <div style="padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
+
+          <div style="display: grid; grid-template-columns: 130px minmax(0, 1fr) 100px; align-items: center; gap: 12px;">
+            <span class="label">Progressive</span>
+            <div class="progress"><div style="width: 100%;"></div></div>
+            <span class="value" style="text-align: right;">$16,420.00</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 130px minmax(0, 1fr) 100px; align-items: center; gap: 12px;">
+            <span class="label">GEICO</span>
+            <div class="progress"><div style="width: 48.6%;"></div></div>
+            <span class="value" style="text-align: right;">$7,980.00</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 130px minmax(0, 1fr) 100px; align-items: center; gap: 12px;">
+            <span class="label">Citizens</span>
+            <div class="progress"><div style="width: 37.5%;"></div></div>
+            <span class="value" style="text-align: right;">$6,150.00</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 130px minmax(0, 1fr) 100px; align-items: center; gap: 12px;">
+            <span class="label">Bristol West</span>
+            <div class="progress"><div style="width: 32.5%;"></div></div>
+            <span class="value" style="text-align: right;">$5,340.00</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 130px minmax(0, 1fr) 100px; align-items: center; gap: 12px;">
+            <span class="label">National General</span>
+            <div class="progress"><div style="width: 16.7%;"></div></div>
+            <span class="value" style="text-align: right;">$2,740.00</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Accesos rápidos -->
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+        <a class="btn dark" href="#" style="height: 56px; font-size: 14px; justify-content: center;">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Subir un reporte
+        </a>
+        <a class="btn primary" href="#" style="height: 56px; font-size: 14px; justify-content: center;">
+          <svg viewBox="0 0 24 24"><path d="M11 6h9"></path><path d="M11 12h9"></path><path d="M11 18h9"></path><path d="m3 6 2 2 4-4"></path><path d="m3 14 2 2 4-4"></path></svg>
+          Ir a Conciliación (12 pendientes)
+        </a>
+        <a class="btn secondary" href="#" style="height: 56px; font-size: 14px; justify-content: center;">
+          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          Ver Agentes
+        </a>
+      </div>
+
+    </main>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

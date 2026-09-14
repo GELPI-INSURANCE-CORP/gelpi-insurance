@@ -1,0 +1,317 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1b2a4a; background: #f5f6f8; -webkit-font-smoothing: antialiased; }
+    a { color: #1f4fa3; text-decoration: none; } a:hover { color: #163b7f; }
+    * { box-sizing: border-box; }
+    .nav-parent { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; color: #ffffff; background: #1f4fa3; }
+    .nav-parent svg { width: 16px; height: 16px; stroke: #ffffff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+    .nav-parent .chev { margin-left: auto; width: 14px; height: 14px; stroke: rgba(255,255,255,0.75); }
+    .nav-sub { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 0 20px; padding-left: 12px; border-left: 1px solid #e2e5eb; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: #4b5563; }
+    .nav-item.active { background: #eef3fb; color: #1c3f8a; font-weight: 500; }
+    .nav-item.active::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: #1f4fa3; flex-shrink: 0; }
+    .card { background: #ffffff; border: 1px solid #e2e5eb; border-radius: 12px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e2e5eb; }
+    .card-title { font-size: 15px; font-weight: 600; color: #1b2a4a; margin: 0; }
+    .kpi { background: #ffffff; border: 1px solid #e2e5eb; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 4px; }
+    .kpi-label { font-size: 13px; color: #6b7280; }
+    .kpi-value { font-size: 26px; font-weight: 600; color: #1b2a4a; letter-spacing: -0.01em; }
+    .kpi-sub { font-size: 12px; font-weight: 500; margin-top: 8px; }
+    .kpi-sub.ok { color: #059669; } .kpi-sub.warn { color: #b45309; } .kpi-sub.bad { color: #dc2626; } .kpi-sub.muted { color: #6b7280; } .kpi-sub.brand { color: #1f4fa3; }
+    table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.tbl th { text-align: left; font-weight: 500; color: #6b7280; padding: 10px 20px; border-bottom: 1px solid #e2e5eb; white-space: nowrap; background: #fafbfc; }
+    table.tbl td { padding: 12px 20px; border-bottom: 1px solid #e2e5eb; vertical-align: middle; color: #1b2a4a; }
+    table.tbl tr:last-child td { border-bottom: 0; }
+    table.tbl td.strong { font-weight: 500; }
+    table.tbl td.muted { color: #6b7280; }
+    table.tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.tbl th.num { text-align: right; }
+    table.tbl tr.selected td { background: #eef3fb; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08); }
+    .badge.ok { background: #ecfdf5; color: #047857; }
+    .badge.warn { background: #fffbeb; color: #b45309; }
+    .badge.bad { background: #fef2f2; color: #b91c1c; }
+    .badge.info { background: #eff6ff; color: #1d4ed8; }
+    .badge.neutral { background: #f1f5f9; color: #475569; }
+    .badge.brand { background: #eef3fb; color: #1c3f8a; }
+    .badge.silver { background: #eceef1; color: #4b5563; }
+    .badge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid transparent; white-space: nowrap; }
+    .btn.primary { background: #1f4fa3; color: #ffffff; }
+    .btn.dark { background: #163b7f; color: #ffffff; }
+    .btn.secondary { background: #ffffff; color: #1b2a4a; border-color: #e2e5eb; }
+    .btn.ghost { background: transparent; color: #6b7280; }
+    .btn.sm { height: 30px; padding: 0 10px; font-size: 12px; }
+    .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e5eb; background: #ffffff; font-size: 13px; color: #1b2a4a; }
+    .chip.active { background: #1f4fa3; color: #ffffff; border-color: #1f4fa3; }
+    .chip svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e2e5eb; padding: 0 20px; }
+    .tab { padding: 12px 4px; margin-right: 20px; font-size: 13px; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px; }
+    .tab.active { color: #1c3f8a; border-bottom-color: #1f4fa3; }
+    .count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 600; }
+    .count.bad { background: #fef2f2; color: #b91c1c; } .count.warn { background: #fffbeb; color: #b45309; } .count.info { background: #eff6ff; color: #1d4ed8; } .count.brand { background: #eef3fb; color: #1c3f8a; }
+    .input { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e5eb; background: #ffffff; font-size: 13px; color: #6b7280; }
+    .input svg { width: 14px; height: 14px; stroke: #6b7280; fill: none; stroke-width: 2; }
+    .avatar { width: 32px; height: 32px; border-radius: 999px; background: #1f4fa3; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+    .avatar.soft { background: #eef3fb; color: #1c3f8a; }
+    .avatar.silver { background: #e6e8ec; color: #4b5563; }
+    .label { font-size: 12px; color: #6b7280; }
+    .value { font-size: 14px; font-weight: 500; color: #1b2a4a; }
+    .ai-note { display: flex; gap: 10px; padding: 12px 14px; border-radius: 10px; background: #eef3fb; border: 1px solid #c9d8f2; font-size: 13px; color: #1c3f8a; line-height: 1.45; }
+    .ai-note svg { width: 16px; height: 16px; stroke: #1f4fa3; fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 1px; }
+    .progress { height: 6px; border-radius: 999px; background: #e6e8ec; overflow: hidden; }
+    .progress > div { height: 100%; background: #1f4fa3; border-radius: 999px; }
+    .divider { height: 1px; background: #e2e5eb; }
+    .toggle-track { width: 40px; height: 22px; border-radius: 999px; background: #e6e8ec; position: relative; flex-shrink: 0; }
+    .toggle-track .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 999px; background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); }
+  </style>
+</helmet>
+
+<!-- ROOT FRAME 1440x1200 -->
+<div style="width: 1440px; height: 1960px; display: flex; background: #f5f6f8; overflow: hidden;">
+
+  <!-- SIDEBAR -->
+  <aside style="width: 256px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #e2e5eb; color: #1b2a4a; display: flex; flex-direction: column;">
+    <div style="display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 20px; border-bottom: 1px solid #e2e5eb;">
+      <svg viewBox="0 0 48 56" style="width: 30px; height: 35px; flex-shrink: 0;">
+        <defs>
+          <linearGradient id="gShieldBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6bd0"></stop><stop offset="1" stop-color="#173f8f"></stop></linearGradient>
+          <linearGradient id="gShieldSilver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2e4e8"></stop><stop offset="1" stop-color="#9ca0a8"></stop></linearGradient>
+        </defs>
+        <path d="M24 2 L4 10 V28 C4 42 14 50 24 54 Z" fill="url(#gShieldBlue)"></path>
+        <path d="M24 2 L44 10 V28 C44 42 34 50 24 54 Z" fill="url(#gShieldSilver)"></path>
+        <circle cx="27" cy="15" r="4" fill="#ffffff"></circle>
+        <path d="M12 42 C17 32 24 27 33 22" stroke="#ffffff" stroke-width="5" stroke-linecap="round" fill="none"></path>
+        <path d="M19 30 L27 33" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" fill="none"></path>
+      </svg>
+      <div style="display: flex; flex-direction: column; line-height: 1;">
+        <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 20px; font-weight: 700; letter-spacing: 0.04em; color: #1c3f8a;">GELPI</span>
+        <span style="font-size: 9px; font-weight: 500; letter-spacing: 0.32em; color: #7b7f86; margin-top: 3px;">INSURANCE</span>
+      </div>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; flex-grow: 1;">
+      <div style="display: flex; flex-direction: column;">
+        <a class="nav-parent" href="#"><svg viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg>Comisiones<svg class="chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></a>
+        <div class="nav-sub">
+          <a class="nav-item" href="#">Resumen</a>
+          <a class="nav-item" href="#">Subir Reportes</a>
+          <a class="nav-item" href="#">Conciliación</a>
+          <a class="nav-item" href="#">Agentes</a>
+          <a class="nav-item" href="#">Clientes (Book)</a>
+          <a class="nav-item" href="#">Oficinas</a>
+          <a class="nav-item" href="#">Bonos</a>
+          <a class="nav-item active" href="#">Configuración</a>
+        </div>
+      </div>
+    </nav>
+    <div style="padding: 16px 20px; border-top: 1px solid #e2e5eb; font-size: 11px; color: #9a9ea6;">Gelpi Insurance © 2026</div>
+  </aside>
+
+  <!-- MAIN COLUMN -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <!-- TOPBAR -->
+    <header style="height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; background: #ffffff; border-bottom: 1px solid #e2e5eb;">
+      <h1 style="font-size: 18px; font-weight: 600; margin: 0; color: #1b2a4a;">Configuración</h1>
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <div class="input" style="width: 280px;"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>Buscar cliente, póliza o agente…</div>
+        <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+          <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke: #6b7280; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          <span style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 999px; background: #1f4fa3;"></span>
+        </div>
+        <div class="avatar">JG</div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main style="flex-grow: 1; padding: 32px; display: flex; flex-direction: column; gap: 20px; overflow: hidden;">
+
+      <!-- SECCIÓN 1 — Alias de la agencia -->
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">Alias de la agencia</h2>
+          <button class="btn primary sm"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>Agregar alias</button>
+        </div>
+        <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 14px;">
+          <p style="margin: 0; font-size: 13px; color: #4b5563; line-height: 1.5;">Cuando el campo Productor del reporte de un reporte de aseguradora coincide con alguno de estos alias, el sistema lo ignora para atribuir la comisión y usa siempre el número de póliza contra el Active Business Book.</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <span class="chip"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4 21v-1a8 8 0 0 1 16 0v1"></path></svg>JOSE GELPI</span>
+            <span class="chip"><svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 21v-6h6v6"></path></svg>GELPI INSURANCE LLC</span>
+            <span class="chip"><svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 21v-6h6v6"></path></svg>GELPI INSURANCE</span>
+            <span class="chip"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4 21v-1a8 8 0 0 1 16 0v1"></path></svg>JOSE A GELPI</span>
+          </div>
+          <div class="ai-note">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            <span>La primera vez que aparece esta situación para una póliza puntual, igual se pide tu confirmación en 1 clic en Conciliación (ver Sección 2) — después de esa primera confirmación, los statements siguientes de la misma póliza concilian solos.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 2 — Umbrales de score -->
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">Umbrales de score</h2>
+        </div>
+        <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+            <div style="border: 1px solid #e2e5eb; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #ecfdf5;">
+              <span class="badge ok"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>Auto</span>
+              <span style="font-size: 13px; color: #1b2a4a;">Match automático sin revisión: <span style="font-weight: 600;">≥ 90%</span> y candidato único</span>
+            </div>
+            <div style="border: 1px solid #e2e5eb; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #fffbeb;">
+              <span class="badge warn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>Mismatch</span>
+              <span style="font-size: 13px; color: #1b2a4a;">Revisión de 1 clic: <span style="font-weight: 600;">60% – 89%</span></span>
+            </div>
+            <div style="border: 1px solid #e2e5eb; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: #fef2f2;">
+              <span class="badge bad"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>Sin identificar</span>
+              <span style="font-size: 13px; color: #1b2a4a;"><span style="font-weight: 600;">&lt; 60%</span> o sin candidato</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: #4b5563; line-height: 1.5;">
+            <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: #6b7280; fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 3px;"><path d="M12 16v-4"></path><path d="M12 8h.01"></path><circle cx="12" cy="12" r="10"></circle></svg>
+            <span>Excepción a la regla de arriba: una póliza con match EXACTO por número, pero cuyo Productor del reporte es un alias de la agencia, se manda igual a Mismatch de 1 clic la primera vez (score 96%, incluye el factor de alias) — ver Alias de la agencia arriba.</span>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 10px; background: #fef2f2; border: 1px solid #e2e5eb;">
+            <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #b91c1c; fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 1px;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <span style="font-size: 13px; color: #b91c1c; font-weight: 500; line-height: 1.5;">Regla dura: un falso match automático es peor que una excepción sin resolver, porque un falso match nunca se vuelve a revisar. Ante la duda, el sistema prefiere generar una excepción.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 3 — Plantillas de mapeo por aseguradora -->
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">Plantillas de mapeo por aseguradora</h2>
+        </div>
+        <table class="tbl">
+          <thead>
+            <tr><th>Aseguradora</th><th>Última actualización</th><th>Columnas mapeadas</th><th class="num">Confianza promedio</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="strong">Progressive</td>
+              <td class="muted">12-sep-2026</td>
+              <td>8/8</td>
+              <td class="num">97%</td>
+              <td style="text-align: right;"><button class="btn secondary sm">Editar plantilla</button></td>
+            </tr>
+            <tr>
+              <td class="strong">GEICO</td>
+              <td class="muted">12-sep-2026</td>
+              <td>7/8 (falta "tasa" en statements PDF escaneados)</td>
+              <td class="num">88%</td>
+              <td style="text-align: right;"><button class="btn secondary sm">Editar plantilla</button></td>
+            </tr>
+            <tr>
+              <td class="strong">Citizens</td>
+              <td class="muted">10-sep-2026</td>
+              <td>8/8</td>
+              <td class="num">95%</td>
+              <td style="text-align: right;"><button class="btn secondary sm">Editar plantilla</button></td>
+            </tr>
+            <tr>
+              <td class="strong">Bristol West</td>
+              <td class="muted">13-sep-2026</td>
+              <td>8/8</td>
+              <td class="num">96%</td>
+              <td style="text-align: right;"><button class="btn secondary sm">Editar plantilla</button></td>
+            </tr>
+            <tr>
+              <td class="strong">National General</td>
+              <td class="muted">13-sep-2026</td>
+              <td>8/8</td>
+              <td class="num">94%</td>
+              <td style="text-align: right;"><button class="btn secondary sm">Editar plantilla</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="padding: 12px 20px; border-top: 1px solid #e2e5eb; font-size: 12px; color: #6b7280;">Cualquier columna del archivo que no aparezca en este mapeo NO se descarta — queda guardada en datos crudos por fila (ver botón "Ver datos crudos completos de esta fila" en Subir Reportes).</div>
+      </div>
+
+      <!-- SECCIÓN 4 — Reglas de chargeback/ajuste -->
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">Reglas de chargeback / ajuste</h2>
+        </div>
+        <div style="padding: 16px 20px; display: flex; align-items: flex-start; gap: 10px;">
+          <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #1f4fa3; fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 2px;"><path d="M17 1l4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="M7 23l-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+          <p style="margin: 0; font-size: 13px; color: #4b5563; line-height: 1.55;">Si el monto es negativo o el tipo de transacción es cancelación, el sistema busca la línea de comisión original con el mismo número de póliza y hereda directo su agente y oficina — no vuelve a pasar por matching. Si no se encuentra la línea original, queda en estado <span style="font-weight: 600; color: #1b2a4a;">En espera</span> (no en <span style="font-weight: 600; color: #1b2a4a;">Sin identificar</span>) hasta que aparezca.</p>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 5 — Override de oficina y permisos -->
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">Override de oficina y permisos</h2>
+        </div>
+        <table class="tbl">
+          <thead>
+            <tr><th>Oficina</th><th class="num">% override al gerente</th><th>Quién ve esta oficina</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="strong">Gelpi Insurance Hialeah</td>
+              <td class="num">3%</td>
+              <td class="muted">Jose Gelpi + Carlos Alberto Reyes</td>
+            </tr>
+            <tr>
+              <td class="strong">Gelpi Insurance Doral</td>
+              <td class="num">3%</td>
+              <td class="muted">Jose Gelpi + Maria Fernanda Gutiérrez</td>
+            </tr>
+            <tr>
+              <td class="strong">Gelpi Insurance Kendall</td>
+              <td class="num">2%</td>
+              <td class="muted">Jose Gelpi + Yanet Suárez</td>
+            </tr>
+            <tr>
+              <td class="strong">Gelpi Insurance Homestead</td>
+              <td class="num">2%</td>
+              <td class="muted">Jose Gelpi + Jennifer Rodríguez</td>
+            </tr>
+            <tr>
+              <td class="strong">Gelpi Insurance Westchester</td>
+              <td class="num">2%</td>
+              <td class="muted">Jose Gelpi + Osvaldo Delgado</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="padding: 12px 20px; border-top: 1px solid #e2e5eb; font-size: 12px; color: #6b7280;">Jose ve todas las oficinas. Cada gerente ve solo la suya — no ve agentes, clientes ni comisiones de otra oficina.</div>
+      </div>
+
+      <!-- BLOQUE NUEVO — Acceso de agentes individuales -->
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">Acceso de agentes individuales (no gerentes)</h2>
+          <span class="badge neutral">Pendiente de confirmar</span>
+        </div>
+        <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 14px;">
+          <p style="margin: 0; font-size: 13px; color: #4b5563; line-height: 1.5;">Hoy el sistema solo contempla login para Jose y para el gerente de cada oficina (tabla de arriba). Un agente que NO es gerente todavía no tiene manera de entrar a ver su propia Ficha.</p>
+          <div style="display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid #e2e5eb; border-radius: 10px; background: #fafbfc;">
+            <div class="toggle-track"><div class="knob"></div></div>
+            <span style="font-size: 13px; color: #1b2a4a; line-height: 1.5;">Dar a cada agente acceso de solo lectura a su propia Ficha (comisiones + bonos + excepciones que lo mencionan) — sin ver a otros agentes ni otras oficinas.</span>
+            <span class="badge silver" style="margin-left: auto; flex-shrink: 0;">Apagado por defecto</span>
+          </div>
+          <div class="ai-note">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            <span>Pendiente de confirmar con Jose (ver preguntas abiertas). Si se activa, cada Agente de la pantalla Agentes gana su propio login de solo lectura, filtrado únicamente a su propia fila.</span>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

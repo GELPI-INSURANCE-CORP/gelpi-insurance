@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "xlsx": "npm:xlsx@0.18.5"
+  }
+}

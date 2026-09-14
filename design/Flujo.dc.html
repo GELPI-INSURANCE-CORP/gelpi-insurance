@@ -1,0 +1,271 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1b2a4a; background: #f5f6f8; -webkit-font-smoothing: antialiased; }
+    a { color: #1f4fa3; text-decoration: none; } a:hover { color: #163b7f; }
+    * { box-sizing: border-box; }
+    .nav-parent { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; color: #ffffff; background: #1f4fa3; }
+    .nav-parent svg { width: 16px; height: 16px; stroke: #ffffff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+    .nav-parent .chev { margin-left: auto; width: 14px; height: 14px; stroke: rgba(255,255,255,0.75); }
+    .nav-sub { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 0 20px; padding-left: 12px; border-left: 1px solid #e2e5eb; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: #4b5563; }
+    .nav-item.active { background: #eef3fb; color: #1c3f8a; font-weight: 500; }
+    .nav-item.active::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: #1f4fa3; flex-shrink: 0; }
+    .card { background: #ffffff; border: 1px solid #e2e5eb; border-radius: 12px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e2e5eb; }
+    .card-title { font-size: 15px; font-weight: 600; color: #1b2a4a; margin: 0; }
+    .kpi { background: #ffffff; border: 1px solid #e2e5eb; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 4px; }
+    .kpi-label { font-size: 13px; color: #6b7280; }
+    .kpi-value { font-size: 26px; font-weight: 600; color: #1b2a4a; letter-spacing: -0.01em; }
+    .kpi-sub { font-size: 12px; font-weight: 500; margin-top: 8px; }
+    .kpi-sub.ok { color: #059669; } .kpi-sub.warn { color: #b45309; } .kpi-sub.bad { color: #dc2626; } .kpi-sub.muted { color: #6b7280; } .kpi-sub.brand { color: #1f4fa3; }
+    table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.tbl th { text-align: left; font-weight: 500; color: #6b7280; padding: 10px 20px; border-bottom: 1px solid #e2e5eb; white-space: nowrap; background: #fafbfc; }
+    table.tbl td { padding: 12px 20px; border-bottom: 1px solid #e2e5eb; vertical-align: middle; color: #1b2a4a; }
+    table.tbl tr:last-child td { border-bottom: 0; }
+    table.tbl td.strong { font-weight: 500; }
+    table.tbl td.muted { color: #6b7280; }
+    table.tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.tbl th.num { text-align: right; }
+    table.tbl tr.selected td { background: #eef3fb; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08); }
+    .badge.ok { background: #ecfdf5; color: #047857; }
+    .badge.warn { background: #fffbeb; color: #b45309; }
+    .badge.bad { background: #fef2f2; color: #b91c1c; }
+    .badge.info { background: #eff6ff; color: #1d4ed8; }
+    .badge.neutral { background: #f1f5f9; color: #475569; }
+    .badge.brand { background: #eef3fb; color: #1c3f8a; }
+    .badge.silver { background: #eceef1; color: #4b5563; }
+    .badge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid transparent; white-space: nowrap; }
+    .btn.primary { background: #1f4fa3; color: #ffffff; }
+    .btn.dark { background: #163b7f; color: #ffffff; }
+    .btn.secondary { background: #ffffff; color: #1b2a4a; border-color: #e2e5eb; }
+    .btn.ghost { background: transparent; color: #6b7280; }
+    .btn.sm { height: 30px; padding: 0 10px; font-size: 12px; }
+    .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e5eb; background: #ffffff; font-size: 13px; color: #1b2a4a; }
+    .chip.active { background: #1f4fa3; color: #ffffff; border-color: #1f4fa3; }
+    .chip svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e2e5eb; padding: 0 20px; }
+    .tab { padding: 12px 4px; margin-right: 20px; font-size: 13px; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px; }
+    .tab.active { color: #1c3f8a; border-bottom-color: #1f4fa3; }
+    .count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 600; }
+    .count.bad { background: #fef2f2; color: #b91c1c; } .count.warn { background: #fffbeb; color: #b45309; } .count.info { background: #eff6ff; color: #1d4ed8; } .count.brand { background: #eef3fb; color: #1c3f8a; }
+    .input { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e5eb; background: #ffffff; font-size: 13px; color: #6b7280; }
+    .input svg { width: 14px; height: 14px; stroke: #6b7280; fill: none; stroke-width: 2; }
+    .avatar { width: 32px; height: 32px; border-radius: 999px; background: #1f4fa3; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+    .avatar.soft { background: #eef3fb; color: #1c3f8a; }
+    .avatar.silver { background: #e6e8ec; color: #4b5563; }
+    .label { font-size: 12px; color: #6b7280; }
+    .value { font-size: 14px; font-weight: 500; color: #1b2a4a; }
+    .ai-note { display: flex; gap: 10px; padding: 12px 14px; border-radius: 10px; background: #eef3fb; border: 1px solid #c9d8f2; font-size: 13px; color: #1c3f8a; line-height: 1.45; }
+    .ai-note svg { width: 16px; height: 16px; stroke: #1f4fa3; fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 1px; }
+    .progress { height: 6px; border-radius: 999px; background: #e6e8ec; overflow: hidden; }
+    .progress > div { height: 100%; background: #1f4fa3; border-radius: 999px; }
+    .divider { height: 1px; background: #e2e5eb; }
+  </style>
+</helmet>
+
+<!-- DIAGRAM ARTBOARD 1440x720 -->
+<div style="width: 1440px; height: 720px; background: #f5f6f8; padding: 48px; display: flex; flex-direction: column; gap: 32px;">
+
+  <!-- TITLE -->
+  <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;">
+    <h1 style="font-size: 26px; font-weight: 600; margin: 0; color: #1b2a4a;">Cómo funciona la conciliación</h1>
+    <p style="font-size: 14px; color: #6b7280; margin: 0;">Dos entradas, un árbitro de verdad (el Active Business Book) y una sola bandeja de excepciones.</p>
+  </div>
+
+  <!-- 6 STEPS ROW -->
+  <div style="display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 16px; flex-shrink: 0;">
+
+    <!-- STEP 1 -->
+    <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; position: relative;">
+      <div style="position: absolute; top: 50%; left: calc(100% + 8px); transform: translate(-50%,-50%); z-index: 2;">
+        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #c4c7cd; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><polyline points="9 6 15 12 9 18"></polyline></svg>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 28px; height: 28px; border-radius: 999px; background: #1f4fa3; color: #ffffff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">1</div>
+        <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke: #1f4fa3; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+      </div>
+      <div style="font-size: 13px; font-weight: 600; color: #1b2a4a; line-height: 1.35;">1 · Subir reportes</div>
+      <div style="font-size: 12px; color: #6b7280; line-height: 1.45;">Statements de aseguradoras, ventas internas, bonos, Active Business Book · PDF/Excel/CSV.</div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; position: relative;">
+      <div style="position: absolute; top: 50%; left: calc(100% + 8px); transform: translate(-50%,-50%); z-index: 2;">
+        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #c4c7cd; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><polyline points="9 6 15 12 9 18"></polyline></svg>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 28px; height: 28px; border-radius: 999px; background: #1f4fa3; color: #ffffff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">2</div>
+        <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke: #1f4fa3; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+          <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+          <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+          <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+          <line x1="7" y1="12" x2="17" y2="12"></line>
+        </svg>
+      </div>
+      <div style="font-size: 13px; font-weight: 600; color: #1b2a4a; line-height: 1.35;">2 · Extracción con IA</div>
+      <div style="font-size: 12px; color: #6b7280; line-height: 1.45;">Lee cada columna, aprende la plantilla de cada aseguradora, guarda TODO lo crudo.</div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; position: relative;">
+      <div style="position: absolute; top: 50%; left: calc(100% + 8px); transform: translate(-50%,-50%); z-index: 2;">
+        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #c4c7cd; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><polyline points="9 6 15 12 9 18"></polyline></svg>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 28px; height: 28px; border-radius: 999px; background: #1f4fa3; color: #ffffff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">3</div>
+        <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke: #1f4fa3; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;">
+          <line x1="4" y1="21" x2="4" y2="14"></line>
+          <line x1="4" y1="10" x2="4" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12" y2="3"></line>
+          <line x1="20" y1="21" x2="20" y2="16"></line>
+          <line x1="20" y1="12" x2="20" y2="3"></line>
+          <line x1="1" y1="14" x2="7" y2="14"></line>
+          <line x1="9" y1="8" x2="15" y2="8"></line>
+          <line x1="17" y1="16" x2="23" y2="16"></line>
+        </svg>
+      </div>
+      <div style="font-size: 13px; font-weight: 600; color: #1b2a4a; line-height: 1.35;">3 · Normalizar</div>
+      <div style="font-size: 12px; color: #6b7280; line-height: 1.45;">Limpia número de póliza y nombre; separa &quot;asegurado&quot; de &quot;Productor del reporte&quot;.</div>
+    </div>
+
+    <!-- STEP 4 -->
+    <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; position: relative;">
+      <div style="position: absolute; top: 50%; left: calc(100% + 8px); transform: translate(-50%,-50%); z-index: 2;">
+        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #c4c7cd; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><polyline points="9 6 15 12 9 18"></polyline></svg>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 28px; height: 28px; border-radius: 999px; background: #1f4fa3; color: #ffffff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">4</div>
+        <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke: #1f4fa3; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          <polyline points="9 11 11 13 15 9"></polyline>
+        </svg>
+      </div>
+      <div style="font-size: 13px; font-weight: 600; color: #1b2a4a; line-height: 1.35;">4 · Match contra el Active Business Book</div>
+      <div style="font-size: 12px; color: #6b7280; line-height: 1.45;">Por póliza exacta, luego asegurado + aseguradora + fecha, luego fuzzy con score. Agente y oficina: SIEMPRE del libro, nunca del nombre del reporte.</div>
+    </div>
+
+    <!-- STEP 5 -->
+    <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; position: relative;">
+      <div style="position: absolute; top: 50%; left: calc(100% + 8px); transform: translate(-50%,-50%); z-index: 2;">
+        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #c4c7cd; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><polyline points="9 6 15 12 9 18"></polyline></svg>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 28px; height: 28px; border-radius: 999px; background: #1f4fa3; color: #ffffff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">5</div>
+        <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke: #1f4fa3; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;">
+          <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline>
+          <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
+        </svg>
+      </div>
+      <div style="font-size: 13px; font-weight: 600; color: #1b2a4a; line-height: 1.35;">5 · Bandeja de excepciones</div>
+      <div style="font-size: 12px; color: #6b7280; line-height: 1.45;">Mismatch · Sin identificar · Duplicados. Se resuelven en 2 clics, con motivo y auditoría.</div>
+    </div>
+
+    <!-- STEP 6 -->
+    <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 8px; position: relative;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="width: 28px; height: 28px; border-radius: 999px; background: #1f4fa3; color: #ffffff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">6</div>
+        <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke: #1f4fa3; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0;">
+          <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
+          <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path>
+          <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>
+        </svg>
+      </div>
+      <div style="font-size: 13px; font-weight: 600; color: #1b2a4a; line-height: 1.35;">6 · Comisiones por agente</div>
+      <div style="font-size: 12px; color: #6b7280; line-height: 1.45;">Cada agente con todas sus comisiones por aseguradora y período. Bonos siempre aparte.</div>
+    </div>
+
+  </div>
+
+  <!-- CASO TÍPICO -->
+  <div class="card" style="flex-shrink: 0;">
+    <div class="card-head"><h2 class="card-title">El caso típico de Jose</h2></div>
+    <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 16px;">
+
+        <div style="position: relative; font-size: 13px; color: #1b2a4a; line-height: 1.5;">
+          <div style="position: absolute; top: 50%; left: calc(100% + 8px); transform: translate(-50%,-50%); z-index: 2;">
+            <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: #c4c7cd; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><polyline points="9 6 15 12 9 18"></polyline></svg>
+          </div>
+          Progressive reporta la póliza 934857211-3 a nombre de JOSE GELPI.
+        </div>
+
+        <div style="position: relative; font-size: 13px; color: #1b2a4a; line-height: 1.5;">
+          <div style="position: absolute; top: 50%; left: calc(100% + 8px); transform: translate(-50%,-50%); z-index: 2;">
+            <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: #c4c7cd; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><polyline points="9 6 15 12 9 18"></polyline></svg>
+          </div>
+          JOSE GELPI está en la lista de alias de la agencia: se ignora para atribuir.
+        </div>
+
+        <div style="position: relative; font-size: 13px; color: #1b2a4a; line-height: 1.5;">
+          <div style="position: absolute; top: 50%; left: calc(100% + 8px); transform: translate(-50%,-50%); z-index: 2;">
+            <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; stroke: #c4c7cd; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><polyline points="9 6 15 12 9 18"></polyline></svg>
+          </div>
+          El Active Business Book dice: cliente Yolanda Castellanos, agente Yaneisy Pérez, oficina Hialeah.
+        </div>
+
+        <div style="font-size: 13px; color: #1b2a4a; line-height: 1.5;">
+          Primera vez: Jose confirma en 1 clic (96%). Después, concilia sola.
+        </div>
+
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <span class="badge brand"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>Match exacto de póliza</span>
+        <span class="badge warn"><svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>Confirmación de 1 clic</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEYENDA -->
+  <div class="card" style="flex-shrink: 0;">
+    <div style="padding: 18px 20px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 24px;">
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span class="badge warn" style="align-self: flex-start;">
+          <svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          Mismatch
+        </span>
+        <div style="font-size: 12px; color: #6b7280; line-height: 1.45;">La póliza existe pero algo no calza (nombre, dígito, alias de agencia).</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span class="badge bad" style="align-self: flex-start;">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+          Sin identificar
+        </span>
+        <div style="font-size: 12px; color: #6b7280; line-height: 1.45;">La póliza no está en el libro.</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span class="badge silver" style="align-self: flex-start;">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          Duplicado
+        </span>
+        <div style="font-size: 12px; color: #6b7280; line-height: 1.45;">Misma línea dos veces (archivo, statement o fila).</div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

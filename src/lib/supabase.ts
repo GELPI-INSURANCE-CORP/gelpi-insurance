@@ -1,10 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://nivuzhqmxcvnubuwbvoh.supabase.co";
+const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
-
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl as string, supabaseAnonKey as string)
-  : null;
+export const supabase = createClient(url, anon, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+});

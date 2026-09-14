@@ -1,0 +1,270 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1b2a4a; background: #f5f6f8; -webkit-font-smoothing: antialiased; }
+    a { color: #1f4fa3; text-decoration: none; } a:hover { color: #163b7f; }
+    * { box-sizing: border-box; }
+    .nav-parent { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; color: #ffffff; background: #1f4fa3; }
+    .nav-parent svg { width: 16px; height: 16px; stroke: #ffffff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+    .nav-parent .chev { margin-left: auto; width: 14px; height: 14px; stroke: rgba(255,255,255,0.75); }
+    .nav-sub { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 0 20px; padding-left: 12px; border-left: 1px solid #e2e5eb; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; font-size: 13px; color: #4b5563; }
+    .nav-item.active { background: #eef3fb; color: #1c3f8a; font-weight: 500; }
+    .nav-item.active::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: #1f4fa3; flex-shrink: 0; }
+    .card { background: #ffffff; border: 1px solid #e2e5eb; border-radius: 12px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #e2e5eb; }
+    .card-title { font-size: 15px; font-weight: 600; color: #1b2a4a; margin: 0; }
+    .kpi { background: #ffffff; border: 1px solid #e2e5eb; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 4px; }
+    .kpi-label { font-size: 13px; color: #6b7280; }
+    .kpi-value { font-size: 26px; font-weight: 600; color: #1b2a4a; letter-spacing: -0.01em; }
+    .kpi-sub { font-size: 12px; font-weight: 500; margin-top: 8px; }
+    .kpi-sub.ok { color: #059669; } .kpi-sub.warn { color: #b45309; } .kpi-sub.bad { color: #dc2626; } .kpi-sub.muted { color: #6b7280; } .kpi-sub.brand { color: #1f4fa3; }
+    table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.tbl th { text-align: left; font-weight: 500; color: #6b7280; padding: 10px 20px; border-bottom: 1px solid #e2e5eb; white-space: nowrap; background: #fafbfc; }
+    table.tbl td { padding: 12px 20px; border-bottom: 1px solid #e2e5eb; vertical-align: middle; color: #1b2a4a; }
+    table.tbl tr:last-child td { border-bottom: 0; }
+    table.tbl td.strong { font-weight: 500; }
+    table.tbl td.muted { color: #6b7280; }
+    table.tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.tbl th.num { text-align: right; }
+    table.tbl tr.selected td { background: #eef3fb; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08); }
+    .badge.ok { background: #ecfdf5; color: #047857; }
+    .badge.warn { background: #fffbeb; color: #b45309; }
+    .badge.bad { background: #fef2f2; color: #b91c1c; }
+    .badge.info { background: #eff6ff; color: #1d4ed8; }
+    .badge.neutral { background: #f1f5f9; color: #475569; }
+    .badge.brand { background: #eef3fb; color: #1c3f8a; }
+    .badge.silver { background: #eceef1; color: #4b5563; }
+    .badge svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 1px solid transparent; white-space: nowrap; }
+    .btn.primary { background: #1f4fa3; color: #ffffff; }
+    .btn.dark { background: #163b7f; color: #ffffff; }
+    .btn.secondary { background: #ffffff; color: #1b2a4a; border-color: #e2e5eb; }
+    .btn.ghost { background: transparent; color: #6b7280; }
+    .btn.sm { height: 30px; padding: 0 10px; font-size: 12px; }
+    .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e5eb; background: #ffffff; font-size: 13px; color: #1b2a4a; }
+    .chip.active { background: #1f4fa3; color: #ffffff; border-color: #1f4fa3; }
+    .chip svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid #e2e5eb; padding: 0 20px; }
+    .tab { padding: 12px 4px; margin-right: 20px; font-size: 13px; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px; }
+    .tab.active { color: #1c3f8a; border-bottom-color: #1f4fa3; }
+    .count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 600; }
+    .count.bad { background: #fef2f2; color: #b91c1c; } .count.warn { background: #fffbeb; color: #b45309; } .count.info { background: #eff6ff; color: #1d4ed8; } .count.brand { background: #eef3fb; color: #1c3f8a; }
+    .input { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e5eb; background: #ffffff; font-size: 13px; color: #6b7280; }
+    .input svg { width: 14px; height: 14px; stroke: #6b7280; fill: none; stroke-width: 2; }
+    .avatar { width: 32px; height: 32px; border-radius: 999px; background: #1f4fa3; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+    .avatar.soft { background: #eef3fb; color: #1c3f8a; }
+    .avatar.silver { background: #e6e8ec; color: #4b5563; }
+    .label { font-size: 12px; color: #6b7280; }
+    .value { font-size: 14px; font-weight: 500; color: #1b2a4a; }
+    .ai-note { display: flex; gap: 10px; padding: 12px 14px; border-radius: 10px; background: #eef3fb; border: 1px solid #c9d8f2; font-size: 13px; color: #1c3f8a; line-height: 1.45; }
+    .ai-note svg { width: 16px; height: 16px; stroke: #1f4fa3; fill: none; stroke-width: 2; flex-shrink: 0; margin-top: 1px; }
+    .progress { height: 6px; border-radius: 999px; background: #e6e8ec; overflow: hidden; }
+    .progress > div { height: 100%; background: #1f4fa3; border-radius: 999px; }
+    .divider { height: 1px; background: #e2e5eb; }
+  </style>
+</helmet>
+
+<!-- ROOT FRAME 1440x900 -->
+<div style="width: 1440px; height: 1100px; display: flex; background: #f5f6f8; overflow: hidden;">
+
+  <!-- SIDEBAR -->
+  <aside style="width: 256px; flex-shrink: 0; background: #ffffff; border-right: 1px solid #e2e5eb; color: #1b2a4a; display: flex; flex-direction: column;">
+    <div style="display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 20px; border-bottom: 1px solid #e2e5eb;">
+      <svg viewBox="0 0 48 56" style="width: 30px; height: 35px; flex-shrink: 0;">
+        <defs>
+          <linearGradient id="gShieldBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6bd0"></stop><stop offset="1" stop-color="#173f8f"></stop></linearGradient>
+          <linearGradient id="gShieldSilver" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2e4e8"></stop><stop offset="1" stop-color="#9ca0a8"></stop></linearGradient>
+        </defs>
+        <path d="M24 2 L4 10 V28 C4 42 14 50 24 54 Z" fill="url(#gShieldBlue)"></path>
+        <path d="M24 2 L44 10 V28 C44 42 34 50 24 54 Z" fill="url(#gShieldSilver)"></path>
+        <circle cx="27" cy="15" r="4" fill="#ffffff"></circle>
+        <path d="M12 42 C17 32 24 27 33 22" stroke="#ffffff" stroke-width="5" stroke-linecap="round" fill="none"></path>
+        <path d="M19 30 L27 33" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" fill="none"></path>
+      </svg>
+      <div style="display: flex; flex-direction: column; line-height: 1;">
+        <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 20px; font-weight: 700; letter-spacing: 0.04em; color: #1c3f8a;">GELPI</span>
+        <span style="font-size: 9px; font-weight: 500; letter-spacing: 0.32em; color: #7b7f86; margin-top: 3px;">INSURANCE</span>
+      </div>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; flex-grow: 1;">
+      <div style="display: flex; flex-direction: column;">
+        <a class="nav-parent" href="#"><svg viewBox="0 0 24 24"><line x1="19" y1="5" x2="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg>Comisiones<svg class="chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></a>
+        <div class="nav-sub">
+          <a class="nav-item" href="#">Resumen</a>
+          <a class="nav-item" href="#">Subir Reportes</a>
+          <a class="nav-item" href="#">Conciliación</a>
+          <a class="nav-item" href="#">Agentes</a>
+          <a class="nav-item" href="#">Clientes (Book)</a>
+          <a class="nav-item" href="#">Oficinas</a>
+          <a class="nav-item active" href="#">Bonos</a>
+          <a class="nav-item" href="#">Configuración</a>
+        </div>
+      </div>
+    </nav>
+    <div style="padding: 16px 20px; border-top: 1px solid #e2e5eb; font-size: 11px; color: #9a9ea6;">Gelpi Insurance © 2026</div>
+  </aside>
+
+  <!-- MAIN COLUMN -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <!-- TOPBAR -->
+    <header style="height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; background: #ffffff; border-bottom: 1px solid #e2e5eb;">
+      <h1 style="font-size: 18px; font-weight: 600; margin: 0; color: #1b2a4a;">Bonos y Contingencias</h1>
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <div class="input" style="width: 280px;"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>Buscar cliente, póliza o agente…</div>
+        <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+          <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; stroke: #6b7280; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          <span style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 999px; background: #1f4fa3;"></span>
+        </div>
+        <div class="avatar">JG</div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main style="flex-grow: 1; padding: 32px; display: flex; flex-direction: column; gap: 24px; overflow: hidden;">
+
+      <!-- NOTA DESTACADA -->
+      <div class="ai-note">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        <div>Los bonos NUNCA se mezclan línea por línea con la comisión regular — aparecen siempre en su propia columna, tanto acá como en la Ficha del Agente.</div>
+      </div>
+
+      <!-- FILTROS -->
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div class="input" style="width: auto;">Aseguradora: <span class="value" style="font-size: 13px;">Todas</span><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+        <div class="input" style="width: auto;">Período: <span class="value" style="font-size: 13px;">Todos los períodos</span><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+        <div class="input" style="width: auto;">Tipo de bono: <span class="value" style="font-size: 13px;">Todos los tipos</span><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+        <div class="input" style="width: auto;">Estado del bono: <span class="value" style="font-size: 13px;">Todos los estados</span><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+        <div class="input" style="flex-grow: 1; min-width: 220px;"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>Buscar oficina o agente beneficiado…</div>
+      </div>
+
+      <!-- TABLA DE BONOS -->
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">Bonos y contingencias <span class="count neutral" style="margin-left: 6px;">5</span></h2>
+          <button class="btn primary"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>Subir statement de bono (mismo extractor IA)</button>
+        </div>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Tipo de bono</th>
+              <th>Aseguradora</th>
+              <th>Período</th>
+              <th class="num">Monto total</th>
+              <th>Regla de reparto</th>
+              <th>Estado del bono</th>
+              <th>Agentes beneficiados</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="strong">Contingencia anual</td>
+              <td>Progressive</td>
+              <td class="muted">2025 (pagada ago-2026)</td>
+              <td class="num strong">$18,400.00</td>
+              <td class="muted">Proporcional a producción 2025</td>
+              <td><span class="badge ok"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>Repartido</span></td>
+              <td>14 agentes</td>
+            </tr>
+            <tr>
+              <td class="strong">Bono de volumen</td>
+              <td>GEICO</td>
+              <td class="muted">Agosto 2026</td>
+              <td class="num strong">$2,150.00</td>
+              <td class="muted">Fijo por oficina (Hialeah, +40 pólizas nuevas)</td>
+              <td><span class="badge ok"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>Repartido</span></td>
+              <td>6 agentes de Hialeah</td>
+            </tr>
+            <tr class="selected">
+              <td class="strong">Spiff campaña Home</td>
+              <td>Citizens</td>
+              <td class="muted">Septiembre 2026</td>
+              <td class="num strong">$500.00</td>
+              <td class="muted">Manual — Jose asignó $180.00 a Yaneisy Pérez y $320.00 a Carlos Alberto Reyes</td>
+              <td><span class="badge ok"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>Repartido</span></td>
+              <td>2 agentes</td>
+            </tr>
+            <tr>
+              <td class="strong">Bono de retención</td>
+              <td>Bristol West</td>
+              <td class="muted">Q2 2026</td>
+              <td class="num strong">$1,340.00</td>
+              <td class="muted">Proporcional a pólizas retenidas &gt;12 meses</td>
+              <td><span class="badge warn"><svg viewBox="0 0 24 24"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path></svg>Pendiente de repartir</span></td>
+              <td class="muted">— (regla sin definir)</td>
+            </tr>
+            <tr>
+              <td class="strong">Contingencia anual</td>
+              <td>National General</td>
+              <td class="muted">2025</td>
+              <td class="num strong">$6,700.00</td>
+              <td class="muted">Proporcional a producción</td>
+              <td><span class="badge warn"><svg viewBox="0 0 24 24"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path></svg>Pendiente de repartir</span></td>
+              <td>22 agentes candidatos</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- DETALLE DE REPARTO -->
+      <div class="card">
+        <div class="card-head">
+          <h2 class="card-title">Detalle de reparto — Spiff campaña Home · Citizens · Septiembre 2026</h2>
+          <span class="badge ok"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>Repartido</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid #e2e5eb; flex-wrap: wrap;">
+          <button class="btn secondary sm"><svg viewBox="0 0 24 24"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>Definir/editar regla de reparto</button>
+          <button class="btn secondary sm"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>Simular reparto antes de confirmar</button>
+          <button class="btn secondary sm"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>Ejecutar reparto</button>
+          <button class="btn primary sm"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>Marcar como pagado</button>
+        </div>
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Agente</th>
+              <th class="num">Monto</th>
+              <th>Motivo</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div class="avatar soft">YP</div>
+                  <span class="strong" style="font-weight: 500;">Yaneisy Pérez</span>
+                </div>
+              </td>
+              <td class="num strong">$180.00</td>
+              <td class="muted">"Vendió 3 pólizas de Hogar en la campaña de septiembre"</td>
+            </tr>
+            <tr>
+              <td>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div class="avatar soft">CR</div>
+                  <span class="strong" style="font-weight: 500;">Carlos Alberto Reyes</span>
+                </div>
+              </td>
+              <td class="num strong">$320.00</td>
+              <td class="muted">"Vendió 5 pólizas de Hogar, incluye 1 de su equipo"</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </main>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

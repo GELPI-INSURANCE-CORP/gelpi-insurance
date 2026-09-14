@@ -1,0 +1,354 @@
+{
+ "product_summary": "Gelpi Insurance es, en el fondo, una máquina de dos entradas (comisiones de aseguradoras + ventas internas) que confluyen en un único árbitro de verdad — el Active Business Book — y todo lo que ese árbitro no puede resolver solo cae en una bandeja de excepciones que Jose vacía en 2 clics. Se toma la propuesta ganadora (\"Excepciones-primero\") como columna vertebral, pero reordenada dentro de las 6-8 pantallas obligatorias pedidas: la puerta de entrada ahora es un Resumen/Dashboard (como exige el dueño del producto), pero diseñado para que las excepciones más caras y más viejas —en dólares, no solo en conteos— salten a la vista apenas se abre la app, con un clic directo a Conciliación. Conciliación absorbe también la cola de \"Duplicados Sospechosos\" de la propuesta ganadora como una tab más (no como pantalla aparte), cerrando el hueco que los jueces señalaron sobre dónde se resuelve realmente un duplicado. De la propuesta \"Agente-primero\" se injerta la auditoría permanente (\"¿por qué se le atribuyó esta línea a este agente?\"), el motivo obligatorio al reasignar, y el reconocimiento de splits en cascada (supervisor_id) para agentes que reportan a otro. De la propuesta \"Flujo-de-datos-primero\" se injerta el estado de pipeline visible por archivo (Subido → Extrayendo → Extraído → Matcheado → Cerrado), la detección de archivo duplicado por hash ANTES de procesar, la lista configurable de alias de la agencia (en vez de una regla fija hardcodeada de \"ignorar siempre el campo productor\"), el paso explícito de herencia de chargebacks a su línea original, y el principio declarado como regla dura: un falso match automático es peor que una excepción sin resolver, porque un falso match nunca se vuelve a revisar. El resultado son 8 pantallas: Resumen, Subir Reportes, Conciliación, Agentes, Clientes (Book), Oficinas, Bonos y Configuración — cada una con su propio propósito, sin dashboards sueltos ni datos de comisión que no cuelguen de un agente real.\n\nCORRECCIONES APLICADAS EN ESTA VERSIÓN (respuesta a la auditoría): (1) ningún dato crudo se pierde — toda columna extra que traiga un statement (código de sub-agencia, condado, término de póliza, número de corrida, etc.) se guarda en un campo JSON consultable por fila, con botón \"Ver datos crudos completos de esta fila\" en Subir Reportes; (2) Bonos ahora tiene su propia barra de filtros, igual que Conciliación; (3) la tab Comisiones de la Ficha del Agente suma filtros, paginación y un \"Historial completo\" cruzable por agente+oficina+aseguradora+período sin agregar una 9ª pantalla; (4) Subir Reportes suma una 4ª vía de carga — \"Actualizar Active Business Book\" — para que dejar de ser ambiguo de dónde sale el origen \"import\" del libro maestro; (5) queda explícito (aunque apagado por defecto, pendiente de decisión de Jose) un toggle en Configuración para que cada agente individual tenga su propio login de solo lectura; (6) el badge de antigüedad a los 10 días — renombrado \"Atrasada\" para no chocar con \"Vencida\" de pólizas — ahora aplica igual a los 3 tipos de excepción; y se resolvieron las 6 inconsistencias numéricas y narrativas marcadas por la auditoría (el caso Yolanda Castellanos ahora tiene una regla propia que explica por qué, aun con match exacto de póliza, pide confirmación la primera vez; el caso Lázaro Valdés/National General se separó en dos números de póliza distintos —el del ABB y el que llegó con ruido de OCR— para que dejen de contradecirse; los 12 casos en disputa cuadran exacto entre Resumen, Conciliación y Oficinas; los archivos de Subir Reportes ya no suman 5 veces más excepciones de las que existen; se corrigió el año de la póliza de Alexis Bermúdez; y se separaron los tres significados de \"Estado\" y los cuatro nombres del campo \"productor\" en una sola etiqueta por pantalla).",
+ "matching_pipeline": [
+  {
+   "step": "1. Normalización",
+   "rule": "Limpiar el número de póliza (sin espacios, guiones, mayúsculas/minúsculas, ceros a la izquierda ni sufijos de transacción) y normalizar el nombre del asegurado (sin acentos, sin 'LLC'/'Inc'). El sistema separa SIEMPRE dos campos distintos de cada línea cruda: 'nombre del asegurado' y 'Productor del reporte' (antes llamado de formas distintas según la pantalla — ahora es un único término visible en toda la app; el campo técnico interno sigue siendo nombre_agente_crudo) — nunca los trata como el mismo dato.",
+   "result": "Línea lista para comparar contra el Active Business Book (ABB)."
+  },
+  {
+   "step": "2. Match exacto por número de póliza contra el ABB",
+   "rule": "Buscar el número de póliza normalizado en el Active Business Book vigente.",
+   "result": "1 coincidencia → Conciliado automático, score 100%. El agente y la oficina se toman DIRECTO del ABB. El campo Productor del reporte se ignora por completo para decidir de quién es la comisión — aunque diga 'JOSE GELPI' o 'GELPI INSURANCE LLC' — EXCEPTO en un caso puntual (ver Paso 3): cuando ese campo es un alias reconocido de la agencia Y es la primera vez que se reporta esta póliza exacta a nombre de la agencia en vez del agente real, la línea NO concilia sola — se manda a Mismatch de confirmación en 1 clic (score 96%, no 100%, porque el score incluye el factor de alias) para que Jose confirme explícitamente que esa comisión pasa de 'la casa' a un agente puntual. Statements futuros de la MISMA póliza ya confirmada una vez vuelven a conciliar solos sin pedir nada."
+  },
+  {
+   "step": "3. Resolución del alias de agencia",
+   "rule": "Antes de usar el campo Productor del reporte crudo para cualquier otra cosa, se compara contra la lista configurable de alias de la agencia (pantalla Configuración → Alias de la agencia: 'Jose Gelpi', 'Gelpi Insurance LLC', 'Gelpi Insurance', 'Jose A Gelpi'…).",
+   "result": "Si coincide con un alias, ese campo queda marcado 'no confiable para atribución' y se guarda solo como dato crudo de auditoría — nunca decide a quién pertenece la comisión. Si además es la primera vez que esa póliza exacta se reporta con un alias (ver Paso 2), dispara el Mismatch de confirmación de 1 clic en vez de conciliar directo."
+  },
+  {
+   "step": "4. Match por asegurado + aseguradora + fecha de vigencia (±5 días)",
+   "rule": "Si el paso 2 no encontró la póliza (renovación con número nuevo, typo del carrier, endoso), buscar en el ABB por nombre del asegurado normalizado + misma aseguradora + fecha de vigencia dentro de una ventana de 5 días.",
+   "result": "1 solo candidato → Mismatch de baja fricción, confirmable en 1 clic desde el panel lateral. Más de un candidato → pasa al fuzzy matching (paso 5)."
+  },
+  {
+   "step": "5. Fuzzy matching con score compuesto",
+   "rule": "Si los pasos 2 y 4 no resuelven, calcular un score = similitud de nombre del asegurado + similitud parcial del número de póliza + cercanía de fecha + coherencia del monto vs. la prima esperada. También aplica cuando el número de póliza normalizado NO coincide exacto por ruido de origen (ej. sufijo de endoso mal escaneado en un PDF) pero se acerca mucho al de un candidato del ABB.",
+   "result": "Score ≥90% y candidato único → sugerencia pre-llenada en Mismatch. Score 60%-89% o varios candidatos parecidos → Mismatch con candidatos rankeados para elegir a mano. Score <60% → Ganancia sin identificar."
+  },
+  {
+   "step": "6. Chargebacks y ajustes",
+   "rule": "Si el monto es negativo o el tipo de transacción es cancelación/reversal, buscar la línea de comisión original YA conciliada con el mismo número de póliza.",
+   "result": "Si se encuentra → hereda directo el mismo agente y la misma oficina, sin volver a pasar por el pipeline de matching. Si NO se encuentra todavía (el chargeback llegó antes que la venta original se conciliara) → queda en estado 'En espera', nunca cae en 'Sin identificar' por error."
+  },
+  {
+   "step": "7. Detección de duplicados (compuerta antes de confirmar — corre para CUALQUIER camino: exacto, asistido o fuzzy, e INDEPENDIENTE de si la línea todavía tiene un Mismatch de atribución pendiente)",
+   "rule": "Clave compuesta = aseguradora + póliza normalizada + asegurado + fecha de vigencia + tipo de transacción + monto, comparada contra todo lo ya cargado en los últimos 12 meses; además se compara el hash del archivo completo contra archivos ya subidos, ANTES de terminar la subida.",
+   "result": "Coincidencia 100% en la clave → Duplicado sospechoso: no se suma a ningún total hasta que Jose lo resuelva. Clave igual pero monto distinto → posible ajuste/chargeback legítimo, no se descarta automático, queda a revisión (nunca se borra físico, siempre auditable). Una línea puede aparecer a la vez en la cola de Mismatch (por su atribución) y en la cola de Duplicados (por ser sospechosa de estar repetida) — son chequeos independientes sobre la misma línea."
+  }
+ ],
+ "exception_types": [
+  {
+   "type": "Mismatch",
+   "cause": "El número de póliza SÍ existe en el Active Business Book pero algún dato no calza del todo (nombre del asegurado abreviado o distinto, dígito de más/menos por un endoso o por ruido de escaneo/OCR, más de un candidato con score parecido), o el número de póliza matcheó exacto pero el campo Productor del reporte es un alias de la agencia (Jose Gelpi / Gelpi Insurance LLC) y es la primera vez que se reporta esa póliza puntual a nombre de la agencia en vez del agente real — el sistema prefiere que Jose confirme esa primera reasignación en 1 clic antes de dejarla conciliar sola en adelante.",
+   "tools": [
+    "Panel lateral de comparación 'En el reporte de la aseguradora' vs. 'Candidato en el ABB' con el score y los campos que coinciden resaltados",
+    "Botón 'Confirmar sugerencia' de 1 clic cuando el sistema ya acertó",
+    "Botón 'Reasignar a otro agente/oficina' con motivo obligatorio (queda en el historial de auditoría)",
+    "Botón 'Marcar como cuenta de la casa (Jose)' cuando la comisión es legítimamente del dueño y no de un vendedor",
+    "Buscador manual por póliza, nombre de cliente o teléfono",
+    "Enlace 'Ver por qué se sugirió' (regla del pipeline aplicada + score + campos comparados, incluye si el motivo fue alias de agencia y si es primera vez)",
+    "Escalamiento automático de prioridad y badge 'Atrasada' pasados 10 días sin resolver (mismo umbral y misma lógica que Sin identificar y Duplicados)"
+   ]
+  },
+  {
+   "type": "Ganancias sin identificar",
+   "cause": "El número de póliza no existe en el Active Business Book: el vendedor no reportó la venta a tiempo, la aseguradora re-emitió el número en una renovación, es un cliente nuevo que aún no pasó por Subir Reportes → Ventas internas, o el fuzzy matching no alcanzó el score mínimo.",
+   "tools": [
+    "Buscador manual en TODO el histórico del ABB (no solo pólizas activas — evita perder chargebacks de pólizas ya canceladas)",
+    "Formulario rápido 'Dar de alta cliente y póliza en el ABB' directo desde la excepción",
+    "Asignación directa a agente + oficina por menú desplegable",
+    "Botón 'Dejar pendiente / Investigar' con nota y responsable asignado",
+    "Escalamiento automático de prioridad y badge 'Atrasada' pasados 10 días sin resolver"
+   ]
+  },
+  {
+   "type": "Duplicados",
+   "cause": "El mismo archivo se subió dos veces por error, la aseguradora reenvió el mismo statement en un período posterior, la misma línea aparece dos veces dentro de un mismo archivo (ej. error de exportación del carrier), o una cancelación generó dos líneas de reverso para la misma póliza.",
+   "tools": [
+    "Tab 'Duplicados sospechosos' dentro de la misma Conciliación (no una pantalla aparte) con vista lado a lado de línea A vs. línea B y las diferencias resaltadas",
+    "Botón 'Confirmar duplicado — descartar' (soft-delete: sale de los totales pero queda auditable, nunca se borra físico)",
+    "Botón 'No es duplicado — mantener ambas'",
+    "Botón 'Es un ajuste/chargeback legítimo' (reclasifica en vez de descartar)",
+    "Detección automática por hash de archivo ANTES de terminar la subida, además de la clave compuesta por línea",
+    "Escalamiento automático de prioridad y badge 'Atrasada' pasados 10 días sin resolver (mismo umbral que Mismatch y Sin identificar)"
+   ]
+  }
+ ],
+ "data_model": [
+  {
+   "entity": "Aseguradora",
+   "fields": [
+    "id",
+    "nombre (Progressive, GEICO, Citizens, Bristol West, National General…)",
+    "código_interno",
+    "formato_de_archivo_esperado (PDF/CSV/XLS)",
+    "plantilla_de_mapeo_columnas (JSON aprendido, reutilizable)",
+    "nivel_de_atribución_conocido (ej. 'Tax ID de agencia' para Progressive)"
+   ]
+  },
+  {
+   "entity": "AliasDeAgencia",
+   "fields": [
+    "id",
+    "aseguradora_id (nullable, aplica a todas si vacío)",
+    "texto_alias (ej. 'JOSE GELPI', 'GELPI INSURANCE LLC')",
+    "activo",
+    "creado_por"
+   ]
+  },
+  {
+   "entity": "Oficina/Franquicia",
+   "fields": [
+    "id",
+    "nombre (Gelpi Insurance Doral, Hialeah, Kendall, Homestead, Westchester…)",
+    "dirección",
+    "encargado/gerente_agente_id",
+    "código_interno",
+    "%_override_gerente"
+   ]
+  },
+  {
+   "entity": "Agente",
+   "fields": [
+    "id",
+    "nombre",
+    "oficina_id (o desglose multi-oficina si vende para más de una)",
+    "código_interno",
+    "activo",
+    "%_split_por_defecto",
+    "supervisor_id (para splits en cascada / override de manager)",
+    "fecha_de_alta",
+    "tiene_login_propio (boolean — controla si este agente puede entrar a ver su propia Ficha; se define desde Configuración → Acceso de agentes individuales, apagado por defecto)"
+   ]
+  },
+  {
+   "entity": "Cliente",
+   "fields": [
+    "id",
+    "nombre",
+    "teléfono",
+    "email",
+    "dirección",
+    "fecha_de_alta"
+   ]
+  },
+  {
+   "entity": "ActiveBusinessBookEntry (Póliza)",
+   "fields": [
+    "id",
+    "cliente_id",
+    "número_de_póliza (normalizado)",
+    "aseguradora_id",
+    "ramo (auto/hogar/comercial)",
+    "agente_id",
+    "oficina_id",
+    "fecha_de_vigencia",
+    "estado_de_la_póliza (activa/cancelada/vencida)",
+    "origen_del_dato (venta_interna/alta_manual/import — 'import' viene específicamente de la 4ª opción 'Actualizar Active Business Book' en Subir Reportes)",
+    "última_actualización",
+    "abb_version_id"
+   ]
+  },
+  {
+   "entity": "ActiveBusinessBookVersion",
+   "fields": [
+    "id",
+    "fecha_de_carga",
+    "subido_por",
+    "archivo_original (poblado cuando la versión vino de 'Actualizar Active Business Book' en Subir Reportes; vacío si la versión se arma solo por acumulación de venta_interna/alta_manual)",
+    "estado (vigente/histórica)",
+    "congelada_para_período (ej. 'usada para conciliar sept-2026')"
+   ]
+  },
+  {
+   "entity": "ReporteImportado",
+   "fields": [
+    "id",
+    "tipo (comisión_aseguradora/venta_interna/bono_contingencia/actualización_abb)",
+    "aseguradora_id (si aplica)",
+    "archivo_original_url",
+    "hash_archivo (para bloquear reimport duplicado)",
+    "fecha_de_subida",
+    "usuario_que_subió",
+    "estado_del_archivo (Subido/Extrayendo/Extraído/Matcheado/Cerrado)",
+    "total_de_líneas",
+    "total_de_excepciones_generadas"
+   ]
+  },
+  {
+   "entity": "LineaComision",
+   "fields": [
+    "id",
+    "reporte_importado_id",
+    "número_de_póliza_crudo",
+    "nombre_agente_crudo (texto tal cual llegó, ej. 'Jose Gelpi' — mostrado en pantalla como 'Productor del reporte')",
+    "nombre_asegurado_crudo",
+    "tipo_de_transacción (nueva/renovación/endoso/cancelación)",
+    "prima",
+    "tasa_de_comisión",
+    "monto_de_comisión",
+    "fecha_de_vigencia",
+    "fecha_de_statement",
+    "clave_de_duplicado (hash de campos)",
+    "campos_extra_json (JSON con cualquier columna adicional detectada por la IA sin mapeo conocido — código de sub-agencia, condado, término de póliza, número de corrida de comisión, etc. — consultable por fila, no solo respaldada en el archivo original)",
+    "estado_de_conciliación (conciliado_auto/conciliado_confirmado/mismatch/sin_identificar/en_espera/duplicado_sospechoso)",
+    "regla_que_matcheó",
+    "score_de_match",
+    "es_primera_confirmación_de_alias (boolean, marca si esta línea disparó el Mismatch de 'primera vez' por alias de agencia con match exacto de póliza)",
+    "abb_entry_id_asignado",
+    "agente_id_final",
+    "oficina_id_final",
+    "línea_original_id (para chargebacks heredados)"
+   ]
+  },
+  {
+   "entity": "LineaVenta",
+   "fields": [
+    "id",
+    "reporte_importado_id",
+    "agente_id",
+    "oficina_id",
+    "cliente_nombre_crudo",
+    "número_de_póliza",
+    "aseguradora_id",
+    "fecha_de_venta",
+    "prima_cotizada",
+    "campos_extra_json (mismo propósito que en LineaComision: preserva cualquier columna extra del reporte de ventas interno sin mapeo fijo)",
+    "estado_en_abb (nuevo/coincide/conflicto)"
+   ]
+  },
+  {
+   "entity": "Excepcion",
+   "fields": [
+    "id",
+    "tipo (mismatch/sin_identificar/duplicado)",
+    "linea_comision_id",
+    "linea_relacionada_id (nullable, la otra línea si es duplicado)",
+    "candidatos_sugeridos (array de abb_entry_id + score)",
+    "estado (pendiente/resuelta/atrasada/en_espera)",
+    "antigüedad_días",
+    "resuelta_por",
+    "fecha_de_resolución",
+    "acción_tomada",
+    "nota"
+   ]
+  },
+  {
+   "entity": "Bono",
+   "fields": [
+    "id",
+    "tipo (contingencia_aseguradora/spiff_campaña/override_manager/retención)",
+    "aseguradora_id (nullable)",
+    "monto_total",
+    "período",
+    "regla_de_distribución (proporcional_a_producción/fijo_por_oficina/manual)",
+    "agente_id (si es individual)",
+    "oficina_id (si es de oficina)",
+    "monto_asignado_al_agente",
+    "estado_del_bono (pendiente_de_distribuir/repartido/pagado)"
+   ]
+  },
+  {
+   "entity": "HistorialDeAuditoria",
+   "fields": [
+    "id",
+    "entidad_afectada",
+    "entidad_id",
+    "campo_modificado",
+    "valor_anterior",
+    "valor_nuevo",
+    "usuario",
+    "fecha",
+    "motivo"
+   ]
+  }
+ ],
+ "nav": [
+  "Resumen",
+  "Subir Reportes",
+  "Conciliación",
+  "Agentes",
+  "Clientes (Book)",
+  "Oficinas",
+  "Bonos",
+  "Configuración"
+ ],
+ "artboards": [
+  {
+   "file": "Resumen.dc.html",
+   "title": "Resumen",
+   "purpose": "Puerta de entrada obligatoria del sistema: da a Jose el panorama de comisiones y salud de conciliación por oficina, pero diseñada para que las excepciones más urgentes (en dólares, no solo conteos) salten a la vista de inmediato — de ahí es 1 clic a Conciliación para empezar a resolver. Los conteos de esta pantalla cuadran exacto con Conciliación y con Oficinas (ver nota).",
+   "layout": "Header: 'Gelpi Insurance' + saludo 'Hola, Jose' + selector de período (mes) arriba a la derecha. Fila de 5 KPI-chips grandes. Debajo, dos columnas: (izquierda, 60%) sección 'Excepciones que necesitan tu atención hoy' — lista compacta de las 5 excepciones más viejas/caras con botón 'Ver todas en Conciliación'; (derecha, 40%) tabla comparativa por oficina. Debajo de ambas, ancho completo: gráfico de barras horizontal 'Comisión conciliada por aseguradora este mes'. Footer de accesos rápidos: 3 botones grandes.",
+   "content": "TÍTULO DE PÁGINA: Resumen — Septiembre 2026\n\nKPI-CHIPS (barra superior, 5 tarjetas):\n1. Comisiones conciliadas del período — $38,630.00 — 'Sept 2026, 5 oficinas'\n2. Sin identificar — $1,246.35 — '6 líneas'\n3. Mismatch pendiente — $892.40 — '3 líneas'\n4. Duplicados sospechosos — $612.40 — '3 casos'\n5. Total en disputa — $2,751.15 — '12 casos abiertos' (chip en dorado/rojo, el más grande visualmente, clickeable → Conciliación)\n\nSECCIÓN 'Excepciones que necesitan tu atención hoy' (título de sección + subtítulo 'Ordenadas por antigüedad y monto'):\n1. [Badge rojo 'Atrasada'] Sin identificar | Citizens | Odalys Barrientos | $410.00 | 12 días\n2. [Badge amarillo] Mismatch | Progressive | Yolanda Castellanos | $213.60 | 6 días — sugerencia: Yaneisy Pérez, Gelpi Hialeah (96%) — match exacto de póliza, pero primera vez que se reasigna de la agencia a un agente puntual, así que pide confirmación\n3. [Badge amarillo] Mismatch | National General | Lázaro Valdés | $56.00 | 7 días — sugerencia: Yanet Suárez, Gelpi Kendall (88%) — número de póliza del statement viene con ruido de escaneo, no matchea exacto contra el ABB\n4. [Badge naranja] Sin identificar | GEICO | Reinier Fonseca | $187.55 | 9 días\n5. [Badge gris] Duplicado sospechoso | Bristol West | Damaris Ochoa | $96.40 (x2) | 1 día\nBotón debajo de la lista: 'Ver las 12 en Conciliación →'\n\nTABLA 'Comisiones y excepciones por oficina' (columnas: Oficina | Comisión del mes | Excepciones abiertas | Antigüedad promedio):\n- Gelpi Insurance Doral | $9,840.00 | 2 | 3 días\n- Gelpi Insurance Hialeah | $14,220.00 | 5 | 6 días\n- Gelpi Insurance Kendall | $6,150.00 | 1 | 1 día\n- Gelpi Insurance Homestead | $4,300.00 | 3 | 12 días (badge 'Atrasadas')\n- Gelpi Insurance Westchester | $4,120.00 | 1 | 2 días\nFila total: 5 oficinas | $38,630.00 | 12 | —\n\nGRÁFICO 'Comisión conciliada por aseguradora — Sept 2026' (barras horizontales, valores exactos en la etiqueta):\nProgressive $16,420.00 · GEICO $7,980.00 · Citizens $6,150.00 · Bristol West $5,340.00 · National General $2,740.00\n\nACCESOS RÁPIDOS (3 botones grandes al pie):\n'Subir un reporte' | 'Ir a Conciliación (12 pendientes)' | 'Ver Agentes'\n\nESTADO VACÍO (si no hay excepciones): ilustración simple + texto 'Todo conciliado. No hay excepciones abiertas hoy.'",
+   "notes": "El Dashboard es obligatorio como pantalla de entrada, pero conserva la filosofía de la propuesta ganadora ('Jose entra, ve qué está roto, lo resuelve, y sale') mostrando las excepciones más urgentes EN esta misma pantalla, no escondidas. Los 12 casos de 'Total en disputa' cuadran exacto: Mismatch (3) + Sin identificar (6) + Duplicados (3) = 12, y también contra la suma de excepciones abiertas por oficina en Oficinas.dc.html (2+5+1+3+1=12) — mismo número en las 3 pantallas, ya no hay desfase. El badge 'Atrasada' reemplaza al viejo 'Vencida' para no confundirse con el estado de póliza 'Vencida' de Clientes. Validar con Jose si el período por defecto es 'mes calendario' o 'ciclo de statement' de cada aseguradora (pueden no coincidir)."
+  },
+  {
+   "file": "Subir.dc.html",
+   "title": "Subir Reportes",
+   "purpose": "Punto único de carga para los 4 tipos de archivo que Jose maneja — reportes de comisión de cada aseguradora, reportes de ventas de su sistema interno, statements de bono/contingencia y ahora también actualizaciones del Active Business Book — con extracción por IA visible campo por campo, estado de pipeline claro por archivo, y ningún dato crudo perdido aunque no tenga mapeo conocido.",
+   "layout": "Header con 4 botones de carga (drag & drop cada uno): 'Subir reporte de aseguradora', 'Subir reporte de ventas interno', 'Subir statement de bono', 'Actualizar Active Business Book'. Debajo, tabla de archivos con badges de estado del archivo tipo pipeline (Subido → Extrayendo → Extraído → Matcheado → Cerrado). Al hacer clic en un archivo 'Extraído' o 'Matcheado', se abre debajo (o en modal) el panel de 'Vista previa de extracción': mapeo de columnas editable + tabla de filas extraídas con confianza IA por fila, botón de confirmar, y un enlace por fila para ver todos los datos crudos capturados.",
+   "content": "TÍTULO DE PÁGINA: Subir Reportes\n\nZONA DE CARGA (4 dropzones):\n1. 'Reporte de aseguradora (comisiones)' — selector de aseguradora + arrastrar PDF/Excel/CSV\n2. 'Reporte de ventas interno' — arrastrar Excel/CSV del sistema de Jose\n3. 'Statement de bono / contingencia' — selector de aseguradora + arrastrar archivo\n4. 'Actualizar Active Business Book (libro maestro)' — arrastrar Excel/CSV con el libro completo de clientes y pólizas activas; genera una nueva ActiveBusinessBookVersion y queda disponible para 'congelar' como snapshot del período desde Clientes (Book). Texto de ayuda: 'Usá esto solo si manejás el libro maestro como un archivo aparte que actualizás vos. Si tu libro se arma solo con las Ventas internas + las Altas manuales de Clientes, no hace falta que uses esta opción.'\n\nTABLA DE ARCHIVOS (columnas: Archivo | Tipo | Aseguradora | Subido por | Fecha | Filas | Filas OK | En excepción | Estado del archivo):\n1. Progressive_Comisiones_Ago2026.csv | Comisión aseguradora | Progressive | Jose Gelpi | 12/09/2026 08:14 | 214 | 211 | 3 | Matcheado — 3 pendientes\n2. GEICO_Statement_Ago2026.pdf | Comisión aseguradora | GEICO | Jose Gelpi | 12/09/2026 08:20 | 87 | 84 | 3 | Extraído — revisar mapeo (3 pendientes)\n3. NationalGeneral_Set2026.xlsx | Comisión aseguradora | National General | Jose Gelpi | 13/09/2026 09:02 | 58 | 57 | 1 | Matcheado — 1 pendiente\n4. BristolWest_Ago2026.pdf | Comisión aseguradora | Bristol West | Jose Gelpi | 13/09/2026 07:55 | 96 | 94 | 2 | Matcheado — 2 pendientes\n5. Citizens_Comisiones_Ago2026.xlsx | Comisión aseguradora | Citizens | Jose Gelpi | 02/09/2026 08:10 | 40 | 39 | 1 | Matcheado — 1 pendiente\n6. Ventas_Interno_Set2026.xlsx | Ventas internas | — | Maria Fernanda Gutiérrez (Doral) | 11/09/2026 17:02 | 46 | 44 | 2 conflictos | Cerrado\n7. Citizens_Bono_Contingencia_Q2_2026.xlsx | Bono/Contingencia | Citizens | Jose Gelpi | 10/09/2026 09:47 | 5 | 5 | 0 | Cerrado\n8. Progressive_Comisiones_Ago2026(1).csv | Comisión aseguradora | Progressive | Jose Gelpi | 12/09/2026 08:16 | — | — | — | ⚠ Bloqueado — archivo idéntico ya subido hace 2 minutos (mismo hash)\n\nFILTROS: Tipo de archivo · Aseguradora · Estado del archivo · Rango de fechas · Subido por\n\nNOTA DE RECONCILIACIÓN (banner discreto sobre la tabla): 'La suma de líneas \"en excepción\" de los archivos de este lote (10) no da exactamente igual a las 12 excepciones abiertas en Conciliación, porque esa cola acumula también casos de statements de meses anteriores que siguen sin resolver — no se reinicia con cada subida.'\n\nPANEL 'Vista previa de extracción' (abierto para Progressive_Comisiones_Ago2026.csv):\nEncabezado: 'Progressive · Statement Ago-2026 · Confianza promedio 97%'\nMAPEO DE COLUMNAS (editable, aprendido):\n'Pol #' → número_de_póliza | 'INSURED' → nombre_asegurado | 'NBS/RWL/XLC' → tipo_de_transacción | 'Premium' → prima | 'Rate' → tasa | 'Comm Amt' → monto_de_comisión | 'Eff' → fecha_de_vigencia | 'Producer' → Productor del reporte (campo técnico: nombre_agente_crudo; marcado en gris: 'No se usa para atribución — ver Configuración → Alias de la agencia')\nColumnas del archivo sin mapeo conocido (ej. 'Sub-Agy Code', 'County', 'Policy Term', 'Comm Run #') se guardan igual, sin descartarse, en campos_extra_json — ver botón 'Ver datos crudos completos de esta fila' en cada línea de abajo.\nTABLA DE FILAS EXTRAÍDAS (columnas: Fila | Póliza | Asegurado | Tipo | Prima | Tasa | Comisión | Vigencia | Producer (crudo) | Confianza | Estado | Datos crudos):\n1. Fila 1 | 934857211-3 | YOLANDA CASTELLANOS | NBS | $1,780.00 | 12% | $213.60 | 20/08/2026 | JOSE GELPI | 98% | Extraído | [Ver datos crudos completos de esta fila] → {sub_agencia: 'FL-084', condado: 'Miami-Dade', término_póliza: '6 meses', número_de_corrida_comisión: 'RUN-08-2026-014'}\n2. Fila 2 | 887701235-0 | LAZARO VALDES | RWL | $1,540.00 | 5% | $77.00 | 22/08/2026 | JOSE GELPI | 96% | Extraído | [Ver datos crudos completos de esta fila]\n3. Fila 3 | 912004471-9 | KATIUSKA PEREZ | XLC (cancelación) | -$620.00 | 12% | -$74.40 | 30/07/2026 | JOSE GELPI | 94% | Extraído (chargeback) | [Ver datos crudos completos de esta fila]\n4. Fila 4 | 934857211-3 | YOLANDA CASTELLANOS | NBS | $1,780.00 | 12% | $213.60 | 20/08/2026 | JOSE GELPI | 98% | ⚠ Posible duplicado exacto de la fila 1 — [Ver en Conciliación → tab Duplicados] | [Ver datos crudos completos de esta fila]\nBotones del panel: 'Corregir mapeo de una columna' · 'Guardar plantilla para Progressive' · 'Confirmar e importar' · 'Enviar lo no resuelto a Conciliación'\n\nRESUMEN DE VENTAS INTERNO (para Ventas_Interno_Set2026.xlsx, tabla de conflictos):\nOsvaldo Delgado | Gelpi Westchester | Mercedes Junco | 887701235-0 | Progressive | 22/08/2026 | $1,540.00 | ⚠ Conflicto: el ABB ya tiene esta póliza asignada a Lázaro Valdés / Yanet Suárez (Gelpi Kendall)\nBotón en esa fila: 'Resolver conflicto de reasignación (elegir el dueño correcto)'\n\nESTADO VACÍO: 'Todavía no subiste ningún reporte este mes. Arrastrá un archivo o hacé clic en una de las 4 opciones de arriba.'",
+   "notes": "El bloqueo por hash duplicado (fila 8) evita reprocesar un archivo ya cargado — corre ANTES de gastar extracción IA. El caso de conflicto Westchester/Kendall se resuelve acá o en Clientes (Book), nunca en Conciliación (que es solo para excepciones de líneas de comisión, no de dueño de póliza en el ABB). La 4ª dropzone ('Actualizar Active Business Book') responde a la pregunta abierta sobre si el libro maestro se sube como archivo — queda construida por si Jose la usa; si prefiere armar el libro solo con Ventas internas + Alta manual, puede simplemente no usarla (ver pregunta abierta sobre frecuencia). El botón 'Ver datos crudos completos de esta fila' cierra el hueco de que la IA solo extraía los 8 campos fijos: cualquier columna extra queda guardada y consultable, no solo respaldada como archivo."
+  },
+  {
+   "file": "Conciliacion.dc.html",
+   "title": "Conciliación",
+   "purpose": "El corazón operativo del sistema: cola única de excepciones (Mismatch, Sin identificar, Duplicados como 3 tabs de una misma bandeja) resuelta en 2 clics con un panel lateral que muestra el candidato que el sistema ya encontró en el Active Business Book. Los conteos de las 3 tabs suman exacto el total.",
+   "layout": "Header con barra de KPI-chips (mismos 4 de Resumen, clickeables como filtro rápido). Debajo, 3 tabs cuyo conteo suma exacto el total: 'Todas (12)' · 'Mismatch (3)' · 'Sin identificar (6)' · 'Duplicados sospechosos (3)'. Barra de filtros debajo de los tabs. Tabla ancha ocupa el 65% izquierdo. Panel lateral deslizante (35% derecho, oculto hasta hacer clic en una fila) con: comparación lado a lado, explicación de la IA, y botones de acción.",
+   "content": "TÍTULO DE PÁGINA: Conciliación\n\nKPI-CHIPS (idénticos a Resumen, clickeables): Sin identificar $1,246.35 (6) · Mismatch $892.40 (3) · Duplicados $612.40 (3) · Total en disputa $2,751.15 (12)\n\nTABS: Todas (12) | Mismatch (3) | Sin identificar (6) | Duplicados sospechosos (3) — cada línea o caso cuenta en un solo tab, los 3 tipos suman exacto 'Todas'.\n\nFILTROS: Tipo · Aseguradora · Oficina · Agente · Rango de fechas · Monto mínimo · Antigüedad (>7 días / >10 días 'Atrasada') · Score de confianza IA\n\nACCIONES SOBRE LA TABLA: Selección en lote + 'Resolver masivo' · Exportar cola a Excel\n\nTABLA (columnas: [] checkbox | Tipo | Aseguradora | N° póliza | Nombre en el reporte | Monto | Oficina sugerida (score) | Agente sugerido (score) | Fecha statement | Antigüedad | Estado de la excepción):\n1. [Mismatch] | Progressive | 934857211-3 (match exacto contra el ABB) | 'JOSE GELPI' (Productor del reporte) → ABB: Yolanda Castellanos | $213.60 | Gelpi Hialeah (96%) | Yaneisy Pérez (96%) | 08-sep-2026 | 6 días | Pendiente\n2. [Mismatch] | National General | Reportado: NG-8834471/03 (con sufijo de endoso mal leído por el OCR del PDF) — ABB: NG-8834471 | asegurado 'L. VALDEZ' vs ABB 'Lázaro Valdés', Productor del reporte: 'GELPI INSURANCE LLC' | $56.00 | Gelpi Kendall (88%) | Yanet Suárez (88%) | 07-sep-2026 | 7 días | Pendiente\n3. [Sin identificar] | GEICO | 4291-77-33-2 | Reinier Fonseca | $187.55 | — (no está en el ABB) | — | 05-sep-2026 | 9 días | Pendiente\n4. [Sin identificar] | Citizens | FL-CIT-1102037 (renovación, número nuevo) | Odalys Barrientos | $410.00 | — (póliza anterior FL-CIT-0938217 figura cancelada) | — | 02-sep-2026 | 12 días | Atrasada (>10 días)\n5. [Duplicado sospechoso] | Bristol West | BW-772104455 | Damaris Ochoa | $96.40 (x2 líneas, mismo statement) | Gelpi Hialeah | Carlos Alberto Reyes | detectado 13-sep-2026 | 1 día | Pendiente\n6. [Duplicado sospechoso] | Progressive | 934857211-3 | Yolanda Castellanos | $213.60 (x2 líneas dentro del mismo statement: fila 1 vs fila 4) | Gelpi Hialeah | Yaneisy Pérez | detectado 12-sep-2026 | 2 días | Pendiente\n\nPANEL LATERAL — ejemplo abierto en la fila 1 (Yolanda Castellanos):\nTítulo: 'Resolver excepción — Mismatch'\nSubtítulo: 'Progressive · Póliza 934857211-3 · $213.60 · Statement 08-sep-2026'\nCOMPARACIÓN LADO A LADO:\n  Columna A 'En el reporte de la aseguradora': Productor del reporte: JOSE GELPI | Monto: $213.60 | Prima: $1,780.00 | Tasa: 12% | Vigencia: 20/08/2026\n  Columna B 'Candidato en el Active Business Book — 96% de coincidencia': Cliente: Yolanda Castellanos | Agente: Yaneisy Pérez | Oficina: Gelpi Insurance Hialeah | Vigencia: 20/08/2026 | Estado de la póliza: Activa\nMENSAJE DE LA IA: 'El número de póliza (934857211-3) matcheó exacto contra el Active Business Book — normalmente eso alcanza para conciliar solo. Pero el Productor del reporte de este statement de Progressive dice JOSE GELPI, que está en la lista de alias de la agencia (Configuración → Alias de la agencia), y es la primera vez que se reporta un pago de esta póliza a nombre de la agencia en vez del agente real. Por las dudas, el sistema prefiere que confirmes vos esta primera vez (score 96%, incluye el factor de alias) — los próximos statements de esta misma póliza van a conciliar solos. Se sugiere Yaneisy Pérez / Gelpi Insurance Hialeah según el dueño real registrado en el ABB.'\nCAMPO: 'Motivo (obligatorio solo si reasignás manualmente)' — placeholder 'Ej.: Cliente se cambió de agente en agosto, ABB no estaba actualizado'\nBOTONES: 'Confirmar sugerencia' (dorado, principal) · 'Reasignar a otro agente/oficina' · 'Marcar como cuenta de la casa (Jose)' · 'Descartar / Investigar más tarde'\nTOAST al confirmar: 'Confirmado — $213.60 asignado a Yaneisy Pérez (Gelpi Insurance Hialeah). Quedó registrado en el historial de auditoría. Los próximos statements de la póliza 934857211-3 van a conciliar solos.'\n\nPANEL LATERAL — ejemplo tab Duplicados (fila 5, Damaris Ochoa):\nTítulo: 'Resolver excepción — Duplicado sospechoso'\nVista lado a lado: Línea A (Statement Bristol West, fila 41, $96.40, 10-sep-2026) vs. Línea B (mismo statement, fila 87, $96.40, 10-sep-2026) — diferencias resaltadas: ninguna, 100% idénticas\nBOTONES: 'Confirmar duplicado — descartar la línea B' · 'No es duplicado — mantener ambas' · 'Es un ajuste/chargeback legítimo (reclasificar)' · 'Ver ambos archivos originales'\n\nPANEL LATERAL — ejemplo tab Duplicados (fila 6, Yolanda Castellanos): nota aclaratoria en el panel: 'Esta comparación es independiente de la excepción de Mismatch que tiene la fila 1 de este mismo statement — podés resolver este duplicado sin esperar a que se confirme la atribución, y viceversa.' Vista lado a lado: Fila 1 vs Fila 4 del mismo archivo, 100% idénticas. Mismos 4 botones que el ejemplo anterior.\n\nPANEL LATERAL — ejemplo tab Sin identificar (fila 3, Reinier Fonseca):\nBuscador: 'Buscar cliente por nombre, teléfono o póliza parcial…'\nMensaje: 'No se encontró ningún candidato en el Active Business Book (score <60%).'\nBOTONES: 'Asignar a agente/oficina manualmente' · 'Crear cliente/póliza nueva en el ABB' · 'Dejar pendiente / Investigar' (con nota) · 'Marcar como cuenta de la casa (Jose)'\n\nESTADO VACÍO (cola en 0): 'No hay excepciones abiertas. Todo lo importado este mes quedó conciliado automático o confirmado.'",
+   "notes": "Los Duplicados viven como TAB dentro de esta misma pantalla (no como pantalla aparte) para que la resolución de 2 clics sea real para los 3 tipos de excepción sin obligar a Jose a navegar a otro lugar. El badge de antigüedad se llama 'Atrasada' (no 'Vencida', que queda reservado para el estado de una póliza en Clientes) y el umbral de 10 días aplica igual a los 3 tipos de excepción. La fila 2 (Lázaro Valdés/National General) ya NO contradice a Clientes (Book): el ABB tiene la póliza limpia 'NG-8834471', pero el statement de National General llegó con un sufijo de endoso que el OCR no logró limpiar del todo ('NG-8834471/03'), así que no matcheó exacto y pasó por fuzzy matching (88%) en vez de conciliar solo — coherente con el Paso 5 del pipeline. El caso de conflicto de venta interna (Westchester vs. Kendall) NO aparece acá: vive en Clientes (Book), porque es un conflicto de dueño de póliza, no una excepción de línea de comisión."
+  },
+  {
+   "file": "Agentes.dc.html",
+   "title": "Agentes",
+   "purpose": "La pantalla que resuelve el requisito más importante de Jose: que cada agente tenga TODAS sus comisiones bien atribuidas en un solo lugar, filtrables y navegables aunque sean cientos de líneas, con bonos siempre separados y auditoría de por qué se le atribuyó cada línea.",
+   "layout": "Layout de 2 columnas: (izquierda, 25%) directorio/buscador de agentes en lista compacta con comisión del mes y # excepciones, agrupable por oficina; (derecha, 75%) ficha del agente seleccionado — encabezado, KPIs, y 3 tabs (Comisiones / Bonos / Excepciones vinculadas). La tab Comisiones tiene su propia barra de filtros y paginación, más un acceso a un historial completo cruzable por agente+oficina+aseguradora+período.",
+   "content": "TÍTULO DE PÁGINA: Agentes\n\nCOLUMNA IZQUIERDA — Directorio (buscador arriba: 'Buscar agente por nombre o código…'; agrupado por oficina):\n- Yaneisy Pérez — Gelpi Hialeah — $1,847.20 (sept) — 0 excepciones — [seleccionada]\n- Carlos Alberto Reyes — Gelpi Hialeah (encargado) — $3,205.40 — 1 excepción\n- Maria Fernanda Gutiérrez — Gelpi Doral (encargada) — $2,940.00 — 0 excepciones\n- Yanet Suárez — Gelpi Kendall (encargada) — $1,780.00 — 1 excepción\n- Jennifer Rodríguez — Gelpi Homestead (encargada) — $1,240.00 — 1 excepción\n- Osvaldo Delgado — Gelpi Westchester — $980.00 — 1 excepción (conflicto)\n\nFICHA DEL AGENTE (Yaneisy Pérez):\nENCABEZADO: Foto placeholder | Yaneisy Pérez | Gelpi Insurance Hialeah | Código interno: GEL-014 | Activa desde: 03/02/2025\nKPIs: Comisión del mes (sept 2026): $1,847.20 | Comisión YTD: $15,620.80 | Bonos YTD: $600.00 | Pólizas activas (ABB): 58 | Excepciones abiertas: 0\n\nTAB 'Comisiones':\nFILTROS (arriba de la tabla): Aseguradora (todas/Progressive/GEICO/Citizens/Bristol West/National General) · Rango de fecha de statement · Tipo de transacción (nueva/renovación/endoso/cancelación) · Buscar por póliza o cliente\nTABLA (columnas: Aseguradora | N° póliza | Cliente | Tipo | Fecha statement | Prima | Tasa | Comisión | Estado de conciliación | []):\n1. Progressive | 934857211-3 | Yolanda Castellanos | Nueva | 08-sep-2026 | $1,780.00 | 12% | $213.60 | Conciliado (mismatch de alias resuelto 14-sep-2026) | [Ver por qué se atribuyó]\n2. GEICO | 5567-02-19-4 | Alexis Bermúdez | Renovación | 05-sep-2026 | $970.00 | 6% | $58.20 | Conciliado automático | [Ver por qué se atribuyó]\n3. Citizens | FL-CIT-1102938 | Yusniel Prieto | Nueva | 03-sep-2026 | $2,428.57 | 14% | $340.00 | Conciliado automático | [Ver por qué se atribuyó]\n4. Progressive | 912004471-9 | Katiuska Pérez | Chargeback (cancelación) | 30-jul-2026 | -$620.00 | 12% | -$74.40 | Conciliado — ajuste heredó agente/oficina de la venta original (18-ene-2026) | [Ver por qué se atribuyó]\nPAGINACIÓN (pie de tabla): 'Mostrando 4 de 187 líneas · 25 por página' [< Anterior] [Siguiente >]\nBotón debajo de la tabla: 'Ver historial completo de comisiones →'\n\nMODAL 'Ver por qué se atribuyó' (ejemplo fila 1): 'Auditoría de match — Póliza 934857211-3. Regla aplicada: Paso 2 (número de póliza exacto contra el Active Business Book) + Paso 3 (el Productor del reporte, JOSE GELPI, es un alias reconocido de la agencia). Como es la primera vez que se re-atribuye esta póliza de la casa a un agente puntual, el sistema no la concilia sola — la manda a confirmación de 1 clic aunque el número de póliza haya matcheado exacto (score 96%, incluye el factor de alias). Confirmado manualmente por Jose Gelpi el 14-sep-2026 09:12am. Motivo: La aseguradora reportó a nombre de la agencia; el ABB confirma que la clienta es de Yaneisy. A partir de ahora, los statements futuros de esta misma póliza van a conciliar solos.'\n\nMODAL/DRAWER 'Historial completo de comisiones' (se abre con 'Ver historial completo →'; también accesible desde Oficinas.dc.html vía 'Ver excepciones de esta oficina'):\nFILTROS: Oficina (por defecto la actual, editable a 'todas') · Agente (por defecto el actual, editable a 'todos') · Aseguradora · Rango de fecha de statement · Tipo de transacción · Buscar\nTABLA paginada (50 por página) con las mismas columnas que la tab Comisiones, más 'Agente' y 'Oficina' cuando el filtro no está acotado a uno solo.\nBotón: 'Exportar a Excel'\n\nTAB 'Bonos' (separada, nunca neteada con la comisión regular):\n- Contingencia anual Progressive 2025 (pagada ago-2026): $420.00 — Pagado\n- Spiff campaña Home Citizens (sept-2026): $180.00 — asignado manual por Jose — Pagado\n\nTAB 'Excepciones vinculadas': Estado vacío: 'Ninguna excepción abierta menciona a Yaneisy Pérez en este momento.' Botón: 'Ver historial de excepciones resueltas (3)'\n\nACCIONES DE LA FICHA: 'Exportar estado de cuenta (PDF)' · 'Reasignar una línea a otro agente (con motivo)' · 'Ver póliza en el Active Business Book' · 'Ir a la excepción pendiente' (deshabilitado si no hay ninguna)",
+   "notes": "El directorio a la izquierda incorpora la idea de 'Agentes — Directorio' de la propuesta Agente-primero sin convertirla en pantalla aparte, para no exceder las 6-8 pantallas permitidas. El 'Historial completo de comisiones' cubre el hueco de navegar cientos de líneas reales sin agregar una 9ª pantalla al nav: es un modal/drawer cruzable por agente+oficina+aseguradora+período, alcanzable tanto desde acá como desde Oficinas. Validar con Jose si algún agente vende para más de una oficina (rompería el supuesto 'un agente = una oficina' de esta ficha) y si va a querer que cada agente entre con su propio login (ver Configuración → Acceso de agentes individuales, hoy apagado por defecto)."
+  },
+  {
+   "file": "Clientes.dc.html",
+   "title": "Clientes (Book)",
+   "purpose": "El Active Business Book: la fuente de verdad que dice con exactitud de quién es cada cliente, qué agente lo atiende y de qué oficina/franquicia es. Contra esta tabla matchea automáticamente todo reporte de comisión que entra.",
+   "layout": "Banner de alerta arriba si hay pólizas sin asignar. Barra de búsqueda + filtros + toggle 'Sin agente asignado'. Tabla maestra ancha. Al hacer clic en una fila se abre un panel/drawer con el historial de reasignaciones de esa póliza. Botón de alta manual y botón de 'congelar snapshot' en la esquina superior derecha.",
+   "content": "TÍTULO DE PÁGINA: Clientes (Active Business Book)\n\nBANNER DE ALERTA: '⚠ 3 pólizas activas sin agente u oficina asignada — [Ver]'\n\nBUSCADOR: 'Buscar por número de póliza, nombre de cliente o teléfono…'\nTOGGLE: 'Sin agente asignado' (on/off)\nFILTROS: Oficina · Agente · Aseguradora · Ramo · Estado de la póliza (activa/cancelada/vencida)\nBOTONES SUPERIORES: 'Alta manual de cliente/póliza' · 'Congelar snapshot del ABB para el cierre del período' (tooltip: 'Guarda una copia de cómo estaba el libro maestro hoy, para auditar qué versión se usó al conciliar septiembre — incluye versiones que vinieron de \"Actualizar Active Business Book\" en Subir Reportes') · 'Exportar libro completo'\n\nTABLA (columnas: Cliente | N° póliza | Aseguradora | Ramo | Agente asignado | Oficina | Fecha vigencia | Estado de la póliza | Origen del dato | Última actualización):\n1. Yolanda Castellanos | 934857211-3 | Progressive | Auto | Yaneisy Pérez | Gelpi Insurance Hialeah | 20/08/2026 | Activa | Venta interna | 14-sep-2026 (reasignada hoy)\n2. Lázaro Valdés | NG-8834471 | National General | Auto | Yanet Suárez | Gelpi Insurance Kendall | 05/09/2026 | Activa | Venta interna | 10-sep-2026\n3. Lázaro Valdés | 887701235-0 | Progressive | Auto | Yanet Suárez | Gelpi Insurance Kendall | 22/08/2026 | Activa | Venta interna | 10-sep-2026 | ⚠ En conflicto: el reporte de ventas de Westchester (11-sep-2026) reclama esta póliza para Mercedes Junco / Osvaldo Delgado — [Resolver conflicto]\n4. Damaris Ochoa | BW-772104455 | Bristol West | Auto | Carlos Alberto Reyes | Gelpi Insurance Hialeah | 10/09/2026 | Activa | Venta interna | 11-sep-2026\n5. Odalys Barrientos | FL-CIT-0938217 | Citizens | Hogar | Jennifer Rodríguez | Gelpi Insurance Homestead | 15/06/2026 | Cancelada | Alta manual | 02-sep-2026\n6. Reinier Fonseca | — (sin póliza en el ABB) | GEICO | Auto | — Sin asignar — | — Sin asignar — | — | Sin datos | — | — | ⚠ Llegó comisión de $187.55 sin match — [Ver en Conciliación]\n7. Alexis Bermúdez | 5567-02-19-4 | GEICO | Auto | Yaneisy Pérez | Gelpi Insurance Hialeah | 05/09/2026 | Activa | Venta interna | 01-sep-2026\n\nPANEL 'Historial de reasignaciones' (abierto para la fila 1, Yolanda Castellanos):\n'14-sep-2026 09:12 — Jose Gelpi reasignó la póliza 934857211-3 de Sin atribuir (reportada por Progressive a nombre de la agencia) a Yaneisy Pérez / Gelpi Insurance Hialeah. Motivo: Confirmado vía Conciliación, match exacto de póliza + primera reasignación de alias, score 96%.'\n\nFORMULARIO 'Alta manual de cliente/póliza' (campos): Cliente · Teléfono · N° póliza · Aseguradora · Ramo · Agente · Oficina · Fecha de vigencia · Origen del dato (fijo: 'Alta manual')\n\nESTADO VACÍO (con filtro 'Sin agente asignado' activo y 0 resultados): 'No hay pólizas activas sin asignar. El libro está al día.'",
+   "notes": "La fila 3 (conflicto Kendall vs. Westchester) es el mismo caso que aparece en Subir Reportes — debe verse idéntico en ambas pantallas. La fila 2 (Lázaro Valdés / NG-8834471) tiene el número LIMPIO del ABB; no contradice el caso de Conciliación, donde el statement de National General llegó con un sufijo de endoso mal leído por OCR (NG-8834471/03) — por eso esa línea de comisión pasó por Mismatch en vez de conciliar sola, aunque acá el ABB ya la tenga asignada. Se corrigió la fecha de vigencia de Alexis Bermúdez (fila 7) de '05/09/2025' a '05/09/2026' — era un typo de año; ahora es coherente con la fecha de statement de su renovación (05-sep-2026) en la Ficha de Yaneisy. El botón de 'congelar snapshot' es opcional para la v1 pero se deja especificado porque los jueces lo marcaron como buena práctica de auditoría."
+  },
+  {
+   "file": "Oficinas.dc.html",
+   "title": "Oficinas y Franquicias",
+   "purpose": "Vista por oficina/franquicia para que Jose (y a futuro los gerentes) vea tamaño de libro, agentes, comisión del mes, salud de conciliación y excepciones abiertas por oficina, sin mirar agente por agente.",
+   "layout": "Fila de 5 tarjetas resumen (una por oficina) arriba. Debajo, tabla comparativa completa con fila de totales. Filtros arriba de las tarjetas.",
+   "content": "TÍTULO DE PÁGINA: Oficinas y Franquicias\n\nFILTROS: Período (selector mes) · Aseguradora · Toggle 'Solo oficinas con excepciones atrasadas (>10 días)'\n\nTARJETAS (una por oficina):\n1. Gelpi Insurance Doral | Encargada: Maria Fernanda Gutiérrez | 4 agentes | 312 pólizas activas | Comisión del mes: $9,840.00 | Excepciones abiertas: 2 | Antigüedad promedio: 3 días | % conciliado automático: 94%\n2. Gelpi Insurance Hialeah | Encargado: Carlos Alberto Reyes | 6 agentes | 480 pólizas activas | Comisión del mes: $14,220.00 | Excepciones abiertas: 5 | Antigüedad promedio: 6 días | % conciliado automático: 89%\n3. Gelpi Insurance Kendall | Encargada: Yanet Suárez | 3 agentes | 210 pólizas activas | Comisión del mes: $6,150.00 | Excepciones abiertas: 1 | Antigüedad promedio: 1 día | % conciliado automático: 97%\n4. Gelpi Insurance Homestead | Encargada: Jennifer Rodríguez | 2 agentes | 140 pólizas activas | Comisión del mes: $4,300.00 | Excepciones abiertas: 3 | Antigüedad promedio: 12 días ⚠ atrasadas | % conciliado automático: 91%\n5. Gelpi Insurance Westchester | Encargado: Osvaldo Delgado | 3 agentes | 165 pólizas activas | Comisión del mes: $4,120.00 | Excepciones abiertas: 1 (conflicto de ventas) | Antigüedad promedio: 2 días | % conciliado automático: 93%\n\nTABLA COMPARATIVA (mismas columnas que las tarjetas, en formato tabla) + FILA DE TOTALES:\nTotal Gelpi Insurance | 5 oficinas | 18 agentes | 1,307 pólizas activas | $38,630.00 | 12 excepciones abiertas | 92% conciliado automático (promedio)\n\nACCIONES por fila/tarjeta: 'Ver Active Business Book de esta oficina' · 'Ver excepciones de esta oficina' · 'Exportar comparativo (Excel)'",
+   "notes": "El % de conciliado automático por oficina (idea tomada de la propuesta Flujo-de-datos) es la métrica que más rápido le dice a Jose dónde está el problema real, más que solo contar excepciones abiertas. La suma de 'Excepciones abiertas' por oficina (2+5+1+3+1=12) es la misma cifra que 'Total en disputa' en Resumen y Conciliación — ya no hay desfase entre pantallas. Se renombró 'vencidas' a 'atrasadas' para no chocar con el 'Estado de la póliza = Vencida' de Clientes."
+  },
+  {
+   "file": "Bonos.dc.html",
+   "title": "Bonos y Contingencias",
+   "purpose": "Cómo entran y se reparten los bonos/contingencias que las aseguradoras pagan casi siempre a nivel agencia — nunca mezclados línea por línea con la comisión regular de una venta — ahora con la misma capacidad de filtrar y encontrar un bono puntual que tienen Conciliación y la Ficha del Agente.",
+   "layout": "Nota destacada arriba explicando la regla de no-mezcla. Barra de filtros. Tabla de bonos importados/definidos. Al hacer clic en uno, se abre el detalle de reparto por agente debajo.",
+   "content": "TÍTULO DE PÁGINA: Bonos y Contingencias\n\nNOTA DESTACADA (banner fijo arriba): 'Los bonos NUNCA se mezclan línea por línea con la comisión regular — aparecen siempre en su propia columna, tanto acá como en la Ficha del Agente.'\n\nFILTROS: Aseguradora (todas/Progressive/GEICO/Citizens/Bristol West/National General) · Período (selector) · Tipo de bono (contingencia_aseguradora/spiff_campaña/override_manager/retención) · Estado del bono (pendiente de repartir/repartido/pagado) · Oficina/Agente beneficiado (buscador)\n\nTABLA (columnas: Tipo de bono | Aseguradora | Período | Monto total | Regla de reparto | Estado del bono | Agentes beneficiados):\n1. Contingencia anual | Progressive | 2025 (pagada ago-2026) | $18,400.00 | Proporcional a producción 2025 | Repartido | 14 agentes\n2. Bono de volumen | GEICO | Agosto 2026 | $2,150.00 | Fijo por oficina (Hialeah, +40 pólizas nuevas) | Repartido | 6 agentes de Hialeah\n3. Spiff campaña Home | Citizens | Septiembre 2026 | $500.00 | Manual — Jose asignó $180.00 a Yaneisy Pérez y $320.00 a Carlos Alberto Reyes | Repartido | 2 agentes\n4. Bono de retención | Bristol West | Q2 2026 | $1,340.00 | Proporcional a pólizas retenidas >12 meses | Pendiente de repartir | — (regla sin definir)\n5. Contingencia anual | National General | 2025 | $6,700.00 | Proporcional a producción | Pendiente de repartir | 22 agentes candidatos\n\nDETALLE DE REPARTO (abierto para la fila 3, Spiff Home Citizens — columnas: Agente | Monto | Motivo):\n- Yaneisy Pérez | $180.00 | 'Vendió 3 pólizas de Hogar en la campaña de septiembre'\n- Carlos Alberto Reyes | $320.00 | 'Vendió 5 pólizas de Hogar, incluye 1 de su equipo'\n\nACCIONES: 'Subir statement de bono (mismo extractor IA)' · 'Definir/editar regla de reparto' · 'Simular reparto antes de confirmar' · 'Ejecutar reparto' · 'Marcar como pagado'\n\nESTADO VACÍO: 'No hay bonos cargados todavía, o ningún bono coincide con estos filtros. Subí un statement de bono/contingencia o cargá un spiff manual.'",
+   "notes": "Bristol West y National General quedan 'Pendiente de repartir' a propósito: son el ejemplo de que un bono sin regla definida NUNCA se paga solo — siempre requiere confirmación de Jose. Se agregó la barra de filtros que faltaba: era la única pantalla con datos tabulares sin filtros propios, pese a que el dueño pidió explícitamente visión clara 'de las comisiones y de los bonos'."
+  },
+  {
+   "file": "Configuracion.dc.html",
+   "title": "Configuración",
+   "purpose": "Dónde vive la 'inteligencia' del matching que Jose puede ajustar sin tocar código: alias de la agencia, umbrales de score, plantillas de mapeo por aseguradora, reglas de chargeback y permisos por oficina y por agente.",
+   "layout": "5 secciones apiladas verticalmente, cada una con su propio título y tabla/lista editable: Alias de la agencia, Umbrales de score, Plantillas de mapeo por aseguradora, Reglas de chargeback/ajuste, Override de oficina y permisos (incluye ahora acceso de agentes individuales).",
+   "content": "TÍTULO DE PÁGINA: Configuración\n\nSECCIÓN 1 — Alias de la agencia:\nTexto explicativo: 'Cuando el campo Productor del reporte de un reporte de aseguradora coincide con alguno de estos alias, el sistema lo ignora para atribuir la comisión y usa siempre el número de póliza contra el Active Business Book.'\nLista: 'JOSE GELPI' · 'GELPI INSURANCE LLC' · 'GELPI INSURANCE' · 'JOSE A GELPI'\nBotón: '+ Agregar alias'\nNota: 'La primera vez que aparece esta situación para una póliza puntual, igual se pide tu confirmación en 1 clic en Conciliación (ver Sección 2) — después de esa primera confirmación, los statements siguientes de la misma póliza concilian solos.'\n\nSECCIÓN 2 — Umbrales de score:\n'Match automático sin revisión: ≥ 90% y candidato único'\n'Mismatch (revisión de 1 clic): 60% – 89%'\n'Ganancia sin identificar: < 60% o sin candidato'\n'Excepción a la regla de arriba: una póliza con match EXACTO por número, pero cuyo Productor del reporte es un alias de la agencia, se manda igual a Mismatch de 1 clic la primera vez (score 96%, incluye el factor de alias) — ver Alias de la agencia arriba.'\nTexto de advertencia (banner fijo, en dorado/rojo): 'Regla dura: un falso match automático es peor que una excepción sin resolver, porque un falso match nunca se vuelve a revisar. Ante la duda, el sistema prefiere generar una excepción.'\n\nSECCIÓN 3 — Plantillas de mapeo por aseguradora (tabla: Aseguradora | Última actualización | Columnas mapeadas | Confianza promedio | []):\n- Progressive | 12-sep-2026 | 8/8 | 97% | [Editar plantilla]\n- GEICO | 12-sep-2026 | 7/8 (falta 'tasa' en statements PDF escaneados) | 88% | [Editar plantilla]\n- Citizens | 10-sep-2026 | 8/8 | 95% | [Editar plantilla]\n- Bristol West | 13-sep-2026 | 8/8 | 96% | [Editar plantilla]\n- National General | 13-sep-2026 | 8/8 | 94% | [Editar plantilla]\nNota al pie: 'Cualquier columna del archivo que no aparezca en este mapeo NO se descarta — queda guardada en datos crudos por fila (ver botón \"Ver datos crudos completos de esta fila\" en Subir Reportes).'\n\nSECCIÓN 4 — Reglas de chargeback/ajuste:\nTexto: 'Si el monto es negativo o el tipo de transacción es cancelación, el sistema busca la línea de comisión original con el mismo número de póliza y hereda directo su agente y oficina — no vuelve a pasar por matching. Si no se encuentra la línea original, queda en estado En espera (no en Sin identificar) hasta que aparezca.'\n\nSECCIÓN 5 — Override de oficina y permisos (tabla: Oficina | % override al gerente | Quién ve esta oficina):\n- Gelpi Insurance Hialeah | 3% | Jose Gelpi + Carlos Alberto Reyes\n- Gelpi Insurance Doral | 3% | Jose Gelpi + Maria Fernanda Gutiérrez\n- Gelpi Insurance Kendall | 2% | Jose Gelpi + Yanet Suárez\n- Gelpi Insurance Homestead | 2% | Jose Gelpi + Jennifer Rodríguez\n- Gelpi Insurance Westchester | 2% | Jose Gelpi + Osvaldo Delgado\nNota al pie: 'Jose ve todas las oficinas. Cada gerente ve solo la suya — no ve agentes, clientes ni comisiones de otra oficina.'\n\nBLOQUE NUEVO — 'Acceso de agentes individuales (no gerentes)':\nTexto: 'Hoy el sistema solo contempla login para Jose y para el gerente de cada oficina (tabla de arriba). Un agente que NO es gerente todavía no tiene manera de entrar a ver su propia Ficha.'\nToggle (apagado por defecto): 'Dar a cada agente acceso de solo lectura a su propia Ficha (comisiones + bonos + excepciones que lo mencionan) — sin ver a otros agentes ni otras oficinas.'\nNota: 'Pendiente de confirmar con Jose (ver preguntas abiertas). Si se activa, cada Agente de Agentes.dc.html gana su propio login de solo lectura, filtrado únicamente a su propia fila.'",
+   "notes": "Esta pantalla es opcional dentro de las 6-8 permitidas pero se incluye porque operacionaliza dos de las ideas mejor puntuadas por los jueces (lista de alias configurable y la regla dura de 'falso match es peor que excepción'). Si Jose decide que por ahora solo él usa la app, la sección 5 puede simplificarse a un solo interruptor 'Multi-oficina: on/off'. El bloque nuevo de acceso de agentes cierra explícitamente el hueco que antes dejaba la tabla de permisos sin decir si un agente (no gerente) puede entrar — ahora la ambigüedad es una decisión visible y pendiente, no un silencio."
+  }
+ ],
+ "open_questions_for_jose": [
+  "¿Los gerentes de oficina van a tener acceso a la app ya en esta primera versión, o por ahora es solo para vos? Y aparte de los gerentes: ¿cada agente individual (no gerente) también necesita su propio login de solo lectura para ver su propia Ficha (comisiones, bonos, excepciones que lo mencionan)? Dejamos un toggle listo y apagado por defecto en Configuración → Acceso de agentes individuales.",
+  "¿Hay agentes que venden para más de una oficina/franquicia? Si es así, la Ficha del Agente necesita desglosar comisión por oficina en vez de asumir una sola.",
+  "¿Existen splits en cascada — un agente cobra % de lo que vende otro (ej. un manager sobre su equipo)? Si sí, hay que activar el campo supervisor_id del modelo de datos.",
+  "¿Cuáles son TODAS las variantes con las que las aseguradoras identifican a la agencia en sus reportes (además de 'Jose Gelpi' y 'Gelpi Insurance LLC')? Esa lista de alias hay que armarla completa antes de encender el matching automático.",
+  "¿El umbral propuesto de 90% para auto-conciliar sin revisión te parece correcto? Y en particular: cuando el número de póliza matchea exacto PERO el Productor del reporte es un alias de la agencia (como el caso Yolanda Castellanos), ¿te parece bien que la PRIMERA vez se pida tu confirmación en 1 clic (score 96%) y de ahí en adelante concilie solo? ¿O preferís que directamente concilie automático siempre que el número de póliza matchee exacto, sin excepción?",
+  "¿Qué % de override recibe cada gerente de oficina sobre las ventas de su equipo (si aplica), y es el mismo % para todas las oficinas o varía?",
+  "¿Con qué frecuencia llegan los reportes de bono/contingencia de cada aseguradora (trimestral, anual, por campaña) para planear cuándo esperar esos archivos?",
+  "Ya agregamos en Subir Reportes una 4ª opción 'Actualizar Active Business Book' para que la subas como reporte periódico. ¿Con qué frecuencia la vas a usar (semanal/mensual/cada vez que hay cambios), o preferís que el libro se arme solo con Ventas internas + Alta manual y esta opción quede sin usar por ahora?",
+  "El badge 'Atrasada' a los 10 días lo dejamos aplicando por igual a los 3 tipos de excepción (Mismatch, Sin identificar y Duplicados) — ¿tiene sentido para vos que un Duplicado sospechoso o un Mismatch también se marque 'Atrasado' si nadie lo toca en 10 días, o ese badge solo importa para Sin identificar?"
+ ]
+}
