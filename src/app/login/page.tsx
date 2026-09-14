@@ -50,7 +50,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-8">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <Image src="/logo-gelpi.svg" alt="Gelpi Insurance" width={40} height={47} />
+          <Image src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo-gelpi.svg`} alt="Gelpi Insurance" width={40} height={47} />
           <div className="flex flex-col items-center leading-none">
             <span
               className="text-[22px] font-bold tracking-wide text-brand-dark"
@@ -78,7 +78,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="h-10 rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-brand"
-              placeholder="jose@eliteaibroker.com"
+              placeholder="tu@correo.com"
             />
           </div>
           <div className="flex flex-col gap-1.5">

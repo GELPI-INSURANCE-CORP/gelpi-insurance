@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   basePath: isPages ? "/gelpi-insurance" : "",
   assetPrefix: isPages ? "/gelpi-insurance/" : undefined,
   images: { unoptimized: true },
+  env: { NEXT_PUBLIC_BASE_PATH: isPages ? "/gelpi-insurance" : "" },
 };
 
 export default nextConfig;
