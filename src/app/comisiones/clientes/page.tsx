@@ -59,6 +59,8 @@ function ClientesContent() {
   const [seleccionada, setSeleccionada] = useState<PolizaFila | null>(null);
   const [altaOpen, setAltaOpen] = useState(false);
   const [snapshotOpen, setSnapshotOpen] = useState(false);
+  const [exportando, setExportando] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const cargar = useCallback(() => {
     setLoading(true);
@@ -91,23 +93,45 @@ function ClientesContent() {
     setPage(1);
   }
 
-  function exportarCsv() {
-    const header = ["Cliente", "N° póliza", "Aseguradora", "Ramo", "Agente", "Oficina", "Vigencia", "Estado", "Origen"];
-    const csv = [
-      header.join(","),
-      ...rows.map((r) =>
-        [r.cliente, r.numero_poliza, r.aseguradora, RAMOS[r.ramo] ?? r.ramo, r.agente, r.oficina, r.fecha_vigencia, r.estado, r.origen]
-          .map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`)
-          .join(",")
-      ),
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "active-business-book.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+  async function exportarCsv() {
+    setExportando(true);
+    setExportError(null);
+    try {
+      // El botón promete "el libro completo", no la página visible: traemos todas las filas
+      // que matchean los filtros actuales, paginando en bloques de 1000 (max_rows de PostgREST,
+      // ver supabase/config.toml) en vez de reusar `rows` (solo la página en pantalla).
+      const pageSize = 1000;
+      let all: PolizaFila[] = [];
+      let p = 1;
+      let total = Infinity;
+      while (all.length < total) {
+        const { rows: r, total: t } = await listPolizas(filtros, p, pageSize);
+        all = all.concat(r as PolizaFila[]);
+        total = t;
+        if (r.length === 0) break;
+        p += 1;
+      }
+      const header = ["Cliente", "N° póliza", "Aseguradora", "Ramo", "Agente", "Oficina", "Vigencia", "Estado", "Origen"];
+      const csv = [
+        header.join(","),
+        ...all.map((r) =>
+          [r.cliente, r.numero_poliza, r.aseguradora, RAMOS[r.ramo] ?? r.ramo, r.agente, r.oficina, r.fecha_vigencia, r.estado, r.origen]
+            .map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`)
+            .join(",")
+        ),
+      ].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "active-business-book.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "No se pudo exportar el libro completo.");
+    } finally {
+      setExportando(false);
+    }
   }
 
   return (
@@ -124,12 +148,19 @@ function ClientesContent() {
             <Snowflake className="w-3.5 h-3.5" />
             Congelar snapshot del ABB
           </Button>
-          <Button size="sm" onClick={exportarCsv}>
+          <Button size="sm" onClick={exportarCsv} disabled={exportando}>
             <Download className="w-3.5 h-3.5" />
-            Exportar libro completo (CSV)
+            {exportando ? "Exportando…" : "Exportar libro completo (CSV)"}
           </Button>
         </div>
       </div>
+
+      {exportError && (
+        <Banner tone="bad">
+          <AlertTriangle className="w-3.5 h-3.5 inline mr-1.5" />
+          {exportError}
+        </Banner>
+      )}
 
       {sinAsignar > 0 && (
         <Banner
@@ -324,7 +355,10 @@ function SnapshotModal({ open, onClose }: { open: boolean; onClose: () => void }
   return (
     <Modal open={open} onClose={() => { onClose(); setDone(false); setNota(""); }} title="Congelar snapshot del ABB">
       {done ? (
-        <p className="text-sm text-ok-fg">Snapshot congelado. Las versiones anteriores quedaron marcadas como históricas.</p>
+        <p className="text-sm text-ok-fg">
+          Snapshot marcado. Todavía no hay una pantalla para consultar versiones anteriores del libro; esto solo deja
+          registrado cuándo se cerró este corte.
+        </p>
       ) : (
         <>
           <Field label="Nota (opcional)">

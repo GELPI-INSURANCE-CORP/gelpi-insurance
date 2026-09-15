@@ -24,6 +24,10 @@ const CORS_HEADERS = {
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = "gpt-4o-mini";
+// Bien por debajo del wall-clock limit de la Edge Function: si OpenAI no responde en este
+// tiempo, preferimos abortar y marcar el reporte en estado='error' (con mensaje claro) antes
+// de que la plataforma mate el proceso y deje el reporte trabado en 'extrayendo' para siempre.
+const OPENAI_FETCH_TIMEOUT_MS = 90_000;
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -96,10 +100,13 @@ function coerceNumber(v: unknown): number | null {
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
   let s = String(v).trim();
   if (!s) return null;
+  // Limpiar '$'/','/espacios ANTES de evaluar paréntesis/signo: en formato contable el '$'
+  // puede quedar fuera del paréntesis (ej. "$(1,234.56)"), y si no se limpia primero el
+  // patrón de paréntesis nunca matchea y el monto negativo se pierde (da NaN).
+  s = s.replace(/[$,\s]/g, "");
   let negative = false;
   if (/^\(.*\)$/.test(s)) { negative = true; s = s.slice(1, -1); }
   if (s.startsWith("-")) { negative = true; s = s.slice(1); }
-  s = s.replace(/[$,\s]/g, "");
   if (!s || s === "-") return null;
   const n = Number(s);
   if (Number.isNaN(n)) return null;
@@ -225,6 +232,12 @@ function parseCsv(text: string): Record<string, string>[] {
   return nonEmpty.slice(1).map((r) => {
     const obj: Record<string, string> = {};
     headers.forEach((h, idx) => { obj[h || `col_${idx}`] = (r[idx] ?? "").trim(); });
+    // Fila con más columnas que encabezados (típicamente una coma sin escapar en un campo de
+    // texto): en vez de descartar los valores sobrantes en silencio, preservarlos con una
+    // clave marcada — quedan sin mapeo y caen en campos_extra para poder diagnosticarlos.
+    for (let extraIdx = headers.length; extraIdx < r.length; extraIdx++) {
+      obj[`_csv_col_extra_${extraIdx}`] = (r[extraIdx] ?? "").trim();
+    }
     return obj;
   });
 }
@@ -420,14 +433,23 @@ async function callOpenAIRaw(opts: {
     max_output_tokens: opts.maxTokens,
   };
 
-  const resp = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${opts.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${opts.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(OPENAI_FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+      throw new ReporteError("OpenAI no respondió a tiempo (timeout). Probá de nuevo o con un archivo más chico.");
+    }
+    throw err;
+  }
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => resp.statusText);
@@ -437,6 +459,19 @@ async function callOpenAIRaw(opts: {
 
   if (data.status === "failed") {
     throw new ReporteError(`OpenAI: la respuesta falló (${data.error?.message ?? "desconocido"}).`);
+  }
+  if (data.status === "incomplete") {
+    // La respuesta se cortó antes de terminar (típicamente por max_output_tokens con un
+    // documento de muchas filas). No tiene sentido reintentar con el mismo contenido y el
+    // mismo límite de tokens -truncaría en el mismo punto-, así que cortamos acá con un
+    // mensaje explícito en vez de dejar que el JSON parcial falle como "JSON inválido".
+    const reason = data.incomplete_details?.reason;
+    if (reason === "max_output_tokens") {
+      throw new ReporteError(
+        "El documento tiene demasiadas filas para extraer en una sola pasada (la respuesta de OpenAI se truncó por el límite de tokens). Probá dividir el archivo en partes más chicas.",
+      );
+    }
+    throw new ReporteError(`OpenAI: la respuesta quedó incompleta (${reason ?? "motivo desconocido"}).`);
   }
 
   let outputText: string | undefined;
@@ -507,6 +542,7 @@ async function testOpenAIConnection(
         input: [{ role: "user", content: [{ type: "input_text", text: "Respondé solo OK" }] }],
         max_output_tokens: 16,
       }),
+      signal: AbortSignal.timeout(20_000),
     });
     const latency_ms = Date.now() - start;
     if (!resp.ok) {
@@ -578,6 +614,21 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Falta configuración de Supabase en el entorno de la función." }, 500);
   }
   const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+  // Verificación de identidad: verify_jwt=true (default de la plataforma, sin override en
+  // config.toml) sólo valida que el JWT esté firmado con el secreto del proyecto — la anon key
+  // pública (embebida en el bundle estático de GitHub Pages) también cumple eso. Hay que
+  // resolver el usuario real detrás del token ANTES de tocar `configuracion`/`reportes` o de
+  // llamar a OpenAI, y cubrir esto también en la rama test_ai (no requiere reporte_id).
+  const authHeader = req.headers.get("authorization") ?? "";
+  const authToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!authToken) {
+    return json({ error: "No autenticado." }, 401);
+  }
+  const { data: authData, error: authErr } = await admin.auth.getUser(authToken);
+  if (authErr || !authData?.user) {
+    return json({ error: "No autenticado." }, 401);
+  }
 
   let bodyJson: any = null;
   try {
@@ -656,7 +707,11 @@ Deno.serve(async (req: Request) => {
     // vino como 'otro' recién sabremos con certeza después de leer tipo_detectado,
     // pero para CSV/XLSX igual necesitamos elegir la tool ANTES de llamar al modelo,
     // así que usamos el tipo declarado como mejor estimación.
-    const esVentaEsperada = reporte.tipo === "venta_interna";
+    // 'actualizacion_abb' también necesita el schema de venta: son los únicos campos
+    // (aseguradora/cliente/agente/oficina por fila) que procesarAbb() puede consumir; sin
+    // ellos, un ABB en PDF/imagen no tiene forma de resolver aseguradora por fila y
+    // termina procesando 0 pólizas.
+    const esVentaEsperada = reporte.tipo === "venta_interna" || reporte.tipo === "actualizacion_abb";
 
     let extraccion: ExtraccionResultado;
     let filasCrudas: Record<string, unknown>[] = [];
@@ -714,7 +769,9 @@ Deno.serve(async (req: Request) => {
         apiKey: OPENAI_API_KEY,
         model: OPENAI_MODEL,
         esVenta: esVentaEsperada,
-        maxTokens: 8192,
+        // Techo real de salida de gpt-4o-mini (Responses API); con 8192 un statement con
+        // ~100+ filas ya truncaba el array "filas" a mitad de camino.
+        maxTokens: 16384,
         content: [
           { type: "input_text", text: instructionText },
           block,
@@ -904,16 +961,27 @@ async function procesarAbb(
 
   let creadas = 0;
   let actualizadas = 0;
+  let sinNumeroPoliza = 0;
+  let sinAseguradora = 0;
 
   for (const f of filas) {
     const numeroPoliza = (f.numero_poliza as string) ?? null;
-    if (!numeroPoliza) continue;
+    if (!numeroPoliza) {
+      sinNumeroPoliza++;
+      continue;
+    }
     const numeroNormalizado = String(numeroPoliza).toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (!numeroNormalizado) continue;
+    if (!numeroNormalizado) {
+      sinNumeroPoliza++;
+      continue;
+    }
 
     const asegNombre = (f.aseguradora_nombre_crudo as string) ?? (f.campos_extra as any)?.aseguradora ?? null;
     const aseguradoraId = resolverAseguradora(asegNombre as string | null);
-    if (!aseguradoraId) continue; // sin aseguradora no podemos respetar la unique (aseguradora_id, numero_normalizado)
+    if (!aseguradoraId) {
+      sinAseguradora++;
+      continue; // sin aseguradora no podemos respetar la unique (aseguradora_id, numero_normalizado)
+    }
 
     const nombreAsegurado = (f.nombre_asegurado as string) ?? (f.cliente_nombre_crudo as string) ?? "Sin nombre";
     const agenteNombre = (f.productor as string) ?? (f.agente_nombre_crudo as string) ?? (f.campos_extra as any)?.agente ?? null;
@@ -974,11 +1042,22 @@ async function procesarAbb(
     }
   }
 
+  // Si había filas pero ninguna se pudo cargar, no lo marquemos como 'cerrado' exitoso: eso
+  // oculta el problema (ver "Libro actualizado: 0 pólizas procesadas." sin ningún error visible).
+  // La causa dominante puede ser falta de numero_poliza o aseguradora no resuelta: contamos
+  // cada una por separado (sinNumeroPoliza / sinAseguradora) y elegimos el mensaje según cuál
+  // explica más filas salteadas, en vez de asumir siempre que fue la aseguradora.
+  const sinResultados = filas.length > 0 && creadas + actualizadas === 0;
+  const errorMsg = sinNumeroPoliza >= sinAseguradora
+    ? "No se pudo resolver el número de póliza de ninguna fila del libro. Revisá que el archivo incluya el número de póliza por fila."
+    : "No se pudo resolver la aseguradora de ninguna fila del libro. Revisá que el archivo incluya la aseguradora por póliza.";
+
   await admin
     .from("reportes")
     .update({
       ...metaUpdate,
-      estado: "cerrado",
+      estado: sinResultados ? "error" : "cerrado",
+      error: sinResultados ? errorMsg : null,
       total_lineas: filas.length,
       total_ok: creadas + actualizadas,
       resumen_ia: `${metaUpdate.resumen_ia ?? ""} (ABB: ${creadas} pólizas nuevas, ${actualizadas} actualizadas)`.trim(),

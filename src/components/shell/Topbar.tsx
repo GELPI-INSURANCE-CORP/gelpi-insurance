@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell, Menu, Search } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
@@ -23,6 +23,7 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
   const [user, setUser] = useState<User | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [busqueda, setBusqueda] = useState("");
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
@@ -48,6 +49,13 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
     router.replace("/login");
   }
 
+  function buscarGlobal(e: FormEvent) {
+    e.preventDefault();
+    const term = busqueda.trim();
+    if (!term) return;
+    router.push(`/comisiones/conciliacion/?buscar=${encodeURIComponent(term)}`);
+  }
+
   return (
     <header className="sticky top-0 z-10 flex h-16 flex-shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 md:px-8">
       <div className="flex min-w-0 items-center gap-3">
@@ -62,13 +70,19 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
         <h1 className="truncate text-[18px] font-semibold text-foreground">{title}</h1>
       </div>
       <div className="flex flex-shrink-0 items-center gap-4">
-        <div className="hidden h-9 w-70 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px] text-muted lg:flex">
-          <Search size={14} />
-          Buscar cliente, póliza o agente…
-        </div>
+        <form onSubmit={buscarGlobal} className="hidden h-9 w-70 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px] text-muted focus-within:border-brand lg:flex">
+          <Search size={14} className="flex-shrink-0" />
+          <input
+            type="search"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar cliente, póliza o agente…"
+            aria-label="Buscar cliente, póliza o agente"
+            className="w-full bg-transparent text-foreground outline-none placeholder:text-muted"
+          />
+        </form>
         <div className="relative flex h-9 w-9 items-center justify-center">
           <Bell size={20} className="text-muted" />
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand" />
         </div>
         <div className="relative" ref={menuRef}>
           <button

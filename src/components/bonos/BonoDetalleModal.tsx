@@ -48,6 +48,7 @@ export default function BonoDetalleModal({
   const [nuevoMotivo, setNuevoMotivo] = useState("");
   const [propuesta, setPropuesta] = useState<{ agente_id: string; agente_nombre: string; produccion: number; monto: number }[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [errorSimulacion, setErrorSimulacion] = useState<string | null>(null);
 
   const cargar = () => {
     setLoading(true);
@@ -86,9 +87,12 @@ export default function BonoDetalleModal({
 
   async function simular() {
     setBusy(true);
+    setErrorSimulacion(null);
     try {
       const p = await simularRepartoProporcional(bono);
       setPropuesta(p);
+    } catch (e) {
+      setErrorSimulacion(e instanceof Error ? e.message : "No se pudo simular el reparto.");
     } finally {
       setBusy(false);
     }
@@ -142,6 +146,7 @@ export default function BonoDetalleModal({
               </Button>
             )}
           </div>
+          {errorSimulacion && <p className="text-xs text-bad-fg mb-2">{errorSimulacion}</p>}
           {loading ? (
             <Loading />
           ) : reparto.length === 0 && !propuesta ? (

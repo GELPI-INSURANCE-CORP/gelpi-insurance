@@ -48,7 +48,7 @@ export default function NuevoAgenteModal({
     try {
       await crearAgente({
         nombre: nombre.trim(),
-        codigo: codigo.trim(),
+        codigo: codigo.trim() || null,
         oficina_id: oficinaId,
         supervisor_id: supervisorId || null,
         email: email.trim(),

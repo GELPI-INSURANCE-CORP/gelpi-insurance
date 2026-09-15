@@ -183,11 +183,12 @@ export default function ResumenPage() {
       ) : (
         <>
           {/* KPI row */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
             <KpiComisionesConciliadas monto={kpis?.conciliado ?? 0} mes={mes} numOficinas={totalOficinas.length} />
             <KpiCard label="Sin identificar" value={money(kpis?.sin_identificar.monto ?? 0)} sub={`${kpis?.sin_identificar.n ?? 0} líneas`} subTone="warn" />
             <KpiCard label="Mismatch pendiente" value={money(kpis?.mismatch.monto ?? 0)} sub={`${kpis?.mismatch.n ?? 0} líneas`} subTone="warn" />
             <KpiCard label="Duplicados sospechosos" value={money(kpis?.duplicados.monto ?? 0)} sub={`${kpis?.duplicados.n ?? 0} casos`} subTone="muted" />
+            <KpiCard label="Conflictos de venta" value={String(kpis?.conflictos ?? 0)} sub="casos abiertos" subTone="muted" />
             <button
               type="button"
               onClick={() => router.push("/comisiones/conciliacion")}

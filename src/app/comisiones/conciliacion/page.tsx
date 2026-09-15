@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
@@ -108,7 +109,13 @@ function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export default function ConciliacionPage() {
+function ConciliacionContent() {
+  const searchParams = useSearchParams();
+  const agenteUrl = searchParams.get("agente") ?? "";
+  const oficinaUrl = searchParams.get("oficina") ?? "";
+  const buscarUrl = searchParams.get("buscar") ?? "";
+  const excepcionUrl = searchParams.get("excepcion");
+
   // ----- datos base -----
   const [rows, setRows] = useState<ExcepcionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,20 +130,22 @@ export default function ConciliacionPage() {
   const [agentes, setAgentes] = useState<AgenteSimple[]>([]);
   const [oficinas, setOficinas] = useState<OficinaSimple[]>([]);
   const [aseguradoras, setAseguradoras] = useState<AseguradoraSimple[]>([]);
+  const [catalogosError, setCatalogosError] = useState<string | null>(null);
+  const [kpisError, setKpisError] = useState<string | null>(null);
 
-  // ----- filtros -----
+  // ----- filtros (inicializados desde el deep-link: ?agente=, ?oficina=, ?buscar=) -----
   const [tab, setTab] = useState<"todas" | TipoExcepcion>("todas");
-  const [buscarTexto, setBuscarTexto] = useState("");
-  const [buscarDebounced, setBuscarDebounced] = useState("");
+  const [buscarTexto, setBuscarTexto] = useState(buscarUrl);
+  const [buscarDebounced, setBuscarDebounced] = useState(buscarUrl);
   const [aseguradoraId, setAseguradoraId] = useState("");
-  const [oficinaId, setOficinaId] = useState("");
-  const [agenteId, setAgenteId] = useState("");
+  const [oficinaId, setOficinaId] = useState(oficinaUrl);
+  const [agenteId, setAgenteId] = useState(agenteUrl);
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const [montoMin, setMontoMin] = useState("");
   const [soloAtrasadas, setSoloAtrasadas] = useState(false);
   const [ramo, setRamo] = useState("");
-  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(() => Boolean(agenteUrl || oficinaUrl || buscarUrl));
   const filtrosActivos = [buscarTexto, aseguradoraId, oficinaId, agenteId, desde, hasta, montoMin, ramo].filter(Boolean).length + (soloAtrasadas ? 1 : 0);
   const limpiarFiltros = () => {
     setBuscarTexto(""); setAseguradoraId(""); setOficinaId(""); setAgenteId("");
@@ -173,6 +182,9 @@ export default function ConciliacionPage() {
   const [accionEnCurso, setAccionEnCurso] = useState(false);
   const [accionError, setAccionError] = useState<string | null>(null);
 
+  // ----- buscador de póliza: descarta respuestas fuera de orden / de una excepción ya no activa -----
+  const busquedaPolizaRef = useRef<string>("");
+
   // ----- toast -----
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -183,19 +195,31 @@ export default function ConciliacionPage() {
   }, []);
 
   // ----- catálogos -----
-  useEffect(() => {
-    listAgentes().then(setAgentes).catch(() => undefined);
-    listOficinas().then(setOficinas).catch(() => undefined);
-    listAseguradoras().then(setAseguradoras).catch(() => undefined);
+  const cargarCatalogos = useCallback(() => {
+    setCatalogosError(null);
+    Promise.all([listAgentes(), listOficinas(), listAseguradoras()])
+      .then(([a, o, s]) => {
+        setAgentes(a);
+        setOficinas(o);
+        setAseguradoras(s);
+      })
+      .catch((e: unknown) =>
+        setCatalogosError(e instanceof Error ? e.message : "No se pudieron cargar agentes/oficinas/aseguradoras.")
+      );
   }, []);
 
+  useEffect(() => {
+    cargarCatalogos();
+  }, [cargarCatalogos]);
+
   const refreshCountsYKpis = useCallback(() => {
+    setKpisError(null);
     countsByTipo()
       .then(setCounts)
-      .catch(() => undefined);
+      .catch((e: unknown) => setKpisError(e instanceof Error ? e.message : "No se pudieron calcular los contadores."));
     resumenKpisExcepciones()
       .then(setKpis)
-      .catch(() => undefined);
+      .catch((e: unknown) => setKpisError(e instanceof Error ? e.message : "No se pudieron calcular los KPI."));
   }, []);
 
   useEffect(() => {
@@ -244,6 +268,7 @@ export default function ConciliacionPage() {
     setReasignarOficina("");
     setCandidatoElegido(0);
     setBusquedaPoliza("");
+    busquedaPolizaRef.current = "";
     setResultadosPoliza([]);
     setPolizaElegida(null);
     setAgenteParaPoliza("");
@@ -262,6 +287,13 @@ export default function ConciliacionPage() {
     setActiveId(null);
     setDetail(null);
   }
+
+  // ----- deep-link: ?excepcion=<id> abre el panel directo (viene de AgenteFicha "Ver en Conciliación") -----
+  useEffect(() => {
+    if (excepcionUrl) cargarDetalle(excepcionUrl);
+    // Solo al montar: es un deep-link de entrada, no debe reabrirse si excepcionUrl cambia por otra causa.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -327,18 +359,33 @@ export default function ConciliacionPage() {
     showToast(`${ok} confirmadas${fail > 0 ? `, ${fail} fallaron` : ""}.`);
   }
 
-  // ----- buscador de póliza (sin_identificar) -----
+  // ----- buscador de póliza (sin_identificar): debounced y descarta respuestas fuera de orden -----
+  const buscarPolizaDebounced = useMemo(
+    () =>
+      debounce((q: string) => {
+        setBuscandoPoliza(true);
+        buscarPolizas(q)
+          .then((data) => {
+            if (busquedaPolizaRef.current === q) setResultadosPoliza(data);
+          })
+          .catch(() => {
+            if (busquedaPolizaRef.current === q) setResultadosPoliza([]);
+          })
+          .finally(() => {
+            if (busquedaPolizaRef.current === q) setBuscandoPoliza(false);
+          });
+      }, 300),
+    []
+  );
+
   function buscarPolizaAhora(q: string) {
     setBusquedaPoliza(q);
+    busquedaPolizaRef.current = q; // se actualiza sincrónicamente: la respuesta se descarta si ya no coincide
     if (q.trim().length < 2) {
       setResultadosPoliza([]);
       return;
     }
-    setBuscandoPoliza(true);
-    buscarPolizas(q)
-      .then(setResultadosPoliza)
-      .catch(() => setResultadosPoliza([]))
-      .finally(() => setBuscandoPoliza(false));
+    buscarPolizaDebounced(q);
   }
 
   // ----- KPI click → cambia tab -----
@@ -351,6 +398,7 @@ export default function ConciliacionPage() {
     { key: "mismatch", label: "Mismatch", count: counts.mismatch, tone: "warn" },
     { key: "sin_identificar", label: "Sin identificar", count: counts.sin_identificar, tone: "bad" },
     { key: "duplicado", label: "Duplicados sospechosos", count: counts.duplicado, tone: "neutral" },
+    { key: "conflicto_venta", label: "Conflictos de venta", count: counts.conflicto_venta, tone: "info" },
   ];
 
   const agenteOptions = agentes.map((a) => ({ value: a.id, label: a.nombre }));
@@ -364,6 +412,27 @@ export default function ConciliacionPage() {
         <div className="fixed right-6 top-6 z-50 flex items-center gap-2 rounded-lg border border-ok-fg/30 bg-ok-bg px-4 py-2.5 text-[13px] font-medium text-ok-fg shadow-lg">
           <CheckCircle2 size={16} />
           {toast}
+        </div>
+      )}
+
+      {(catalogosError || kpisError) && (
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-3 rounded-lg border border-bad-fg/30 bg-bad-bg px-4 py-2.5 text-[13px] text-bad-fg">
+          <AlertTriangle size={15} className="flex-shrink-0" />
+          <span className="flex-1">
+            {catalogosError && "No se pudieron cargar agentes/oficinas/aseguradoras. Los selectores de reasignación pueden aparecer vacíos."}
+            {catalogosError && kpisError && " "}
+            {kpisError && "No se pudieron calcular los contadores/KPI de excepciones (pueden mostrar 0 sin que signifique que no hay pendientes)."}
+          </span>
+          {catalogosError && (
+            <button type="button" onClick={cargarCatalogos} className="font-semibold underline underline-offset-2">
+              Reintentar catálogos
+            </button>
+          )}
+          {kpisError && (
+            <button type="button" onClick={refreshCountsYKpis} className="font-semibold underline underline-offset-2">
+              Reintentar KPI
+            </button>
+          )}
         </div>
       )}
 
@@ -688,6 +757,20 @@ export default function ConciliacionPage() {
   );
 }
 
+export default function ConciliacionPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center">
+          <Loader2 className="animate-spin text-brand" size={22} />
+        </div>
+      }
+    >
+      <ConciliacionContent />
+    </Suspense>
+  );
+}
+
 // =========================================================
 // Panel de resolución
 // =========================================================
@@ -736,7 +819,11 @@ function PanelResolucion(p: PanelProps) {
   const ramoOptions = RAMO_KEYS.map((r) => ({ value: r, label: RAMOS[r] }));
 
   const candidatoActivo = candidatos[p.candidatoElegido] ?? candidatos[0] ?? null;
-  const esCandidatoSugerido = p.candidatoElegido === 0;
+  // "Confirmar sugerencia" solo es válido si lineas_comision.agente_id ya quedó persistido (auto-match, score>=90 y un solo
+  // candidato) — eso es exactamente excepcion.agente_sugerido_id. Si no, aunque el candidato #0 esté preseleccionado en el
+  // JSON, hay que ir por la rama "asignar" (igual que "Usar este candidato"), o resolver_excepcion revienta con
+  // "No hay sugerencia para confirmar".
+  const esCandidatoSugerido = p.candidatoElegido === 0 && Boolean(excepcion.agente_sugerido_id);
 
   const footer = (
     <div className="flex flex-col gap-2">

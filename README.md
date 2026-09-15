@@ -6,7 +6,7 @@ Dashboard interno para Gelpi Insurance: pólizas, clientes, reclamos y comisione
 
 - [Next.js 16](https://nextjs.org/) (App Router) + TypeScript
 - Tailwind CSS v4
-- [Supabase](https://supabase.com/) como backend (aún no conectado — ver abajo)
+- [Supabase](https://supabase.com/) como backend (proyecto `nivuzhqmxcvnubuwbvoh`, ver sección Producción)
 
 ## Desarrollo
 

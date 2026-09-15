@@ -90,9 +90,17 @@ export async function quitarFilaReparto(id: string) {
 
 export async function simularRepartoProporcional(bono: BonoRow) {
   if (!bono.periodo) return [];
-  const [y, m] = bono.periodo.split("-").map(Number);
-  const desde = new Date(y, (m || 1) - 1, 1).toISOString().slice(0, 10);
-  const hasta = new Date(y, m || 1, 0).toISOString().slice(0, 10);
+  const match = /^(\d{4})-(\d{2})$/.exec(bono.periodo.trim());
+  if (!match) {
+    throw new Error(`Período de bono con formato inválido: "${bono.periodo}" (se espera AAAA-MM).`);
+  }
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  if (m < 1 || m > 12) {
+    throw new Error(`Mes inválido en período de bono: "${bono.periodo}".`);
+  }
+  const desde = new Date(y, m - 1, 1).toISOString().slice(0, 10);
+  const hasta = new Date(y, m, 0).toISOString().slice(0, 10);
 
   let q = supabase
     .from("v_lineas_comision")

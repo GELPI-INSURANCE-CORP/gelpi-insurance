@@ -44,14 +44,30 @@ export async function listOficinasResumen(periodo?: string, aseguradoraId?: stri
   if (e1) throw e1;
   if (e2) throw e2;
 
-  let lcQuery = supabase
-    .from("v_lineas_comision")
-    .select("oficina_id, estado, monto")
-    .gte("fecha_statement", desde)
-    .lte("fecha_statement", hasta);
-  if (aseguradoraId) lcQuery = lcQuery.eq("aseguradora_id", aseguradoraId);
-  const { data: lc, error: e3 } = await lcQuery;
-  if (e3) throw e3;
+  // PostgREST recorta cada respuesta a max_rows=1000 (supabase/config.toml) sin avisar; esta
+  // consulta es company-wide (todas las oficinas del mes), así que paginamos en bloques con un
+  // orden estable (id) hasta cubrir el total real.
+  const lc: { oficina_id: string | null; estado: string | null; monto: number | null }[] = [];
+  {
+    const pageSize = 1000;
+    let from = 0;
+    for (;;) {
+      let lcQuery = supabase
+        .from("v_lineas_comision")
+        .select("oficina_id, estado, monto")
+        .gte("fecha_statement", desde)
+        .lte("fecha_statement", hasta)
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (aseguradoraId) lcQuery = lcQuery.eq("aseguradora_id", aseguradoraId);
+      const { data, error: e3 } = await lcQuery;
+      if (e3) throw e3;
+      const page = data ?? [];
+      lc.push(...page);
+      if (page.length < pageSize) break;
+      from += pageSize;
+    }
+  }
 
   const { data: polizas, error: e4 } = await supabase.from("v_polizas").select("oficina_id").eq("estado", "activa");
   if (e4) throw e4;
@@ -84,12 +100,12 @@ export async function listOficinasResumen(periodo?: string, aseguradoraId?: stri
   }
 
   const conteoPorOficina = new Map<string, { auto: number; confirmado: number; monto: number }>();
-  for (const l of lc ?? []) {
+  for (const l of lc) {
     if (!l.oficina_id) continue;
     const cur = conteoPorOficina.get(l.oficina_id) ?? { auto: 0, confirmado: 0, monto: 0 };
     if (l.estado === "conciliado_auto") cur.auto += 1;
     if (l.estado === "conciliado_confirmado") cur.confirmado += 1;
-    if (["conciliado_auto", "conciliado_confirmado", "cuenta_casa"].includes(l.estado)) cur.monto += Number(l.monto ?? 0);
+    if (["conciliado_auto", "conciliado_confirmado", "cuenta_casa"].includes(l.estado ?? "")) cur.monto += Number(l.monto ?? 0);
     conteoPorOficina.set(l.oficina_id, cur);
   }
 
@@ -118,7 +134,7 @@ export async function listOficinasResumen(periodo?: string, aseguradoraId?: stri
 
 export interface NuevaOficina {
   nombre: string;
-  codigo: string;
+  codigo: string | null;
   direccion: string;
   gerente_agente_id: string | null;
   pct_override: number;

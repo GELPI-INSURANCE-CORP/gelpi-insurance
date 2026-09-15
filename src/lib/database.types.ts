@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       abb_versiones: {
@@ -460,6 +485,7 @@ export type Database = {
           clave_duplicado: string | null
           confianza: number | null
           created_at: string
+          duplicado_par_id: string | null
           es_primera_confirmacion_alias: boolean
           estado: string
           fecha_statement: string | null
@@ -491,6 +517,7 @@ export type Database = {
           clave_duplicado?: string | null
           confianza?: number | null
           created_at?: string
+          duplicado_par_id?: string | null
           es_primera_confirmacion_alias?: boolean
           estado?: string
           fecha_statement?: string | null
@@ -522,6 +549,7 @@ export type Database = {
           clave_duplicado?: string | null
           confianza?: number | null
           created_at?: string
+          duplicado_par_id?: string | null
           es_primera_confirmacion_alias?: boolean
           estado?: string
           fecha_statement?: string | null
@@ -552,6 +580,20 @@ export type Database = {
             columns: ["agente_id"]
             isOneToOne: false
             referencedRelation: "agentes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lineas_comision_duplicado_par_id_fkey"
+            columns: ["duplicado_par_id"]
+            isOneToOne: false
+            referencedRelation: "lineas_comision"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lineas_comision_duplicado_par_id_fkey"
+            columns: ["duplicado_par_id"]
+            isOneToOne: false
+            referencedRelation: "v_lineas_comision"
             referencedColumns: ["id"]
           },
           {
@@ -1211,6 +1253,7 @@ export type Database = {
       cfg_num: { Args: { p_clave: string; p_default: number }; Returns: number }
       es_alias_agencia: { Args: { p: string }; Returns: boolean }
       matchear_linea: { Args: { p_linea_id: string }; Returns: string }
+      mi_agente_id: { Args: never; Returns: string }
       normalizar_nombre: { Args: { p: string }; Returns: string }
       normalizar_poliza: { Args: { p: string }; Returns: string }
       procesar_matching: { Args: { p_reporte_id: string }; Returns: Json }
@@ -1366,6 +1409,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

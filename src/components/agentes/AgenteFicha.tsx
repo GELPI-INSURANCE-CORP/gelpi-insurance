@@ -143,40 +143,66 @@ export default function AgenteFicha({ agente, onIrExcepciones }: { agente: Agent
 }
 
 function ExportarEstadoCuenta({ agenteId, agenteNombre }: { agenteId: string; agenteNombre: string }) {
+  const [exportando, setExportando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   async function exportar() {
-    const { rows } = await listLineasComisionAgente(agenteId, {}, 1, 5000);
-    const header = ["Aseguradora", "N° póliza", "Cliente", "Tipo", "Fecha statement", "Prima", "Tasa", "Comisión", "Estado"];
-    const csv = [
-      header.join(","),
-      ...rows.map((r) =>
-        [
-          r.aseguradora ?? "",
-          r.poliza_abb ?? r.numero_poliza_crudo ?? "",
-          r.cliente ?? "",
-          TIPOS_TRANSACCION[r.tipo_transaccion] ?? r.tipo_transaccion,
-          r.fecha_statement ?? "",
-          r.prima ?? "",
-          r.tasa ?? "",
-          r.monto,
-          r.estado,
-        ]
-          .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-          .join(",")
-      ),
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `estado-cuenta-${agenteNombre.replace(/\s+/g, "-")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setExportando(true);
+    setError(null);
+    try {
+      // PostgREST recorta cada respuesta a max_rows=1000 (supabase/config.toml) sin avisar,
+      // así que paginamos en bloques de 1000 hasta cubrir el total real del agente.
+      const pageSize = 1000;
+      let rows: LineaComision[] = [];
+      let page = 1;
+      let total = Infinity;
+      while (rows.length < total) {
+        const res = await listLineasComisionAgente(agenteId, {}, page, pageSize);
+        total = res.total;
+        rows = rows.concat(res.rows as LineaComision[]);
+        if (res.rows.length === 0) break;
+        page += 1;
+      }
+      const header = ["Aseguradora", "N° póliza", "Cliente", "Tipo", "Fecha statement", "Prima", "Tasa", "Comisión", "Estado"];
+      const csv = [
+        header.join(","),
+        ...rows.map((r) =>
+          [
+            r.aseguradora ?? "",
+            r.poliza_abb ?? r.numero_poliza_crudo ?? "",
+            r.cliente ?? "",
+            TIPOS_TRANSACCION[r.tipo_transaccion] ?? r.tipo_transaccion,
+            r.fecha_statement ?? "",
+            r.prima ?? "",
+            r.tasa ?? "",
+            r.monto,
+            r.estado,
+          ]
+            .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+            .join(",")
+        ),
+      ].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `estado-cuenta-${agenteNombre.replace(/\s+/g, "-")}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo exportar el estado de cuenta.");
+    } finally {
+      setExportando(false);
+    }
   }
   return (
-    <Button size="sm" onClick={exportar}>
-      <Download className="w-3.5 h-3.5" />
-      Exportar estado de cuenta (CSV)
-    </Button>
+    <div className="flex flex-col items-end gap-1">
+      <Button size="sm" onClick={exportar} disabled={exportando}>
+        <Download className="w-3.5 h-3.5" />
+        {exportando ? "Exportando…" : "Exportar estado de cuenta (CSV)"}
+      </Button>
+      {error && <p className="text-xs text-bad-fg">{error}</p>}
+    </div>
   );
 }
 

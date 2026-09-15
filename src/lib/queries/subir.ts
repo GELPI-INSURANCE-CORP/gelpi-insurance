@@ -111,6 +111,25 @@ export interface Aseguradora {
   nombre: string;
 }
 
+export interface BonoRepartoRow {
+  id: string;
+  agente_id: string;
+  agente: string | null;
+  monto: number;
+  motivo: string | null;
+  pagado: boolean;
+}
+
+export interface BonoResumen {
+  id: string;
+  tipo: string;
+  nombre: string | null;
+  monto_total: number;
+  estado: string;
+  periodo: string | null;
+  reparto: BonoRepartoRow[];
+}
+
 // =========================================================
 // Hash de archivo
 // =========================================================
@@ -228,27 +247,45 @@ export interface FiltrosReportes {
   estado?: string;
 }
 
-export async function listReportes(filtros: FiltrosReportes = {}): Promise<Reporte[]> {
+function construirQueryReportes(filtros: FiltrosReportes) {
   let q = supabase
     .from("reportes")
     .select(
       "id, tipo, aseguradora_id, nombre_archivo, storage_path, mime, hash_archivo, subido_por, periodo, estado, total_lineas, total_ok, total_excepciones, confianza_promedio, mapeo_columnas, columnas_detectadas, resumen_ia, error, created_at, updated_at, aseguradora:aseguradoras(nombre)"
     )
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: true });
 
   if (filtros.tipo) q = q.eq("tipo", filtros.tipo);
   if (filtros.aseguradoraId) q = q.eq("aseguradora_id", filtros.aseguradoraId);
   if (filtros.estado) q = q.eq("estado", filtros.estado);
 
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data ?? []) as unknown as Reporte[];
+  return q;
+}
+
+// PostgREST limita cada respuesta a max_rows (1000, ver supabase/config.toml). Con statements mensuales
+// recurrentes la tabla `reportes` crece sin límite: recorremos todas las páginas para no ocultar en
+// silencio los reportes más antiguos (hoy, con el volumen real, esto es una sola vuelta).
+const PAGE_SIZE_REPORTES = 1000;
+
+export async function listReportes(filtros: FiltrosReportes = {}): Promise<Reporte[]> {
+  let rows: Reporte[] = [];
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await construirQueryReportes(filtros).range(offset, offset + PAGE_SIZE_REPORTES - 1);
+    if (error) throw error;
+    const page = (data ?? []) as unknown as Reporte[];
+    rows = rows.concat(page);
+    if (page.length < PAGE_SIZE_REPORTES) break;
+    offset += PAGE_SIZE_REPORTES;
+  }
+  return rows;
 }
 
 export async function getReporteLineas(
   reporteId: string,
   tipo: TipoReporte
-): Promise<{ comision: LineaComision[]; venta: LineaVenta[] }> {
+): Promise<{ comision: LineaComision[]; venta: LineaVenta[]; bono: BonoResumen | null }> {
   if (tipo === "venta_interna") {
     const { data, error } = await supabase
       .from("lineas_venta")
@@ -256,7 +293,47 @@ export async function getReporteLineas(
       .eq("reporte_id", reporteId)
       .order("fila", { ascending: true });
     if (error) throw error;
-    return { comision: [], venta: (data ?? []) as unknown as LineaVenta[] };
+    return { comision: [], venta: (data ?? []) as unknown as LineaVenta[], bono: null };
+  }
+
+  if (tipo === "bono_contingencia") {
+    // procesarBono (Edge Function) no inserta en lineas_comision: el resultado real vive en bonos/bono_reparto,
+    // enlazado por bonos.reporte_id (bono_reparto no tiene reporte_id propio).
+    const { data: bonoRow, error: bErr } = await supabase
+      .from("bonos")
+      .select("id, tipo, nombre, monto_total, estado, periodo")
+      .eq("reporte_id", reporteId)
+      .maybeSingle();
+    if (bErr) throw bErr;
+    if (!bonoRow) return { comision: [], venta: [], bono: null };
+    const { data: repartoData, error: rErr } = await supabase
+      .from("bono_reparto")
+      .select("id, agente_id, monto, motivo, pagado, agentes(nombre)")
+      .eq("bono_id", bonoRow.id);
+    if (rErr) throw rErr;
+    const reparto = ((repartoData ?? []) as unknown as Array<{
+      id: string;
+      agente_id: string;
+      monto: number;
+      motivo: string | null;
+      pagado: boolean;
+      agentes: { nombre: string } | null;
+    }>).map((r) => ({
+      id: r.id,
+      agente_id: r.agente_id,
+      agente: r.agentes?.nombre ?? null,
+      monto: r.monto,
+      motivo: r.motivo,
+      pagado: r.pagado,
+    }));
+    return { comision: [], venta: [], bono: { ...(bonoRow as Omit<BonoResumen, "reparto">), reparto } };
+  }
+
+  // 'actualizacion_abb' tampoco inserta en lineas_comision (procesarAbb escribe directo en clientes/polizas),
+  // y a diferencia de bono_contingencia no hay FK confiable reporte->pólizas (solo un archivo_path de texto en
+  // abb_versiones, sin reporte_id): devolvemos vacío y el resumen agregado se muestra vía reportes.resumen_ia.
+  if (tipo === "actualizacion_abb") {
+    return { comision: [], venta: [], bono: null };
   }
 
   const { data, error } = await supabase
@@ -265,7 +342,7 @@ export async function getReporteLineas(
     .eq("reporte_id", reporteId)
     .order("fila", { ascending: true });
   if (error) throw error;
-  return { comision: (data ?? []) as unknown as LineaComision[], venta: [] };
+  return { comision: (data ?? []) as unknown as LineaComision[], venta: [], bono: null };
 }
 
 export async function listAseguradoras(): Promise<Aseguradora[]> {

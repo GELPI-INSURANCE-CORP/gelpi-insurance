@@ -52,7 +52,7 @@ export default function OficinaModal({
     try {
       const input = {
         nombre: nombre.trim(),
-        codigo: codigo.trim(),
+        codigo: codigo.trim() || null,
         direccion: direccion.trim(),
         gerente_agente_id: gerenteId || null,
         pct_override: Number(pctOverride) || 0,

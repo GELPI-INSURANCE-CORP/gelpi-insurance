@@ -81,7 +81,7 @@ export async function actualizarPlantillaMapeo(id: string, plantilla: Record<str
 }
 
 export async function crearAseguradora(nombre: string, codigo: string) {
-  const { error } = await supabase.from("aseguradoras").insert({ nombre, codigo });
+  const { error } = await supabase.from("aseguradoras").insert({ nombre, codigo: codigo || null });
   if (error) throw error;
 }
 

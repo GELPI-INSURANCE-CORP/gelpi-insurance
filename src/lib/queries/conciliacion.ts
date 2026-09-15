@@ -100,7 +100,7 @@ export interface FiltrosExcepciones {
   buscar?: string;
 }
 
-export async function listExcepciones(filtros: FiltrosExcepciones = {}): Promise<ExcepcionRow[]> {
+function construirQueryExcepciones(filtros: FiltrosExcepciones) {
   let q = supabase.from("v_excepciones").select(EXCEPCION_COLUMNS).eq("estado", "pendiente");
 
   if (filtros.tipo) q = q.eq("tipo", filtros.tipo);
@@ -118,11 +118,28 @@ export async function listExcepciones(filtros: FiltrosExcepciones = {}): Promise
     );
   }
 
-  q = q.order("atrasada", { ascending: false }).order("antiguedad_dias", { ascending: false });
+  return q
+    .order("atrasada", { ascending: false })
+    .order("antiguedad_dias", { ascending: false })
+    .order("id", { ascending: true });
+}
 
-  const { data, error } = await q;
-  if (error) throw error;
-  let rows = (data ?? []) as ExcepcionRow[];
+// PostgREST limita cada respuesta a max_rows (1000, ver supabase/config.toml). Con varias oficinas y
+// meses de statements sin resolver, las excepciones pendientes pueden superar ese tope: una sola consulta
+// las ocultaría en silencio (tabla y CSV truncados, sin aviso). Recorremos todas las páginas hasta agotarlas.
+const PAGE_SIZE_EXCEPCIONES = 1000;
+
+export async function listExcepciones(filtros: FiltrosExcepciones = {}): Promise<ExcepcionRow[]> {
+  let rows: ExcepcionRow[] = [];
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await construirQueryExcepciones(filtros).range(offset, offset + PAGE_SIZE_EXCEPCIONES - 1);
+    if (error) throw error;
+    const page = (data ?? []) as ExcepcionRow[];
+    rows = rows.concat(page);
+    if (page.length < PAGE_SIZE_EXCEPCIONES) break;
+    offset += PAGE_SIZE_EXCEPCIONES;
+  }
 
   if (filtros.ramo) {
     const ramoIds = new Set(await polizaIdsConRamo(filtros.ramo, rows));
@@ -183,32 +200,26 @@ export interface ResumenKpis {
   total: { monto: number; n: number };
 }
 
+interface ResumenKpisRpcResult {
+  sin_identificar?: { monto: number; n: number };
+  mismatch?: { monto: number; n: number };
+  duplicados?: { monto: number; n: number };
+  total_disputa?: { monto: number; n: number };
+}
+
+// Reutiliza el RPC resumen_kpis (ya usado por /comisiones/resumen): su CTE `ex` = excepciones pendientes
+// no filtra por fecha, así que el resultado es correcto sin pasar p_desde/p_hasta. Al agregarse en SQL,
+// no está sujeto al cap de 1000 filas de PostgREST que sí afecta a un .select() directo sobre v_excepciones.
 export async function resumenKpisExcepciones(): Promise<ResumenKpis> {
-  const { data, error } = await supabase.from("v_excepciones").select("tipo, monto").eq("estado", "pendiente");
+  const { data, error } = await supabase.rpc("resumen_kpis", {});
   if (error) throw error;
-  const rows = data ?? [];
-  const acc: ResumenKpis = {
-    sin_identificar: { monto: 0, n: 0 },
-    mismatch: { monto: 0, n: 0 },
-    duplicado: { monto: 0, n: 0 },
-    total: { monto: 0, n: 0 },
+  const r = (data ?? {}) as ResumenKpisRpcResult;
+  return {
+    sin_identificar: r.sin_identificar ?? { monto: 0, n: 0 },
+    mismatch: r.mismatch ?? { monto: 0, n: 0 },
+    duplicado: r.duplicados ?? { monto: 0, n: 0 },
+    total: r.total_disputa ?? { monto: 0, n: 0 },
   };
-  for (const r of rows) {
-    const monto = Number(r.monto ?? 0);
-    acc.total.monto += monto;
-    acc.total.n += 1;
-    if (r.tipo === "sin_identificar") {
-      acc.sin_identificar.monto += monto;
-      acc.sin_identificar.n += 1;
-    } else if (r.tipo === "mismatch") {
-      acc.mismatch.monto += monto;
-      acc.mismatch.n += 1;
-    } else if (r.tipo === "duplicado") {
-      acc.duplicado.monto += monto;
-      acc.duplicado.n += 1;
-    }
-  }
-  return acc;
 }
 
 // =========================================================

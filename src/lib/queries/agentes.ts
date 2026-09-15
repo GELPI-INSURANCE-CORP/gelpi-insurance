@@ -28,6 +28,35 @@ function monthRange(d = new Date()) {
   return { desde, hasta };
 }
 
+// PostgREST recorta cada respuesta a `max_rows` (1000, ver supabase/config.toml) sin avisar.
+// Company-wide (todas las oficinas/agentes) puede superar eso en un mes cargado, así que
+// paginamos en bloques con un orden estable (id) hasta agotar los resultados.
+async function fetchTodasLineasComision(
+  desde: string,
+  hasta: string,
+  estados: string[]
+): Promise<{ agente_id: string | null; monto: number | null }[]> {
+  const pageSize = 1000;
+  const all: { agente_id: string | null; monto: number | null }[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from("v_lineas_comision")
+      .select("agente_id, monto")
+      .in("estado", estados)
+      .gte("fecha_statement", desde)
+      .lte("fecha_statement", hasta)
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    all.push(...page);
+    if (page.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
 export async function listOficinasSimple() {
   const { data, error } = await supabase.from("oficinas").select("id, nombre, gerente_agente_id").order("nombre");
   if (error) throw error;
@@ -56,20 +85,14 @@ export async function listAgentesDirectorio(): Promise<AgenteDirectorioItem[]> {
   const rows = (agentes ?? []) as unknown as AgenteRow[];
   const { desde, hasta } = monthRange();
 
-  const [{ data: lc, error: e2 }, { data: ex, error: e3 }] = await Promise.all([
-    supabase
-      .from("v_lineas_comision")
-      .select("agente_id, monto")
-      .in("estado", ["conciliado_auto", "conciliado_confirmado", "cuenta_casa"])
-      .gte("fecha_statement", desde)
-      .lte("fecha_statement", hasta),
+  const [lc, { data: ex, error: e3 }] = await Promise.all([
+    fetchTodasLineasComision(desde, hasta, ["conciliado_auto", "conciliado_confirmado", "cuenta_casa"]),
     supabase.from("v_excepciones").select("agente_sugerido_id").eq("estado", "pendiente"),
   ]);
-  if (e2) throw e2;
   if (e3) throw e3;
 
   const comisionPorAgente = new Map<string, number>();
-  for (const l of lc ?? []) {
+  for (const l of lc) {
     if (!l.agente_id) continue;
     comisionPorAgente.set(l.agente_id, (comisionPorAgente.get(l.agente_id) ?? 0) + Number(l.monto ?? 0));
   }
@@ -120,17 +143,30 @@ export async function getAgenteKpis(agenteId: string) {
       .in("estado", ["conciliado_auto", "conciliado_confirmado", "cuenta_casa"])
       .gte("fecha_statement", anioDesde)
       .lte("fecha_statement", anioHasta),
-    supabase.from("bono_reparto").select("monto, bonos!inner(periodo)").eq("agente_id", agenteId).gte("bonos.periodo", anioDesde.slice(0, 4)),
+    supabase.from("bono_reparto").select("monto, bonos!inner(periodo)").eq("agente_id", agenteId),
     supabase.from("v_polizas").select("id", { count: "exact", head: true }).eq("agente_id", agenteId).eq("estado", "activa"),
     supabase.from("v_excepciones").select("id", { count: "exact", head: true }).eq("agente_sugerido_id", agenteId).eq("estado", "pendiente"),
   ]);
   if (mes.error) throw mes.error;
   if (ytd.error) throw ytd.error;
+  if (bonos.error) throw bonos.error;
   if (polizas.error) throw polizas.error;
   if (excepciones.error) throw excepciones.error;
 
   const sum = (rows: { monto: number | null }[] | null) => (rows ?? []).reduce((s, r) => s + Number(r.monto ?? 0), 0);
-  const bonosYtd = ((bonos.data as unknown as { monto: number }[]) ?? []).reduce((s, b) => s + Number(b.monto ?? 0), 0);
+  // bonos.periodo es texto libre (a veces vacío o con formato no-AAAA-MM); comparar como string
+  // rompe tanto con NULL/'' (falso negativo) como con textos tipo "Agosto 2026" (falso positivo,
+  // 'A' > '2' en ASCII). En vez de filtrar en la query, se agrega acá: un bono sin período
+  // reconocible se cuenta siempre (no hay forma correcta de excluirlo de un año), y uno con
+  // período reconocible solo cuenta si su año coincide con el actual.
+  const anioActual = String(new Date().getFullYear());
+  const bonosYtd = (
+    (bonos.data as unknown as { monto: number; bonos: { periodo: string | null } | null }[]) ?? []
+  ).reduce((s, b) => {
+    const periodo = b.bonos?.periodo;
+    const incluye = !periodo || !/^\d{4}/.test(periodo) || periodo.slice(0, 4) === anioActual;
+    return incluye ? s + Number(b.monto ?? 0) : s;
+  }, 0);
 
   return {
     comisionMes: sum(mes.data),
@@ -163,14 +199,18 @@ export async function listLineasComisionAgente(
     )
     .eq("agente_id", agenteId)
     .in("estado", ["conciliado_auto", "conciliado_confirmado", "cuenta_casa"])
-    .order("fecha_statement", { ascending: false });
+    .order("fecha_statement", { ascending: false })
+    .order("id", { ascending: true });
 
   if (filtros.aseguradoraId) q = q.eq("aseguradora_id", filtros.aseguradoraId);
   if (filtros.desde) q = q.gte("fecha_statement", filtros.desde);
   if (filtros.hasta) q = q.lte("fecha_statement", filtros.hasta);
   if (filtros.tipoTransaccion) q = q.eq("tipo_transaccion", filtros.tipoTransaccion);
   if (filtros.buscar) {
-    q = q.or(`numero_poliza_crudo.ilike.%${filtros.buscar}%,cliente.ilike.%${filtros.buscar}%,poliza_abb.ilike.%${filtros.buscar}%`);
+    const term = filtros.buscar.trim().replace(/[%,()]/g, "");
+    if (term) {
+      q = q.or(`numero_poliza_crudo.ilike.%${term}%,cliente.ilike.%${term}%,poliza_abb.ilike.%${term}%`);
+    }
   }
 
   const from = (page - 1) * pageSize;
@@ -225,7 +265,7 @@ export async function listExcepcionesAgente(agenteId: string) {
 
 export interface NuevoAgente {
   nombre: string;
-  codigo: string;
+  codigo: string | null;
   oficina_id: string;
   supervisor_id: string | null;
   email: string;

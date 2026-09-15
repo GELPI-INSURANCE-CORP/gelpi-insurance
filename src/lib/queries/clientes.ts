@@ -17,7 +17,8 @@ export async function listPolizas(filtros: FiltrosPolizas, page: number, pageSiz
       "id, cliente_id, cliente, telefono, email, numero_poliza, aseguradora, aseguradora_id, ramo, agente, agente_id, oficina, oficina_id, fecha_vigencia, fecha_vencimiento, estado, origen, prima, updated_at",
       { count: "exact" }
     )
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .order("id", { ascending: true });
 
   if (filtros.oficinaId) q = q.eq("oficina_id", filtros.oficinaId);
   if (filtros.agenteId) q = q.eq("agente_id", filtros.agenteId);
@@ -26,7 +27,10 @@ export async function listPolizas(filtros: FiltrosPolizas, page: number, pageSiz
   if (filtros.estado) q = q.eq("estado", filtros.estado);
   if (filtros.sinAgente) q = q.is("agente_id", null);
   if (filtros.buscar) {
-    q = q.or(`cliente.ilike.%${filtros.buscar}%,numero_poliza.ilike.%${filtros.buscar}%,telefono.ilike.%${filtros.buscar}%`);
+    const term = filtros.buscar.trim().replace(/[%,()]/g, "");
+    if (term) {
+      q = q.or(`cliente.ilike.%${term}%,numero_poliza.ilike.%${term}%,telefono.ilike.%${term}%`);
+    }
   }
 
   const from = (page - 1) * pageSize;

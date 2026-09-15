@@ -92,6 +92,8 @@ export default function OficinasPage() {
                     <div className="text-xs text-muted">Encargado: {o.gerenteNombre}</div>
                   </div>
                   <button
+                    type="button"
+                    aria-label="Editar oficina"
                     onClick={() => {
                       setEditando(o);
                       setModalOpen(true);

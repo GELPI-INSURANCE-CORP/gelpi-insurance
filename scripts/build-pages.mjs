@@ -9,3 +9,10 @@ execSync("next build", {
   stdio: "inherit",
   env: process.env,
 });
+
+// next build no dispara el hook "postbuild" de npm porque no se invocó vía
+// `npm run build`, así que restauramos out/404.html a mano acá también.
+execSync("node scripts/copy-404.mjs", {
+  stdio: "inherit",
+  env: process.env,
+});

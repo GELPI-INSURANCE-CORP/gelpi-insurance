@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { Badge, Button, Card, CardHead, EmptyState, Select, type Tone } from "@/components/ui";
-import { fechaHora, pct, TIPOS_REPORTE, ESTADOS_LINEA } from "@/lib/format";
+import { fechaHora, money, pct, TIPOS_REPORTE, ESTADOS_LINEA } from "@/lib/format";
 import {
   DuplicadoError,
   getReporteLineas,
@@ -25,6 +25,7 @@ import {
   uploadReporte,
   subscribeReporteUpdates,
   type Aseguradora,
+  type BonoResumen,
   type LineaComision,
   type LineaVenta,
   type Reporte,
@@ -63,6 +64,17 @@ type ZoneKey = "aseguradora" | "venta" | "bono" | "abb";
 interface ZoneMsg {
   tone: Tone;
   text: string;
+}
+
+// Si la función de extracción muere sin escribir 'error' (crash, límite de wall-clock de la
+// plataforma), el reporte queda para siempre en 'extrayendo'. Pasados unos minutos sin novedad
+// lo tratamos como atascado y ofrecemos el mismo botón de reintentar que usa estado==='error'.
+const MINUTOS_ATASCADO = 5;
+function reporteAtascado(r: Reporte): boolean {
+  if (r.estado !== "extrayendo") return false;
+  const desde = new Date(r.updated_at ?? r.created_at).getTime();
+  if (Number.isNaN(desde)) return false;
+  return Date.now() - desde > MINUTOS_ATASCADO * 60 * 1000;
 }
 
 function estadoReporteBadge(r: Reporte): { tone: Tone; label: string } {
@@ -114,7 +126,10 @@ export default function SubirPage() {
   const [selectedReporte, setSelectedReporte] = useState<Reporte | null>(null);
   const [lineasComision, setLineasComision] = useState<LineaComision[]>([]);
   const [lineasVenta, setLineasVenta] = useState<LineaVenta[]>([]);
+  const [bonoResumen, setBonoResumen] = useState<BonoResumen | null>(null);
   const [loadingLineas, setLoadingLineas] = useState(false);
+  // último reporte pedido para la vista previa: descarta respuestas fuera de orden (ver abrirVistaPrevia)
+  const solicitudLineasRef = useRef<string | null>(null);
 
   const [rawModal, setRawModal] = useState<{ titulo: string; datos: Record<string, unknown> | null } | null>(null);
 
@@ -217,18 +232,23 @@ export default function SubirPage() {
   }
 
   async function abrirVistaPrevia(reporte: Reporte) {
+    solicitudLineasRef.current = reporte.id; // marca esta como la solicitud vigente (síncrono, no depende del render)
     setSelectedReporte(reporte);
     setLoadingLineas(true);
     setLineasComision([]);
     setLineasVenta([]);
+    setBonoResumen(null);
     try {
-      const { comision, venta } = await getReporteLineas(reporte.id, reporte.tipo);
+      const { comision, venta, bono } = await getReporteLineas(reporte.id, reporte.tipo);
+      if (solicitudLineasRef.current !== reporte.id) return; // llegó una solicitud más nueva mientras tanto: descartar
       setLineasComision(comision);
       setLineasVenta(venta);
+      setBonoResumen(bono);
     } catch (err) {
+      if (solicitudLineasRef.current !== reporte.id) return;
       setPageError(err instanceof Error ? err.message : "No se pudo cargar la vista previa de extracción.");
     } finally {
-      setLoadingLineas(false);
+      if (solicitudLineasRef.current === reporte.id) setLoadingLineas(false);
     }
   }
 
@@ -488,9 +508,15 @@ export default function SubirPage() {
                           <Badge tone={badge.tone} icon={r.estado === "bloqueado" ? <Ban size={12} /> : undefined}>
                             {badge.label}
                           </Badge>
-                          {r.estado === "error" && (
+                          {(r.estado === "error" || reporteAtascado(r)) && (
                             <div className="flex flex-col gap-0.5">
-                              {r.error && <span className="text-xs text-bad-fg">{r.error}</span>}
+                              {r.error ? (
+                                <span className="text-xs text-bad-fg">{r.error}</span>
+                              ) : (
+                                reporteAtascado(r) && (
+                                  <span className="text-xs text-bad-fg">La extracción no respondió a tiempo.</span>
+                                )
+                              )}
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -574,6 +600,14 @@ export default function SubirPage() {
             <div className="px-5 py-10 text-center text-[13px] text-muted">Cargando líneas extraídas…</div>
           ) : selectedReporte.tipo === "venta_interna" ? (
             <VentasTabla lineas={lineasVenta} onVerCrudo={(titulo, datos) => setRawModal({ titulo, datos })} />
+          ) : selectedReporte.tipo === "bono_contingencia" ? (
+            <BonoResumenTabla bono={bonoResumen} />
+          ) : selectedReporte.tipo === "actualizacion_abb" ? (
+            <div className="px-5 py-8 text-center text-[13px] text-muted">
+              Este archivo actualiza el Active Business Book directamente (clientes y pólizas): no genera líneas de
+              comisión para revisar acá. Mirá el resumen de arriba para ver cuántas pólizas se crearon o
+              actualizaron.
+            </div>
           ) : (
             <ComisionTabla lineas={lineasComision} onVerCrudo={(titulo, datos) => setRawModal({ titulo, datos })} />
           )}
@@ -748,6 +782,52 @@ function ZoneFooter({
         >
           {msg.text}
         </span>
+      )}
+    </div>
+  );
+}
+
+function BonoResumenTabla({ bono }: { bono: BonoResumen | null }) {
+  if (!bono) {
+    return <div className="px-5 py-8 text-center text-[13px] text-muted">Todavía no hay un bono registrado para este archivo.</div>;
+  }
+  return (
+    <div className="flex flex-col gap-3 px-5 py-4">
+      <div className="flex flex-wrap items-center gap-3 text-[13px]">
+        <span className="font-semibold text-foreground">{money(bono.monto_total)}</span>
+        <Badge tone="silver">{bono.estado}</Badge>
+        {bono.periodo && <span className="text-muted">{bono.periodo}</span>}
+      </div>
+      {bono.reparto.length === 0 ? (
+        <div className="text-[13px] text-muted">
+          Este statement no traía detalle por productor: el monto total quedó cargado sin repartir por agente.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="bg-background">
+                {["Agente", "Monto", "Motivo", "Pagado"].map((h) => (
+                  <th key={h} className="whitespace-nowrap border-b border-border px-3.5 py-2 text-left font-medium text-muted">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {bono.reparto.map((r) => (
+                <tr key={r.id} className="border-b border-border last:border-b-0">
+                  <td className="px-3.5 py-2 font-medium text-foreground">{r.agente ?? "—"}</td>
+                  <td className="px-3.5 py-2 text-right tabular-nums">{money(r.monto)}</td>
+                  <td className="px-3.5 py-2 text-muted">{r.motivo ?? "—"}</td>
+                  <td className="px-3.5 py-2">
+                    <Badge tone={r.pagado ? "ok" : "neutral"}>{r.pagado ? "Pagado" : "Pendiente"}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

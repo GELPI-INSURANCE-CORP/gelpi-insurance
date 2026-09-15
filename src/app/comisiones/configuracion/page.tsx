@@ -500,6 +500,8 @@ function SeccionPlantillas() {
   const [nuevaOpen, setNuevaOpen] = useState(false);
   const [nombre, setNombre] = useState("");
   const [codigo, setCodigo] = useState("");
+  const [errorCrear, setErrorCrear] = useState<string | null>(null);
+  const [creando, setCreando] = useState(false);
 
   const cargar = () => {
     setLoading(true);
@@ -511,11 +513,19 @@ function SeccionPlantillas() {
 
   async function crear() {
     if (!nombre.trim()) return;
-    await crearAseguradora(nombre.trim(), codigo.trim());
-    setNombre("");
-    setCodigo("");
-    setNuevaOpen(false);
-    cargar();
+    setCreando(true);
+    setErrorCrear(null);
+    try {
+      await crearAseguradora(nombre.trim(), codigo.trim());
+      setNombre("");
+      setCodigo("");
+      setNuevaOpen(false);
+      cargar();
+    } catch (e) {
+      setErrorCrear(e instanceof Error ? e.message : "No se pudo crear la aseguradora.");
+    } finally {
+      setCreando(false);
+    }
   }
 
   return (
@@ -568,7 +578,7 @@ function SeccionPlantillas() {
         />
       )}
 
-      <Modal open={nuevaOpen} onClose={() => setNuevaOpen(false)} title="Nueva aseguradora">
+      <Modal open={nuevaOpen} onClose={() => { setNuevaOpen(false); setErrorCrear(null); }} title="Nueva aseguradora">
         <div className="flex flex-col gap-3">
           <Field label="Nombre">
             <TextInput value={nombre} onChange={(e) => setNombre(e.target.value)} />
@@ -576,12 +586,13 @@ function SeccionPlantillas() {
           <Field label="Código">
             <TextInput value={codigo} onChange={(e) => setCodigo(e.target.value)} />
           </Field>
+          {errorCrear && <p className="text-xs text-bad-fg">{errorCrear}</p>}
           <div className="flex justify-end gap-2 mt-2">
-            <Button variant="secondary" onClick={() => setNuevaOpen(false)}>
+            <Button variant="secondary" onClick={() => { setNuevaOpen(false); setErrorCrear(null); }}>
               Cancelar
             </Button>
-            <Button variant="primary" onClick={crear}>
-              Crear
+            <Button variant="primary" onClick={crear} disabled={creando}>
+              {creando ? "Creando…" : "Crear"}
             </Button>
           </div>
         </div>
@@ -661,8 +672,11 @@ function SeccionOficinas() {
     <div>
       <div className="flex items-center justify-between border border-border rounded-lg px-4 py-3 mb-4">
         <div>
-          <div className="text-[13px] font-medium text-foreground">Acceso de agentes individuales</div>
-          <div className="text-xs text-muted">Cada agente puede tener su propio login de solo lectura a su ficha. Apagado por defecto.</div>
+          <div className="text-[13px] font-medium text-foreground">Acceso de agentes individuales (función no implementada)</div>
+          <div className="text-xs text-muted">
+            Este switch todavía no restringe nada: hoy cualquier usuario con login ve los datos de todas las oficinas
+            y agentes. No crees ni compartas logins de agente asumiendo que esto los limita a su propia ficha.
+          </div>
         </div>
         {config && (
           <button

@@ -48,6 +48,10 @@ export default function NuevoBonoModal({
       setError("Nombre y monto son obligatorios.");
       return;
     }
+    if (periodo.trim() && !/^\d{4}-(0[1-9]|1[0-2])$/.test(periodo.trim())) {
+      setError("Período inválido: usá el formato AAAA-MM (ej: 2026-09).");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
