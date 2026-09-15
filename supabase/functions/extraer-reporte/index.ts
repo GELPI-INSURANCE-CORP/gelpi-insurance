@@ -1,9 +1,17 @@
 // Gelpi Insurance · extraer-reporte
-// Edge Function: descarga el archivo de un `reporte`, lo manda a Claude (Sonnet 5)
-// para extraer datos estructurados, y carga el resultado en lineas_comision /
-// lineas_venta / polizas / bonos según `reportes.tipo`.
+// Edge Function: descarga el archivo de un `reporte`, lo manda a OpenAI (Responses API,
+// modelo configurable — por defecto gpt-4o-mini, usando LA LLAVE DEL CLIENTE) para extraer
+// datos estructurados, y carga el resultado en lineas_comision / lineas_venta / polizas /
+// bonos según `reportes.tipo`.
 //
 // Contrato: POST { "reporte_id": "<uuid>" }  (JWT de usuario en Authorization, verify_jwt=true)
+// Modo de prueba de conexión: POST { "test_ai": true }
+//   (opcionalmente { "test_ai": true, "api_key": "...", "model": "..." } para probar una
+//   llave/modelo ANTES de guardarlos en Configuración).
+//
+// Llave y modelo de OpenAI: se leen de la tabla `configuracion` (claves `openai_api_key` y
+// `openai_model`, valores jsonb string), con fallback al secreto `OPENAI_API_KEY` del
+// proyecto. Ver README.md de esta carpeta.
 
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import * as XLSX from "xlsx";
@@ -14,9 +22,8 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_VERSION = "2023-06-01";
-const MODEL = "claude-sonnet-5";
+const OPENAI_URL = "https://api.openai.com/v1/responses";
+const DEFAULT_MODEL = "gpt-4o-mini";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -234,7 +241,7 @@ function parseXlsx(bytes: Uint8Array): Record<string, unknown>[] {
 }
 
 // ---------------------------------------------------------------------------
-// Herramienta (tool-use) para Claude
+// Schema de salida estructurada para OpenAI
 // ---------------------------------------------------------------------------
 
 const CAMPOS_COMISION = [
@@ -247,10 +254,22 @@ const CAMPOS_VENTA = [
   "numero_poliza", "aseguradora_nombre_crudo", "ramo", "fecha_venta", "fecha_vigencia", "prima",
 ] as const;
 
-function buildTool(esVenta: boolean) {
-  const filaProps = esVenta
+// OpenAI structured outputs (json_schema, strict:true) exige que TODO objeto tenga
+// additionalProperties:false y que TODAS sus properties estén en "required" (los campos
+// "opcionales" se modelan como nullable). Además no soporta objetos de forma libre
+// (additionalProperties:true), así que `mapeo_columnas` y `campos_extra` -que son mapas de
+// forma variable- viajan como STRING con JSON codificado y se parsean después
+// (normalizarExtraccion) para reconstruir exactamente el mismo `ExtraccionResultado` que
+// antes devolvía la tool-use original.
+
+function buildFilaSchema(esVenta: boolean): Record<string, unknown> {
+  const campoExtraProp = {
+    type: "string",
+    description: "JSON codificado (objeto plano) con las columnas sin mapeo de esta fila. Usar '{}' si no hay ninguna.",
+  };
+  const filaProps: Record<string, unknown> = esVenta
     ? {
-        fila: { type: "integer" },
+        fila: { type: ["integer", "null"] },
         agente_nombre_crudo: { type: ["string", "null"] },
         oficina_nombre_crudo: { type: ["string", "null"] },
         cliente_nombre_crudo: { type: ["string", "null"] },
@@ -263,10 +282,10 @@ function buildTool(esVenta: boolean) {
         fecha_vigencia: { type: ["string", "null"], description: "YYYY-MM-DD" },
         prima: { type: ["number", "string", "null"] },
         confianza: { type: ["number", "null"] },
-        campos_extra: { type: "object" },
+        campos_extra: campoExtraProp,
       }
     : {
-        fila: { type: "integer" },
+        fila: { type: ["integer", "null"] },
         numero_poliza: { type: ["string", "null"] },
         nombre_asegurado: { type: ["string", "null"] },
         productor: { type: ["string", "null"] },
@@ -278,40 +297,84 @@ function buildTool(esVenta: boolean) {
         fecha_vigencia: { type: ["string", "null"], description: "YYYY-MM-DD" },
         fecha_statement: { type: ["string", "null"], description: "YYYY-MM-DD" },
         confianza: { type: ["number", "null"] },
-        campos_extra: { type: "object" },
+        campos_extra: campoExtraProp,
       };
 
   return {
-    name: "registrar_extraccion",
-    description:
-      "Registra el resultado de la extracción de un reporte de comisiones/ventas/bonos de seguros.",
-    input_schema: {
-      type: "object",
-      properties: {
-        tipo_detectado: {
-          type: "string",
-          description:
-            "Tipo de reporte detectado: comision_aseguradora, chargebacks, produccion, cancelaciones, renovaciones, resumen_anual, venta_interna, bono_contingencia, actualizacion_abb u otro.",
-        },
-        aseguradora_detectada: { type: ["string", "null"] },
-        periodo: { type: ["string", "null"], description: "Ej: 2026-08 o 'Agosto 2026'" },
-        mapeo_columnas: {
-          type: "object",
-          description: "columna_origen -> campo_destino",
-          additionalProperties: { type: "string" },
-        },
-        columnas_sin_mapeo: { type: "array", items: { type: "string" } },
-        confianza_promedio: { type: ["number", "null"] },
-        resumen: { type: ["string", "null"] },
-        filas: {
-          type: "array",
-          description:
-            "Dejar vacío ([]) cuando sólo se pide mapeo de columnas (CSV/XLSX); completar todas las filas cuando el documento es PDF/imagen.",
-          items: { type: "object", properties: filaProps },
-        },
+    type: "object",
+    properties: filaProps,
+    required: Object.keys(filaProps),
+    additionalProperties: false,
+  };
+}
+
+function buildJsonSchema(esVenta: boolean): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: {
+      tipo_detectado: {
+        type: "string",
+        description:
+          "Tipo de reporte detectado: comision_aseguradora, chargebacks, produccion, cancelaciones, renovaciones, resumen_anual, venta_interna, bono_contingencia, actualizacion_abb u otro.",
       },
-      required: ["tipo_detectado", "mapeo_columnas", "confianza_promedio"],
+      aseguradora_detectada: { type: ["string", "null"] },
+      periodo: { type: ["string", "null"], description: "Ej: 2026-08 o 'Agosto 2026'" },
+      mapeo_columnas: {
+        type: "string",
+        description: "JSON codificado (objeto plano) columna_origen -> campo_destino. Usar '{}' si no aplica.",
+      },
+      columnas_sin_mapeo: { type: "array", items: { type: "string" } },
+      confianza_promedio: { type: ["number", "null"] },
+      resumen: { type: ["string", "null"] },
+      filas: {
+        type: "array",
+        description:
+          "Dejar vacío ([]) cuando sólo se pide mapeo de columnas (CSV/XLSX); completar todas las filas cuando el documento es PDF/imagen.",
+        items: buildFilaSchema(esVenta),
+      },
     },
+    required: [
+      "tipo_detectado",
+      "aseguradora_detectada",
+      "periodo",
+      "mapeo_columnas",
+      "columnas_sin_mapeo",
+      "confianza_promedio",
+      "resumen",
+      "filas",
+    ],
+    additionalProperties: false,
+  };
+}
+
+function safeJsonParse<T>(s: unknown, fallback: T): T {
+  if (typeof s !== "string" || !s.trim()) return fallback;
+  try {
+    const v = JSON.parse(s);
+    return (v ?? fallback) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+// Reconstruye el mismo shape de `ExtraccionResultado` que se usaba con la tool-use original,
+// deshaciendo la codificación a string de mapeo_columnas/campos_extra.
+function normalizarExtraccion(raw: any): ExtraccionResultado {
+  const filas = Array.isArray(raw?.filas)
+    ? raw.filas.map((f: any) => ({
+        ...f,
+        campos_extra: safeJsonParse<Record<string, unknown>>(f?.campos_extra, {}),
+      }))
+    : [];
+  return {
+    tipo_detectado: raw?.tipo_detectado,
+    aseguradora_detectada: raw?.aseguradora_detectada ?? null,
+    periodo: raw?.periodo ?? null,
+    mapeo_columnas: safeJsonParse<Record<string, string>>(raw?.mapeo_columnas, {}),
+    columnas_sin_mapeo: Array.isArray(raw?.columnas_sin_mapeo) ? raw.columnas_sin_mapeo : [],
+    confianza_promedio: raw?.confianza_promedio ?? null,
+    resumen: raw?.resumen ?? null,
+    filas,
   };
 }
 
@@ -332,48 +395,169 @@ Reglas:
 - Sé conservador con la confianza (0-100): bajala si el archivo es ambiguo o está mal escaneado.`;
 
 // ---------------------------------------------------------------------------
-// Llamada a Anthropic
+// Llamada a OpenAI (Responses API)
 // ---------------------------------------------------------------------------
 
-async function callAnthropic(opts: {
+async function callOpenAIRaw(opts: {
   apiKey: string;
-  esVenta: boolean;
-  userContent: unknown[];
-  maxTokens?: number;
-}): Promise<ExtraccionResultado> {
-  const tool = buildTool(opts.esVenta);
+  model: string;
+  content: unknown[];
+  schema: Record<string, unknown>;
+  maxTokens: number;
+}): Promise<string> {
   const body = {
-    model: MODEL,
-    max_tokens: opts.maxTokens ?? 8192,
-    system: SYSTEM_PROMPT,
-    tools: [tool],
-    tool_choice: { type: "tool", name: "registrar_extraccion" },
-    messages: [{ role: "user", content: opts.userContent }],
+    model: opts.model,
+    instructions: SYSTEM_PROMPT,
+    input: [{ role: "user", content: opts.content }],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "registrar_extraccion",
+        strict: true,
+        schema: opts.schema,
+      },
+    },
+    max_output_tokens: opts.maxTokens,
   };
 
-  const resp = await fetch(ANTHROPIC_URL, {
+  const resp = await fetch(OPENAI_URL, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": opts.apiKey,
-      "anthropic-version": ANTHROPIC_VERSION,
+      authorization: `Bearer ${opts.apiKey}`,
     },
     body: JSON.stringify(body),
   });
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => resp.statusText);
-    throw new ReporteError(`Anthropic API error ${resp.status}: ${errText.slice(0, 500)}`);
+    throw new ReporteError(`OpenAI API error ${resp.status}: ${errText.slice(0, 500)}`);
   }
   const data = await resp.json();
-  if (data.stop_reason === "refusal") {
-    throw new ReporteError("Claude rechazó procesar el documento (refusal).");
+
+  if (data.status === "failed") {
+    throw new ReporteError(`OpenAI: la respuesta falló (${data.error?.message ?? "desconocido"}).`);
   }
-  const toolBlock = (data.content ?? []).find((b: any) => b.type === "tool_use" && b.name === "registrar_extraccion");
-  if (!toolBlock) {
-    throw new ReporteError("Claude no devolvió el tool_use esperado (registrar_extraccion).");
+
+  let outputText: string | undefined;
+  for (const item of data.output ?? []) {
+    if (item.type !== "message") continue;
+    for (const c of item.content ?? []) {
+      if (c.type === "refusal") {
+        throw new ReporteError(`OpenAI rechazó procesar el documento: ${c.refusal}`);
+      }
+      if (c.type === "output_text" && typeof c.text === "string") {
+        outputText = c.text;
+      }
+    }
   }
-  return toolBlock.input as ExtraccionResultado;
+  if (!outputText && typeof data.output_text === "string") outputText = data.output_text;
+  if (!outputText) {
+    throw new ReporteError("OpenAI no devolvió contenido de texto en la respuesta.");
+  }
+  return outputText;
+}
+
+async function callOpenAI(opts: {
+  apiKey: string;
+  model: string;
+  esVenta: boolean;
+  content: unknown[];
+  maxTokens?: number;
+}): Promise<ExtraccionResultado> {
+  const schema = buildJsonSchema(opts.esVenta);
+  const maxTokens = opts.maxTokens ?? 8192;
+
+  let raw = await callOpenAIRaw({ apiKey: opts.apiKey, model: opts.model, content: opts.content, schema, maxTokens });
+  let parsed = safeJsonParse<any>(raw, null);
+
+  if (!parsed) {
+    // Reintento único: pedirle solo JSON válido (defensa extra; con json_schema strict esto
+    // no debería pasar salvo truncamiento por max_output_tokens u otra rareza del modelo).
+    const retryContent = [
+      ...opts.content,
+      {
+        type: "input_text",
+        text:
+          "Tu respuesta anterior no era JSON válido. Respondé ÚNICAMENTE con el JSON que cumple " +
+          "exactamente el schema indicado, sin texto adicional, sin bloques de código ni comentarios.",
+      },
+    ];
+    raw = await callOpenAIRaw({ apiKey: opts.apiKey, model: opts.model, content: retryContent, schema, maxTokens });
+    parsed = safeJsonParse<any>(raw, null);
+    if (!parsed) {
+      throw new ReporteError("OpenAI no devolvió JSON válido tras un reintento.");
+    }
+  }
+
+  return normalizarExtraccion(parsed);
+}
+
+async function testOpenAIConnection(
+  apiKey: string,
+  model: string,
+): Promise<{ ok: boolean; model: string; latency_ms?: number; error?: string }> {
+  const start = Date.now();
+  try {
+    const resp = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        input: [{ role: "user", content: [{ type: "input_text", text: "Respondé solo OK" }] }],
+        max_output_tokens: 16,
+      }),
+    });
+    const latency_ms = Date.now() - start;
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => resp.statusText);
+      return { ok: false, model, error: `OpenAI API error ${resp.status}: ${errText.slice(0, 300)}` };
+    }
+    await resp.json().catch(() => null);
+    return { ok: true, model, latency_ms };
+  } catch (err) {
+    return { ok: false, model, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Lee la llave/modelo de OpenAI de la tabla `configuracion` (claves openai_api_key /
+// openai_model, valores jsonb — a veces viajan como STRING con JSON codificado, hay que
+// parsearlos), con fallback al secreto OPENAI_API_KEY del proyecto. `overrideKey`/`overrideModel`
+// permiten probar una llave/modelo antes de guardarlos (botón "Probar conexión").
+function parseConfigValor(v: unknown): unknown {
+  if (typeof v === "string") {
+    try {
+      return JSON.parse(v);
+    } catch {
+      return v;
+    }
+  }
+  return v;
+}
+
+async function getOpenAIConfig(
+  admin: SupabaseClient,
+  overrideKey?: string,
+  overrideModel?: string,
+): Promise<{ apiKey: string | null; model: string }> {
+  let apiKey = overrideKey ?? null;
+  let model = overrideModel ?? null;
+
+  if (!apiKey || !model) {
+    const { data } = await admin
+      .from("configuracion")
+      .select("clave, valor")
+      .in("clave", ["openai_api_key", "openai_model"]);
+    for (const row of data ?? []) {
+      const val = parseConfigValor(row.valor);
+      if (row.clave === "openai_api_key" && !apiKey && typeof val === "string" && val.trim()) apiKey = val.trim();
+      if (row.clave === "openai_model" && !model && typeof val === "string" && val.trim()) model = val.trim();
+    }
+  }
+
+  if (!apiKey) apiKey = Deno.env.get("OPENAI_API_KEY") ?? null;
+  if (!model) model = DEFAULT_MODEL;
+  return { apiKey, model };
 }
 
 // ---------------------------------------------------------------------------
@@ -395,18 +579,33 @@ Deno.serve(async (req: Request) => {
   }
   const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-  let reporteId: string | undefined;
+  let bodyJson: any = null;
   try {
-    const bodyJson = await req.json().catch(() => null);
-    reporteId = bodyJson?.reporte_id;
-    if (!reporteId || typeof reporteId !== "string") {
-      return json({ error: "Falta reporte_id (uuid) en el body." }, 400);
-    }
+    bodyJson = await req.json().catch(() => null);
   } catch {
     return json({ error: "Body inválido, se espera JSON { reporte_id }." }, 400);
   }
 
-  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+  // Modo de prueba de conexión (botón "Probar conexión" en Configuración → Conexión de IA).
+  // No toca ningún reporte; si vienen api_key/model en el body, se prueban ESOS valores en
+  // vez de los guardados (para validar antes de guardar).
+  if (bodyJson?.test_ai === true) {
+    const overrideKey =
+      typeof bodyJson.api_key === "string" && bodyJson.api_key.trim() ? bodyJson.api_key.trim() : undefined;
+    const overrideModel =
+      typeof bodyJson.model === "string" && bodyJson.model.trim() ? bodyJson.model.trim() : undefined;
+    const { apiKey, model } = await getOpenAIConfig(admin, overrideKey, overrideModel);
+    if (!apiKey) {
+      return json({ ok: false, error: "Falta configurar la llave de OpenAI en Configuración → Conexión de IA" }, 200);
+    }
+    const result = await testOpenAIConnection(apiKey, model);
+    return json(result, 200);
+  }
+
+  let reporteId: string | undefined = bodyJson?.reporte_id;
+  if (!reporteId || typeof reporteId !== "string") {
+    return json({ error: "Falta reporte_id (uuid) en el body." }, 400);
+  }
 
   try {
     // 1. Leer reporte y marcar extrayendo
@@ -419,8 +618,9 @@ Deno.serve(async (req: Request) => {
       return json({ error: `Reporte no encontrado: ${repErr?.message ?? reporteId}` }, 404);
     }
 
-    if (!ANTHROPIC_API_KEY) {
-      const msg = "Falta configurar ANTHROPIC_API_KEY en Supabase (supabase secrets set ANTHROPIC_API_KEY=...)";
+    const { apiKey: OPENAI_API_KEY, model: OPENAI_MODEL } = await getOpenAIConfig(admin);
+    if (!OPENAI_API_KEY) {
+      const msg = "Falta configurar la llave de OpenAI en Configuración → Conexión de IA";
       await admin.from("reportes").update({ estado: "error", error: msg }).eq("id", reporteId);
       return json({ error: msg }, 500);
     }
@@ -474,13 +674,14 @@ Deno.serve(async (req: Request) => {
         `Primeras ${muestra.length} filas (de ${filasCrudas.length} totales) en JSON:\n` +
         JSON.stringify(muestra, null, 0);
 
-      extraccion = await callAnthropic({
-        apiKey: ANTHROPIC_API_KEY,
+      extraccion = await callOpenAI({
+        apiKey: OPENAI_API_KEY,
+        model: OPENAI_MODEL,
         esVenta: esVentaEsperada,
         maxTokens: 4096,
-        userContent: [
+        content: [
           {
-            type: "text",
+            type: "input_text",
             text:
               `Archivo: ${reporte.nombre_archivo} (tipo declarado: ${reporte.tipo}).\n` +
               `Es una hoja de cálculo/CSV de ${filasCrudas.length} filas. NO necesito las filas completas: dejá "filas": [] ` +
@@ -500,23 +701,23 @@ Deno.serve(async (req: Request) => {
         ? "image/gif"
         : "image/jpeg";
       const b64 = base64FromBytes(bytes);
+      const dataUrl = `data:${mediaType};base64,${b64}`;
+      const instructionText =
+        `Archivo: ${reporte.nombre_archivo} (tipo declarado: ${reporte.tipo}). ` +
+        `Extraé TODAS las filas/registros que encuentres en el documento, completando el array "filas" por completo, ` +
+        `además de tipo_detectado, aseguradora_detectada, periodo, mapeo_columnas, columnas_sin_mapeo, confianza_promedio y resumen.`;
       const block = esPdf
-        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }
-        : { type: "image", source: { type: "base64", media_type: mediaType, data: b64 } };
+        ? { type: "input_file", filename: reporte.nombre_archivo || "reporte.pdf", file_data: dataUrl }
+        : { type: "input_image", image_url: dataUrl };
 
-      extraccion = await callAnthropic({
-        apiKey: ANTHROPIC_API_KEY,
+      extraccion = await callOpenAI({
+        apiKey: OPENAI_API_KEY,
+        model: OPENAI_MODEL,
         esVenta: esVentaEsperada,
         maxTokens: 8192,
-        userContent: [
+        content: [
+          { type: "input_text", text: instructionText },
           block,
-          {
-            type: "text",
-            text:
-              `Archivo: ${reporte.nombre_archivo} (tipo declarado: ${reporte.tipo}). ` +
-              `Extraé TODAS las filas/registros que encuentres en el documento, completando el array "filas" por completo, ` +
-              `además de tipo_detectado, aseguradora_detectada, periodo, mapeo_columnas, columnas_sin_mapeo, confianza_promedio y resumen.`,
-          },
         ],
       });
     }

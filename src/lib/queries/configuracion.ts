@@ -98,3 +98,105 @@ export async function actualizarPctOverride(id: string, pct: number) {
   const { error } = await supabase.from("oficinas").update({ pct_override: pct }).eq("id", id);
   if (error) throw error;
 }
+
+/* ========================= Ficha del administrador ========================= */
+
+export interface AgenteCasa {
+  id: string;
+  nombre: string;
+  email: string | null;
+  telefono: string | null;
+  codigo: string | null;
+}
+
+export interface OficinaCasa {
+  id: string;
+  nombre: string;
+  direccion: string | null;
+}
+
+export async function getAgenteCasa(): Promise<AgenteCasa | null> {
+  const { data, error } = await supabase
+    .from("agentes")
+    .select("id, nombre, email, telefono, codigo")
+    .eq("es_casa", true)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function crearAgenteCasa(nombre: string): Promise<AgenteCasa> {
+  const { data, error } = await supabase
+    .from("agentes")
+    .insert({ nombre, es_casa: true, activo: true })
+    .select("id, nombre, email, telefono, codigo")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function actualizarAgenteCasa(id: string, cambios: Partial<Omit<AgenteCasa, "id">>) {
+  const { error } = await supabase.from("agentes").update(cambios).eq("id", id);
+  if (error) throw error;
+}
+
+export async function getOficinaCasa(): Promise<OficinaCasa | null> {
+  const { data, error } = await supabase
+    .from("oficinas")
+    .select("id, nombre, direccion")
+    .eq("codigo", "CASA")
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function actualizarOficinaCasa(id: string, cambios: Partial<Omit<OficinaCasa, "id">>) {
+  const { error } = await supabase.from("oficinas").update(cambios).eq("id", id);
+  if (error) throw error;
+}
+
+/* ========================= Conexión de IA ========================= */
+
+export interface ConfigIA {
+  apiKeyMasked: string | null;
+  model: string;
+}
+
+export async function getConfigIA(): Promise<ConfigIA> {
+  const { data, error } = await supabase.from("configuracion").select("clave, valor").in("clave", ["openai_api_key", "openai_model"]);
+  if (error) throw error;
+  const map = new Map((data ?? []).map((r) => [r.clave, r.valor]));
+  const key = map.get("openai_api_key");
+  const keyStr = typeof key === "string" ? key : null;
+  return {
+    apiKeyMasked: keyStr && keyStr.length >= 4 ? `sk-…${keyStr.slice(-4)}` : null,
+    model: (map.get("openai_model") as string) ?? "gpt-4o-mini",
+  };
+}
+
+async function upsertConfig(clave: string, valor: unknown) {
+  const { error } = await supabase.from("configuracion").upsert({ clave, valor: valor as never, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+export async function guardarConfigIA(apiKey: string | null, model: string) {
+  if (apiKey) {
+    await upsertConfig("openai_api_key", apiKey);
+  }
+  await upsertConfig("openai_model", model);
+}
+
+export interface TestIAResult {
+  ok: boolean;
+  model?: string;
+  latency_ms?: number;
+  error?: string;
+}
+
+export async function probarConexionIA(apiKey: string | null, model: string): Promise<TestIAResult> {
+  const body: Record<string, unknown> = { test_ai: true, model };
+  if (apiKey) body.api_key = apiKey;
+  const { data, error } = await supabase.functions.invoke("extraer-reporte", { body });
+  if (error) return { ok: false, error: error.message };
+  return data as TestIAResult;
+}

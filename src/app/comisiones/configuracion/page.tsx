@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, Trash2, ShieldAlert } from "lucide-react";
-import { Card, CardHead, Input, TextInput, TextArea, Button, Badge, Banner, Loading, EmptyState, Field, Modal } from "@/components/agentes/ui";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Plus, Trash2, ShieldAlert, CheckCircle2, Eye, EyeOff, Sparkles } from "lucide-react";
+import { Card, CardHead, Input, TextInput, TextArea, Button, Badge, Banner, Loading, EmptyState, Field, Modal, Tabs, Select } from "@/components/agentes/ui";
 import { fechaHora } from "@/lib/format";
 import {
   listAlias,
@@ -16,23 +17,217 @@ import {
   crearAseguradora,
   listOficinasConGerente,
   actualizarPctOverride,
+  getAgenteCasa,
+  crearAgenteCasa,
+  actualizarAgenteCasa,
+  getOficinaCasa,
+  actualizarOficinaCasa,
+  getConfigIA,
+  guardarConfigIA,
+  probarConexionIA,
   type AliasAgencia,
   type ConfigValores,
   type AseguradoraRow,
+  type AgenteCasa,
+  type OficinaCasa,
+  type ConfigIA,
+  type TestIAResult,
 } from "@/lib/queries/configuracion";
 
-export default function ConfiguracionPage() {
+const TABS = [
+  { key: "admin", label: "Ficha del administrador" },
+  { key: "alias", label: "Alias de la agencia" },
+  { key: "umbrales", label: "Umbrales de match" },
+  { key: "ia", label: "Conexión de IA" },
+  { key: "plantillas", label: "Plantillas por aseguradora" },
+  { key: "oficinas", label: "Oficinas y permisos" },
+];
+
+function ConfiguracionContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const active = TABS.some((t) => t.key === tabParam) ? (tabParam as string) : "admin";
+
+  function cambiarTab(key: string) {
+    router.push(`/comisiones/configuracion/?tab=${key}`);
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-lg font-semibold text-foreground">Configuración</h1>
-      <SeccionAlias />
-      <SeccionUmbrales />
-      <SeccionPlantillas />
-      <SeccionChargebacks />
-      <SeccionOficinas />
+      <Card className="overflow-hidden">
+        <Tabs tabs={TABS} active={active} onChange={cambiarTab} />
+        <div className="p-4">
+          {active === "admin" && <SeccionAdmin />}
+          {active === "alias" && <SeccionAlias />}
+          {active === "umbrales" && <SeccionUmbrales />}
+          {active === "ia" && <SeccionIA />}
+          {active === "plantillas" && <SeccionPlantillas />}
+          {active === "oficinas" && <SeccionOficinas />}
+        </div>
+      </Card>
     </div>
   );
 }
+
+export default function ConfiguracionPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <ConfiguracionContent />
+    </Suspense>
+  );
+}
+
+function useToast() {
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+  const node = toast && (
+    <div className="fixed right-6 top-6 z-50 flex items-center gap-2 rounded-lg border border-ok-fg/30 bg-ok-bg px-4 py-2.5 text-[13px] font-medium text-ok-fg shadow-lg">
+      <CheckCircle2 size={16} />
+      {toast}
+    </div>
+  );
+  return { showToast: setToast, toastNode: node };
+}
+
+/* ========================= Ficha del administrador ========================= */
+
+function SeccionAdmin() {
+  const { showToast, toastNode } = useToast();
+  const [agente, setAgente] = useState<AgenteCasa | null | undefined>(undefined);
+  const [oficina, setOficina] = useState<OficinaCasa | null | undefined>(undefined);
+  const [saving, setSaving] = useState(false);
+  const [creando, setCreando] = useState(false);
+  const [nombreNuevo, setNombreNuevo] = useState("");
+
+  const [nombre, setNombre] = useState("");
+  const [email, setEmail] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [codigo, setCodigo] = useState("");
+  const [ofNombre, setOfNombre] = useState("");
+  const [ofDireccion, setOfDireccion] = useState("");
+
+  const cargar = () => {
+    getAgenteCasa().then(setAgente);
+    getOficinaCasa().then(setOficina);
+  };
+  useEffect(cargar, []);
+
+  useEffect(() => {
+    if (agente) {
+      setNombre(agente.nombre ?? "");
+      setEmail(agente.email ?? "");
+      setTelefono(agente.telefono ?? "");
+      setCodigo(agente.codigo ?? "");
+    }
+  }, [agente]);
+
+  useEffect(() => {
+    if (oficina) {
+      setOfNombre(oficina.nombre ?? "");
+      setOfDireccion(oficina.direccion ?? "");
+    }
+  }, [oficina]);
+
+  async function crear() {
+    if (!nombreNuevo.trim()) return;
+    setCreando(true);
+    try {
+      const nuevo = await crearAgenteCasa(nombreNuevo.trim());
+      setAgente(nuevo);
+      showToast("Cuenta de la casa creada.");
+    } finally {
+      setCreando(false);
+    }
+  }
+
+  async function guardar() {
+    if (!agente) return;
+    setSaving(true);
+    try {
+      await actualizarAgenteCasa(agente.id, { nombre, email: email || null, telefono: telefono || null, codigo: codigo || null });
+      if (oficina) {
+        await actualizarOficinaCasa(oficina.id, { nombre: ofNombre, direccion: ofDireccion || null });
+      }
+      cargar();
+      showToast("Ficha del administrador guardada.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (agente === undefined || oficina === undefined) return <Loading />;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {toastNode}
+      <Banner tone="info">
+        Esta es la &quot;cuenta de la casa&quot;: el agente que aparece como <strong>Encargado</strong> en las oficinas sin
+        gerente propio y como destino de <strong>Cuenta de la casa</strong> en Conciliación (chargebacks y comisiones sin
+        agente identificado caen acá).
+      </Banner>
+
+      {!agente ? (
+        <div className="flex flex-col gap-3 max-w-md">
+          <p className="text-[13px] text-muted">No existe todavía un agente marcado como cuenta de la casa. Creá uno para empezar.</p>
+          <Field label="Nombre">
+            <TextInput value={nombreNuevo} onChange={(e) => setNombreNuevo(e.target.value)} placeholder="Ej: Gelpi Insurance" />
+          </Field>
+          <Button variant="primary" onClick={crear} disabled={creando || !nombreNuevo.trim()}>
+            {creando ? "Creando…" : "Crear cuenta de la casa"}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-5">
+          <div>
+            <h3 className="text-[13px] font-semibold text-foreground mb-3">Agente</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Nombre">
+                <TextInput value={nombre} onChange={(e) => setNombre(e.target.value)} />
+              </Field>
+              <Field label="Código">
+                <TextInput value={codigo} onChange={(e) => setCodigo(e.target.value)} />
+              </Field>
+              <Field label="Email">
+                <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </Field>
+              <Field label="Teléfono">
+                <TextInput value={telefono} onChange={(e) => setTelefono(e.target.value)} />
+              </Field>
+            </div>
+          </div>
+
+          {oficina && (
+            <div>
+              <h3 className="text-[13px] font-semibold text-foreground mb-3">Oficina matriz</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Nombre">
+                  <TextInput value={ofNombre} onChange={(e) => setOfNombre(e.target.value)} />
+                </Field>
+                <Field label="Dirección">
+                  <TextInput value={ofDireccion} onChange={(e) => setOfDireccion(e.target.value)} />
+                </Field>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <Button variant="primary" onClick={guardar} disabled={saving}>
+              {saving ? "Guardando…" : "Guardar"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ========================= Alias ========================= */
 
 function SeccionAlias() {
   const [alias, setAlias] = useState<AliasAgencia[]>([]);
@@ -61,9 +256,9 @@ function SeccionAlias() {
   }
 
   return (
-    <Card>
-      <CardHead title="Alias de la agencia" subtitle="Textos del campo 'Productor del reporte' que se consideran la agencia, no un agente real." />
-      <div className="p-4 flex items-center gap-2">
+    <div>
+      <p className="text-xs text-muted mb-3">Textos del campo &quot;Productor del reporte&quot; que se consideran la agencia, no un agente real.</p>
+      <div className="flex items-center gap-2 mb-3">
         <Input value={nuevo} onChange={setNuevo} placeholder="Ej: Gelpi Insurance LLC" icon={false} className="flex-1" />
         <Button size="sm" onClick={agregar} disabled={saving || !nuevo.trim()}>
           <Plus className="w-3.5 h-3.5" />
@@ -75,7 +270,7 @@ function SeccionAlias() {
       ) : alias.length === 0 ? (
         <EmptyState title="Sin alias" subtitle="Agregá el primer alias de la agencia." />
       ) : (
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-border border border-border rounded-lg">
           {alias.map((a) => (
             <div key={a.id} className="flex items-center justify-between px-4 py-2.5 text-[13px]">
               <div className="flex items-center gap-3">
@@ -94,9 +289,11 @@ function SeccionAlias() {
           ))}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
+
+/* ========================= Umbrales ========================= */
 
 function SeccionUmbrales() {
   const [config, setConfig] = useState<ConfigValores | null>(null);
@@ -117,25 +314,30 @@ function SeccionUmbrales() {
   }
 
   return (
-    <Card>
-      <CardHead title="Umbrales de score" subtitle="Controlan cuándo el motor de matching concilia solo, cuándo pide confirmación y cuándo escala." />
-      <div className="p-4">
-        <Banner tone="warn">
-          <ShieldAlert className="w-3.5 h-3.5 inline mr-1.5" />
-          Regla dura: un falso match automático es peor que una excepción sin resolver, porque un falso match nunca se vuelve a revisar.
-        </Banner>
-      </div>
+    <div>
+      <p className="text-xs text-muted mb-3">Controlan cuándo el motor de matching concilia solo, cuándo pide confirmación y cuándo escala.</p>
+      <Banner tone="warn">
+        <ShieldAlert className="w-3.5 h-3.5 inline mr-1.5" />
+        Regla dura: un falso match automático es peor que una excepción sin resolver, porque un falso match nunca se vuelve a revisar.
+      </Banner>
       {!config ? (
         <Loading />
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 pt-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
           <UmbralInput label="Umbral auto (%)" value={config.umbral_auto} onSave={(v) => guardar("umbral_auto", v)} saving={saving === "umbral_auto"} />
           <UmbralInput label="Umbral mismatch (%)" value={config.umbral_mismatch} onSave={(v) => guardar("umbral_mismatch", v)} saving={saving === "umbral_mismatch"} />
           <UmbralInput label="Días para 'Atrasada'" value={config.dias_atrasada} onSave={(v) => guardar("dias_atrasada", v)} saving={saving === "dias_atrasada"} />
           <UmbralInput label="Ventana vigencia (días)" value={config.ventana_dias_vigencia} onSave={(v) => guardar("ventana_dias_vigencia", v)} saving={saving === "ventana_dias_vigencia"} />
         </div>
       )}
-    </Card>
+      <div className="mt-5 pt-4 border-t border-border text-xs text-muted leading-relaxed">
+        <strong className="text-foreground">Reglas de chargeback:</strong> si el monto de una línea es negativo o el tipo de
+        transacción es cancelación/ajuste, el sistema busca la línea de comisión original ya conciliada con el mismo número
+        de póliza y hereda directo el mismo agente y la misma oficina, sin volver a pasar por el pipeline de matching. Si la
+        línea original todavía no se conciliaba cuando llegó el chargeback, queda en estado &quot;En espera&quot; — nunca cae
+        en &quot;Sin identificar&quot; por error.
+      </div>
+    </div>
   );
 }
 
@@ -153,6 +355,143 @@ function UmbralInput({ label, value, onSave, saving }: { label: string; value: n
     </Field>
   );
 }
+
+/* ========================= Conexión de IA ========================= */
+
+const MODELOS_IA = [
+  { value: "gpt-4o-mini", label: "gpt-4o-mini (recomendado, económico)" },
+  { value: "gpt-4o", label: "gpt-4o" },
+  { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
+  { value: "gpt-4.1", label: "gpt-4.1" },
+];
+
+function SeccionIA() {
+  const { showToast, toastNode } = useToast();
+  const [config, setConfig] = useState<ConfigIA | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [reemplazando, setReemplazando] = useState(false);
+  const [verKey, setVerKey] = useState(false);
+  const [model, setModel] = useState("gpt-4o-mini");
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestIAResult | null>(null);
+
+  const cargar = () => {
+    getConfigIA().then((c) => {
+      setConfig(c);
+      setModel(c.model);
+      setReemplazando(!c.apiKeyMasked);
+    });
+  };
+  useEffect(cargar, []);
+
+  async function probar() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await probarConexionIA(apiKey.trim() || null, model);
+      setTestResult(r);
+    } catch (e) {
+      setTestResult({ ok: false, error: e instanceof Error ? e.message : "Error desconocido." });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function guardar() {
+    setSaving(true);
+    try {
+      await guardarConfigIA(apiKey.trim() || null, model);
+      setApiKey("");
+      cargar();
+      showToast("Conexión de IA guardada.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!config) return <Loading />;
+
+  return (
+    <div className="flex flex-col gap-4 max-w-lg">
+      {toastNode}
+      <p className="text-xs text-muted">
+        El cliente conecta su propia cuenta de OpenAI. La llave se guarda cifrada en la base del cliente y solo la usa el
+        extractor de reportes (<code>extraer-reporte</code>). Sacala en{" "}
+        <span className="text-foreground font-medium">platform.openai.com → API keys</span>. El modelo{" "}
+        <span className="text-foreground font-medium">gpt-4o-mini</span> es barato: del orden de centavos por statement
+        procesado.
+      </p>
+
+      <Field label="Llave de API de OpenAI">
+        {config.apiKeyMasked && !reemplazando ? (
+          <div className="flex items-center gap-2">
+            <TextInput value={config.apiKeyMasked} disabled className="flex-1" />
+            <Button size="sm" onClick={() => setReemplazando(true)}>
+              Reemplazar
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <TextInput
+                type={verKey ? "text" : "password"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="sk-..."
+                className="pr-9"
+              />
+              <button
+                type="button"
+                onClick={() => setVerKey((v) => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted"
+                title={verKey ? "Ocultar" : "Mostrar"}
+              >
+                {verKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+            {config.apiKeyMasked && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setReemplazando(false);
+                  setApiKey("");
+                }}
+              >
+                Cancelar
+              </Button>
+            )}
+          </div>
+        )}
+      </Field>
+
+      <Field label="Modelo">
+        <Select value={model} onChange={setModel} options={MODELOS_IA} className="w-full" />
+      </Field>
+
+      <div className="flex items-center gap-2">
+        <Button onClick={probar} disabled={testing}>
+          <Sparkles className="w-3.5 h-3.5" />
+          {testing ? "Probando…" : "Probar conexión"}
+        </Button>
+        <Button variant="primary" onClick={guardar} disabled={saving}>
+          {saving ? "Guardando…" : "Guardar"}
+        </Button>
+      </div>
+
+      {testResult && (
+        <Banner tone={testResult.ok ? "info" : "bad"}>
+          {testResult.ok
+            ? `Conexión OK — modelo ${testResult.model}, ${testResult.latency_ms}ms.`
+            : `Error: ${testResult.error ?? "no se pudo conectar."}`}
+        </Banner>
+      )}
+    </div>
+  );
+}
+
+/* ========================= Plantillas ========================= */
 
 function SeccionPlantillas() {
   const [aseguradoras, setAseguradoras] = useState<AseguradoraRow[]>([]);
@@ -180,20 +519,17 @@ function SeccionPlantillas() {
   }
 
   return (
-    <Card>
-      <CardHead
-        title="Plantillas de mapeo por aseguradora"
-        actions={
-          <Button size="sm" onClick={() => setNuevaOpen(true)}>
-            <Plus className="w-3.5 h-3.5" />
-            Nueva aseguradora
-          </Button>
-        }
-      />
+    <div>
+      <div className="flex justify-end mb-3">
+        <Button size="sm" onClick={() => setNuevaOpen(true)}>
+          <Plus className="w-3.5 h-3.5" />
+          Nueva aseguradora
+        </Button>
+      </div>
       {loading ? (
         <Loading />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto border border-border rounded-lg">
           <table className="w-full text-[13px]">
             <thead>
               <tr className="text-left text-muted bg-background/60">
@@ -250,7 +586,7 @@ function SeccionPlantillas() {
           </div>
         </div>
       </Modal>
-    </Card>
+    </div>
   );
 }
 
@@ -295,19 +631,7 @@ function PlantillaModal({ aseguradora, onClose, onSaved }: { aseguradora: Asegur
   );
 }
 
-function SeccionChargebacks() {
-  return (
-    <Card>
-      <CardHead title="Reglas de chargeback" />
-      <div className="p-4 text-[13px] text-muted leading-relaxed">
-        Si el monto de una línea es negativo o el tipo de transacción es cancelación/ajuste, el sistema busca la línea de
-        comisión original ya conciliada con el mismo número de póliza y hereda directo el mismo agente y la misma oficina,
-        sin volver a pasar por el pipeline de matching. Si la línea original todavía no se conciliaba cuando llegó el
-        chargeback, queda en estado &quot;En espera&quot; — nunca cae en &quot;Sin identificar&quot; por error.
-      </div>
-    </Card>
-  );
-}
+/* ========================= Oficinas ========================= */
 
 function SeccionOficinas() {
   type OficinaCfg = { id: string; nombre: string; codigo: string | null; pct_override: number; gerente: { nombre: string } | null };
@@ -334,9 +658,8 @@ function SeccionOficinas() {
   }
 
   return (
-    <Card>
-      <CardHead title="Oficinas y permisos" />
-      <div className="p-4 flex items-center justify-between border-b border-border">
+    <div>
+      <div className="flex items-center justify-between border border-border rounded-lg px-4 py-3 mb-4">
         <div>
           <div className="text-[13px] font-medium text-foreground">Acceso de agentes individuales</div>
           <div className="text-xs text-muted">Cada agente puede tener su propio login de solo lectura a su ficha. Apagado por defecto.</div>
@@ -360,7 +683,7 @@ function SeccionOficinas() {
       {loading ? (
         <Loading />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto border border-border rounded-lg">
           <table className="w-full text-[13px]">
             <thead>
               <tr className="text-left text-muted bg-background/60">
@@ -377,7 +700,7 @@ function SeccionOficinas() {
           </table>
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 

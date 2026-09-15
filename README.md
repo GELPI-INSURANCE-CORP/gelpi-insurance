@@ -52,8 +52,8 @@ Para rotar llaves: actualizá el valor en Supabase y después `gh secret set NEX
 
 - Proyecto Supabase: `nivuzhqmxcvnubuwbvoh`
 - Edge Function: `extraer-reporte`
-- Pendiente: setear el secreto `ANTHROPIC_API_KEY` de la función:
+- Pendiente: setear el secreto `OPENAI_API_KEY` de la función:
 
 ```bash
-supabase secrets set ANTHROPIC_API_KEY=... --project-ref nivuzhqmxcvnubuwbvoh
+supabase secrets set OPENAI_API_KEY=... --project-ref nivuzhqmxcvnubuwbvoh
 ```
