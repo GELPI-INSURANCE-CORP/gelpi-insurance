@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Pencil } from "lucide-react";
@@ -109,12 +110,12 @@ export default function OficinasPage() {
                   <Stat label="% conciliado automático" value={pct(o.pctConciliadoAuto)} />
                 </div>
                 <div className="flex items-center gap-3 pt-2 border-t border-border text-xs">
-                  <a href={`/comisiones/clientes/?oficina=${o.id}`} className="text-brand hover:underline">
+                  <Link href={`/comisiones/clientes/?oficina=${o.id}`} className="text-brand hover:underline">
                     Ver Active Business Book
-                  </a>
-                  <a href={`/comisiones/conciliacion/?oficina=${o.id}`} className="text-brand hover:underline">
+                  </Link>
+                  <Link href={`/comisiones/conciliacion/?oficina=${o.id}`} className="text-brand hover:underline">
                     Ver excepciones
-                  </a>
+                  </Link>
                 </div>
               </Card>
             ))}

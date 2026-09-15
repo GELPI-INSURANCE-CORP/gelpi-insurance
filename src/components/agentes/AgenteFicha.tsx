@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useState } from "react";
 import { Download, RefreshCw, ExternalLink } from "lucide-react";
@@ -503,9 +504,9 @@ function TabExcepciones({ agenteId, onTotal }: { agenteId: string; onTotal: (n: 
             </div>
             <div className="text-xs text-muted mt-1 max-w-lg">{e.explicacion}</div>
           </div>
-          <a href={`/comisiones/conciliacion/?excepcion=${e.id}`} className="text-brand text-xs hover:underline shrink-0">
+          <Link href={`/comisiones/conciliacion/?excepcion=${e.id}`} className="text-brand text-xs hover:underline shrink-0">
             Ver en Conciliación
-          </a>
+          </Link>
         </div>
       ))}
     </div>

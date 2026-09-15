@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { Plus, Upload } from "lucide-react";
@@ -65,12 +66,12 @@ function BonosContent() {
             <Plus className="w-3.5 h-3.5" />
             Cargar bono manual
           </Button>
-          <a href="/comisiones/subir/">
+          <Link href="/comisiones/subir/">
             <Button size="sm">
               <Upload className="w-3.5 h-3.5" />
               Subir statement de bono
             </Button>
-          </a>
+          </Link>
         </div>
       </div>
 
