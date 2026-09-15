@@ -9,6 +9,7 @@ import {
   Download,
   Loader2,
   Search as SearchIcon,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   Badge,
@@ -135,6 +136,12 @@ export default function ConciliacionPage() {
   const [montoMin, setMontoMin] = useState("");
   const [soloAtrasadas, setSoloAtrasadas] = useState(false);
   const [ramo, setRamo] = useState("");
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
+  const filtrosActivos = [buscarTexto, aseguradoraId, oficinaId, agenteId, desde, hasta, montoMin, ramo].filter(Boolean).length + (soloAtrasadas ? 1 : 0);
+  const limpiarFiltros = () => {
+    setBuscarTexto(""); setAseguradoraId(""); setOficinaId(""); setAgenteId("");
+    setDesde(""); setHasta(""); setMontoMin(""); setSoloAtrasadas(false); setRamo("");
+  };
 
   const debouncedSetBuscar = useMemo(() => debounce((v: string) => setBuscarDebounced(v), 350), []);
   useEffect(() => {
@@ -395,8 +402,35 @@ export default function ConciliacionPage() {
 
       {/* TOOLBAR: TABS + FILTROS */}
       <Card className="flex-shrink-0">
-        <Tabs items={tabItems} active={tab} onChange={(k) => setTab(k as typeof tab)} />
-        <div className="flex flex-col gap-2.5 px-5 py-3.5">
+        <Tabs
+          items={tabItems}
+          active={tab}
+          onChange={(k) => setTab(k as typeof tab)}
+          trailing={
+            <>
+              {filtrosActivos > 0 && (
+                <button type="button" onClick={limpiarFiltros} className="text-[12px] text-muted hover:text-foreground">
+                  Limpiar
+                </button>
+              )}
+              <Button
+                variant={filtrosAbiertos || filtrosActivos > 0 ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => setFiltrosAbiertos((v) => !v)}
+              >
+                <SlidersHorizontal size={14} />
+                Filtros
+                {filtrosActivos > 0 && (
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-[11px] font-semibold">
+                    {filtrosActivos}
+                  </span>
+                )}
+              </Button>
+            </>
+          }
+        />
+        {filtrosAbiertos && (
+        <div className="flex flex-col gap-2.5 border-b border-border bg-background/60 px-5 py-3.5">
           <div className="flex flex-wrap items-center gap-2">
             <Input
               icon={<SearchIcon size={14} className="flex-shrink-0 text-muted" />}
@@ -465,6 +499,7 @@ export default function ConciliacionPage() {
             ))}
           </div>
         </div>
+        )}
       </Card>
 
       {/* TABLA + PANEL */}

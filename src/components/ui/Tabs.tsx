@@ -19,13 +19,15 @@ export function Tabs({
   items,
   active,
   onChange,
+  trailing,
 }: {
   items: TabItem[];
   active: string;
   onChange: (key: string) => void;
+  trailing?: React.ReactNode;
 }) {
   return (
-    <div className="flex gap-1 overflow-x-auto border-b border-border px-5">
+    <div className="flex items-center gap-1 overflow-x-auto border-b border-border px-5">
       {items.map((it) => (
         <button
           key={it.key}
@@ -51,6 +53,7 @@ export function Tabs({
           )}
         </button>
       ))}
+      {trailing && <div className="ml-auto flex flex-shrink-0 items-center gap-2 py-2 pl-4">{trailing}</div>}
     </div>
   );
 }
