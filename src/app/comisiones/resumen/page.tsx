@@ -137,8 +137,7 @@ export default function ResumenPage() {
       {/* Saludo + selector de período */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <span className="text-xs text-muted">Gelpi Insurance</span>
-          <span className="text-xl font-semibold text-foreground">Hola, Jose</span>
+          <span className="text-xl font-semibold text-foreground">GELPI INSURANCE CORP</span>
         </div>
         <div className="relative" ref={menuRef}>
           <Chip icon={<ChevronDown size={14} />} onClick={() => setMenuAbierto((v) => !v)}>
