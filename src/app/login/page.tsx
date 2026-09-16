@@ -64,7 +64,7 @@ export default function LoginPage() {
           </div>
         </div>
         <h1 className="mb-6 text-center text-sm text-muted">
-          Panel interno · Módulo de Comisiones
+          GELPI AMS
         </h1>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
