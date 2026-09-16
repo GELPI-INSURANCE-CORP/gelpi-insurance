@@ -37,7 +37,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <nav className="flex flex-grow flex-col gap-1 overflow-y-auto p-3">
         <div className="flex items-center gap-3 rounded-lg bg-brand px-3 py-2.5 text-sm font-semibold text-white">
           <PieChart size={16} />
-          Comisiones
+          Dashboard
         </div>
         <div className="ml-5 mt-1.5 flex flex-col gap-0.5 border-l border-border pl-3">
           {SUBTABS.map((t) => {
