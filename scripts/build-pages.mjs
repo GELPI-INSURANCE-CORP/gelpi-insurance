@@ -1,9 +1,7 @@
-// Build for GitHub Pages en Windows y Linux sin depender de `cross-env`.
-// Setea GITHUB_PAGES=true en process.env y corre `next build` en un proceso
-// hijo (heredando ese env), para que next.config.ts arme basePath/assetPrefix.
+// Build para GitHub Pages en Windows y Linux sin depender de `cross-env`.
+// La app se publica en la raíz del dominio propio, así que esto es un
+// `next build` normal; el script existe para restaurar out/404.html después.
 import { execSync } from "node:child_process";
-
-process.env.GITHUB_PAGES = "true";
 
 execSync("next build", {
   stdio: "inherit",

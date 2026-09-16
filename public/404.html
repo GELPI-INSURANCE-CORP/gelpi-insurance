@@ -4,28 +4,10 @@
     <meta charset="utf-8" />
     <title>Gelpi Insurance</title>
     <script>
-      // GitHub Pages sirve este 404.html para cualquier ruta no pre-renderizada
-      // del export estático. Reescribimos la URL para que caiga dentro del
-      // basePath /gelpi-insurance/ y dejamos que el router del cliente la resuelva.
-      (function () {
-        var basePath = "/gelpi-insurance";
-        var path = window.location.pathname;
-
-        if (path.indexOf(basePath) !== 0) {
-          var suffix = path.replace(/^\//, "");
-          var target =
-            basePath +
-            "/" +
-            suffix +
-            window.location.search +
-            window.location.hash;
-          window.location.replace(target);
-        } else {
-          // Ya está dentro del basePath (ej. ruta desconocida real):
-          // mandamos a la raíz de la app.
-          window.location.replace(basePath + "/");
-        }
-      })();
+      // GitHub Pages sirve este 404.html para cualquier ruta que no exista en
+      // el export estático. Como la app vive en la raíz del dominio, mandamos
+      // al inicio y dejamos que el router del cliente resuelva.
+      window.location.replace("/");
     </script>
   </head>
   <body></body>
