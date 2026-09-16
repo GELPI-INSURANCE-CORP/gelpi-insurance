@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Bot,
+  Check,
   CheckCircle2,
   Download,
   Loader2,
@@ -159,6 +160,9 @@ function ConciliacionContent() {
 
   // ----- selección -----
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [asignandoLote, setAsignandoLote] = useState(false);
+  const [agenteLote, setAgenteLote] = useState("");
+  const [aplicandoLote, setAplicandoLote] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ExcepcionDetalle | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -357,6 +361,42 @@ function ConciliacionContent() {
     refreshCountsYKpis();
     setSelectedIds(new Set());
     showToast(`${ok} confirmadas${fail > 0 ? `, ${fail} fallaron` : ""}.`);
+  }
+
+  // ----- confirmar 1 fila con un clic (mismatch con sugerencia ya calculada) -----
+  function confirmarFila(id: string) {
+    ejecutarAccion({ excepcionId: id, accion: "confirmar" }, "Sugerencia confirmada.");
+  }
+
+  // ----- asignar un agente elegido a todas las filas seleccionadas que lo admiten -----
+  async function asignarAgenteLote() {
+    if (!agenteLote) return;
+    const asignables = rows.filter((r) => selectedIds.has(r.id) && (r.tipo === "mismatch" || r.tipo === "sin_identificar"));
+    const omitidas = rows.filter((r) => selectedIds.has(r.id)).length - asignables.length;
+    if (asignables.length === 0) {
+      showToast("Ninguna de las filas seleccionadas admite asignar agente (solo mismatch o sin identificar).");
+      return;
+    }
+    setAplicandoLote(true);
+    let ok = 0;
+    let fail = 0;
+    for (const r of asignables) {
+      try {
+        await resolverExcepcion({ excepcionId: r.id, accion: "asignar", agenteId: agenteLote });
+        ok += 1;
+      } catch {
+        fail += 1;
+      }
+    }
+    setAplicandoLote(false);
+    setAsignandoLote(false);
+    setAgenteLote("");
+    cargarLista();
+    refreshCountsYKpis();
+    setSelectedIds(new Set());
+    showToast(
+      `${ok} asignadas${fail > 0 ? `, ${fail} fallaron` : ""}${omitidas > 0 ? `, ${omitidas} omitidas (tipo no soportado)` : ""}.`
+    );
   }
 
   // ----- buscador de póliza (sin_identificar): debounced y descarta respuestas fuera de orden -----
@@ -581,7 +621,15 @@ function ConciliacionContent() {
               <>
                 <span className="text-xs text-muted">{selectedIds.size} seleccionadas</span>
                 <Button variant="secondary" size="sm" disabled={selectedIds.size === 0 || accionEnCurso} onClick={resolverMasivo}>
-                  Resolver masivo
+                  Confirmar sugeridas
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={selectedIds.size === 0 || aplicandoLote}
+                  onClick={() => setAsignandoLote((v) => !v)}
+                >
+                  Asignar agente…
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => exportExcepcionesCsv(rows)} disabled={rows.length === 0}>
                   <Download size={14} />
@@ -590,6 +638,25 @@ function ConciliacionContent() {
               </>
             }
           />
+          {asignandoLote && (
+            <div className="flex flex-shrink-0 items-center gap-2 border-b border-border bg-background/60 px-5 py-3">
+              <span className="text-[12px] text-muted">Asignar a {selectedIds.size} seleccionadas:</span>
+              <Select
+                options={agenteOptions}
+                placeholder="Elegí un agente"
+                value={agenteLote}
+                onChange={(e) => setAgenteLote(e.target.value)}
+                className="w-56"
+              />
+              <Button variant="primary" size="sm" disabled={!agenteLote || aplicandoLote} onClick={asignarAgenteLote}>
+                Aplicar a {selectedIds.size} seleccionadas
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => { setAsignandoLote(false); setAgenteLote(""); }}>
+                Cancelar
+              </Button>
+              <span className="text-[11px] text-muted">Solo aplica a mismatch y sin identificar; el resto se omite.</span>
+            </div>
+          )}
           <div className="flex-1 overflow-auto">
             {loading ? (
               <div className="flex h-full items-center justify-center py-16">
@@ -619,6 +686,7 @@ function ConciliacionContent() {
                     <th className="px-2 py-2.5">Fecha statement</th>
                     <th className="px-2 py-2.5">Antigüedad</th>
                     <th className="px-2 py-2.5">Estado</th>
+                    <th className="px-2 py-2.5">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -691,6 +759,21 @@ function ConciliacionContent() {
                             </Badge>
                           ) : (
                             <Badge tone="neutral">Pendiente</Badge>
+                          )}
+                        </td>
+                        <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
+                          {r.tipo === "mismatch" && r.agente_sugerido_id ? (
+                            <button
+                              type="button"
+                              title={`Confirmar a ${r.agente_sugerido ?? "agente sugerido"}`}
+                              onClick={() => confirmarFila(r.id)}
+                              disabled={accionEnCurso}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-ok-fg/30 bg-ok-bg text-ok-fg hover:opacity-80 disabled:opacity-50"
+                            >
+                              <Check size={14} />
+                            </button>
+                          ) : (
+                            <span className="text-muted">—</span>
                           )}
                         </td>
                       </tr>
