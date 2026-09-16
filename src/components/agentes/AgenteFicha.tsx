@@ -97,7 +97,7 @@ export default function AgenteFicha({ agente, onIrExcepciones }: { agente: Agent
             <div className="text-lg font-semibold text-foreground">{agente.nombre}</div>
             <div className="text-[13px] text-muted">{agente.oficina?.nombre ?? "Sin oficina"}</div>
             <div className="text-xs text-neutral-fg">
-              Código interno: {agente.codigo ?? "—"} &nbsp;·&nbsp; Activo desde: {fecha(agente.fecha_alta)}
+              Código interno: {agente.codigo ?? "—"} &nbsp;·&nbsp; NPN: {agente.npn ?? "—"} &nbsp;·&nbsp; Activo desde: {fecha(agente.fecha_alta)}
             </div>
           </div>
         </div>

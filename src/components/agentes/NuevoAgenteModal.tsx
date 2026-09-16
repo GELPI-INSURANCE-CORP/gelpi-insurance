@@ -17,42 +17,47 @@ export default function NuevoAgenteModal({
   oficinas: { id: string; nombre: string }[];
   agentes: { id: string; nombre: string }[];
 }) {
-  const [nombre, setNombre] = useState("");
+  const [nombrePila, setNombrePila] = useState("");
+  const [apellido, setApellido] = useState("");
   const [codigo, setCodigo] = useState("");
   const [oficinaId, setOficinaId] = useState("");
   const [supervisorId, setSupervisorId] = useState("");
   const [email, setEmail] = useState("");
   const [telefono, setTelefono] = useState("");
+  const [npn, setNpn] = useState("");
   const [pctSplit, setPctSplit] = useState("0");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
-    setNombre("");
+    setNombrePila("");
+    setApellido("");
     setCodigo("");
     setOficinaId("");
     setSupervisorId("");
     setEmail("");
     setTelefono("");
+    setNpn("");
     setPctSplit("0");
     setError(null);
   }
 
   async function submit() {
-    if (!nombre.trim() || !oficinaId) {
-      setError("Nombre y oficina son obligatorios.");
+    if (!nombrePila.trim() || !apellido.trim() || !oficinaId || !email.trim()) {
+      setError("Nombre, apellido, email y oficina son obligatorios.");
       return;
     }
     setSaving(true);
     setError(null);
     try {
       await crearAgente({
-        nombre: nombre.trim(),
+        nombre: `${nombrePila.trim()} ${apellido.trim()}`,
         codigo: codigo.trim() || null,
         oficina_id: oficinaId,
         supervisor_id: supervisorId || null,
         email: email.trim(),
         telefono: telefono.trim(),
+        npn: npn.trim() || null,
         pct_split_default: Number(pctSplit) || 0,
       });
       reset();
@@ -68,11 +73,17 @@ export default function NuevoAgenteModal({
   return (
     <Modal open={open} onClose={onClose} title="Nuevo agente">
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Nombre completo">
-          <TextInput value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre y apellido" />
+        <Field label="Nombre">
+          <TextInput value={nombrePila} onChange={(e) => setNombrePila(e.target.value)} placeholder="Nombre" />
         </Field>
-        <Field label="Código interno">
-          <TextInput value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="GEL-0XX" />
+        <Field label="Apellido">
+          <TextInput value={apellido} onChange={(e) => setApellido(e.target.value)} placeholder="Apellido" />
+        </Field>
+        <Field label="Email">
+          <TextInput value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="nombre@gelpiinsurance.com" />
+        </Field>
+        <Field label="Celular">
+          <TextInput value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="+1 (999) 999-9999" />
         </Field>
         <Field label="Oficina">
           <Select
@@ -88,11 +99,11 @@ export default function NuevoAgenteModal({
             options={[{ value: "", label: "Ninguno" }, ...agentes.map((a) => ({ value: a.id, label: a.nombre }))]}
           />
         </Field>
-        <Field label="Email">
-          <TextInput value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
+        <Field label="NPN (opcional)">
+          <TextInput value={npn} onChange={(e) => setNpn(e.target.value)} placeholder="National Producer Number" />
         </Field>
-        <Field label="Teléfono">
-          <TextInput value={telefono} onChange={(e) => setTelefono(e.target.value)} />
+        <Field label="Código interno (opcional)">
+          <TextInput value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="GEL-0XX" />
         </Field>
         <Field label="% split por defecto">
           <TextInput value={pctSplit} onChange={(e) => setPctSplit(e.target.value)} type="number" />

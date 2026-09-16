@@ -8,6 +8,7 @@ export interface AgenteRow {
   supervisor_id: string | null;
   email: string | null;
   telefono: string | null;
+  npn: string | null;
   pct_split_default: number;
   fecha_alta: string | null;
   activo: boolean;
@@ -76,7 +77,7 @@ export async function listAgentesDirectorio(): Promise<AgenteDirectorioItem[]> {
   const [{ data: agentes, error: e1 }, oficinas] = await Promise.all([
     supabase
       .from("agentes")
-      .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, pct_split_default, fecha_alta, activo, es_casa, oficina:oficinas!oficina_id(nombre)")
+      .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, npn, pct_split_default, fecha_alta, activo, es_casa, oficina:oficinas!oficina_id(nombre)")
       .eq("activo", true)
       .order("nombre"),
     listOficinasSimple(),
@@ -116,7 +117,7 @@ export async function listAgentesDirectorio(): Promise<AgenteDirectorioItem[]> {
 export async function getAgente(id: string): Promise<AgenteRow | null> {
   const { data, error } = await supabase
     .from("agentes")
-    .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, pct_split_default, fecha_alta, activo, es_casa, oficina:oficinas!oficina_id(nombre)")
+    .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, npn, pct_split_default, fecha_alta, activo, es_casa, oficina:oficinas!oficina_id(nombre)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -270,6 +271,7 @@ export interface NuevoAgente {
   supervisor_id: string | null;
   email: string;
   telefono: string;
+  npn: string | null;
   pct_split_default: number;
 }
 
