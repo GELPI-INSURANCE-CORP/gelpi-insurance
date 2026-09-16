@@ -74,16 +74,24 @@ export async function listAgentesSimple() {
 }
 
 export async function listAgentesDirectorio(): Promise<AgenteDirectorioItem[]> {
+  // Se arma el nombre de oficina con un join manual (dos consultas + Map) en vez del
+  // embed `oficina:oficinas(nombre)` de PostgREST: agentes<->oficinas tiene DOS
+  // relaciones (agentes.oficina_id y oficinas.gerente_agente_id), y PostgREST no
+  // puede elegir sola cuál usar (PGRST201, "more than one relationship was found").
   const [{ data: agentes, error: e1 }, oficinas] = await Promise.all([
     supabase
       .from("agentes")
-      .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, npn, pct_split_default, fecha_alta, activo, es_casa, oficina:oficinas!oficina_id(nombre)")
+      .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, npn, pct_split_default, fecha_alta, activo, es_casa")
       .eq("activo", true)
       .order("nombre"),
     listOficinasSimple(),
   ]);
   if (e1) throw e1;
-  const rows = (agentes ?? []) as unknown as AgenteRow[];
+  const oficinaPorId = new Map((oficinas ?? []).map((o) => [o.id, o.nombre]));
+  const rows = (agentes ?? []).map((a) => ({
+    ...a,
+    oficina: a.oficina_id && oficinaPorId.has(a.oficina_id) ? { nombre: oficinaPorId.get(a.oficina_id)! } : null,
+  })) as unknown as AgenteRow[];
   const { desde, hasta } = monthRange();
 
   const [lc, { data: ex, error: e3 }] = await Promise.all([
@@ -115,13 +123,22 @@ export async function listAgentesDirectorio(): Promise<AgenteDirectorioItem[]> {
 }
 
 export async function getAgente(id: string): Promise<AgenteRow | null> {
+  // Ver nota en listAgentesDirectorio: join manual en vez del embed de PostgREST
+  // por la relación ambigua agentes<->oficinas.
   const { data, error } = await supabase
     .from("agentes")
-    .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, npn, pct_split_default, fecha_alta, activo, es_casa, oficina:oficinas!oficina_id(nombre)")
+    .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, npn, pct_split_default, fecha_alta, activo, es_casa")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
-  return data as unknown as AgenteRow | null;
+  if (!data) return null;
+  let oficina: { nombre: string } | null = null;
+  if (data.oficina_id) {
+    const { data: of, error: e2 } = await supabase.from("oficinas").select("nombre").eq("id", data.oficina_id).maybeSingle();
+    if (e2) throw e2;
+    oficina = of;
+  }
+  return { ...data, oficina } as unknown as AgenteRow;
 }
 
 export async function getAgenteKpis(agenteId: string) {
