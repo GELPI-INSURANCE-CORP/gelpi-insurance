@@ -21,7 +21,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-16 flex-shrink-0 items-center gap-2.5 border-b border-border px-5">
-        <Image src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo-gelpi.svg`} alt="Gelpi Insurance" width={30} height={35} />
+        <Image src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo-gelpi.png`} alt="Gelpi Insurance" width={31} height={35} />
         <div className="flex flex-col leading-none">
           <span
             className="text-[20px] font-bold tracking-wide text-brand-dark"
