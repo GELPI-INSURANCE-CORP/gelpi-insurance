@@ -15,6 +15,7 @@ function AgentesContent() {
 
   const [agentes, setAgentes] = useState<AgenteDirectorioItem[]>([]);
   const [loadingDirectorio, setLoadingDirectorio] = useState(true);
+  const [dirError, setDirError] = useState<string | null>(null);
   const [oficinas, setOficinas] = useState<{ id: string; nombre: string }[]>([]);
   const [agentesSimple, setAgentesSimple] = useState<{ id: string; nombre: string }[]>([]);
   const [nuevoOpen, setNuevoOpen] = useState(false);
@@ -24,8 +25,10 @@ function AgentesContent() {
 
   const cargarDirectorio = useCallback(() => {
     setLoadingDirectorio(true);
+    setDirError(null);
     listAgentesDirectorio()
       .then(setAgentes)
+      .catch((e: unknown) => setDirError(e instanceof Error ? e.message : "No se pudo cargar el directorio de agentes."))
       .finally(() => setLoadingDirectorio(false));
   }, []);
 
@@ -63,6 +66,14 @@ function AgentesContent() {
   return (
     <div className="flex flex-col gap-4 h-[calc(100vh-96px)] min-h-[600px]">
       <h1 className="text-lg font-semibold text-foreground">Agentes</h1>
+      {dirError && (
+        <div className="flex items-center gap-3 rounded-lg border border-bad-fg/30 bg-bad-bg px-4 py-2.5 text-[13px] text-bad-fg">
+          <span className="flex-1">No se pudo cargar el directorio de agentes: {dirError}</span>
+          <button type="button" onClick={cargarDirectorio} className="font-semibold underline underline-offset-2">
+            Reintentar
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-6 flex-1 min-h-0">
         <AgenteDirectorio
           agentes={agentes}

@@ -76,7 +76,7 @@ export async function listAgentesDirectorio(): Promise<AgenteDirectorioItem[]> {
   const [{ data: agentes, error: e1 }, oficinas] = await Promise.all([
     supabase
       .from("agentes")
-      .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, pct_split_default, fecha_alta, activo, es_casa, oficina:oficinas(nombre)")
+      .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, pct_split_default, fecha_alta, activo, es_casa, oficina:oficinas!oficina_id(nombre)")
       .eq("activo", true)
       .order("nombre"),
     listOficinasSimple(),
@@ -116,7 +116,7 @@ export async function listAgentesDirectorio(): Promise<AgenteDirectorioItem[]> {
 export async function getAgente(id: string): Promise<AgenteRow | null> {
   const { data, error } = await supabase
     .from("agentes")
-    .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, pct_split_default, fecha_alta, activo, es_casa, oficina:oficinas(nombre)")
+    .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, pct_split_default, fecha_alta, activo, es_casa, oficina:oficinas!oficina_id(nombre)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
