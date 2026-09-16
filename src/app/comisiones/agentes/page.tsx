@@ -1,12 +1,21 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import AgenteDirectorio from "@/components/agentes/AgenteDirectorio";
+import AgentesTabla from "@/components/agentes/AgentesTabla";
 import AgenteFicha from "@/components/agentes/AgenteFicha";
 import NuevoAgenteModal from "@/components/agentes/NuevoAgenteModal";
-import { EmptyState, Loading } from "@/components/agentes/ui";
-import { listAgentesDirectorio, listOficinasSimple, listAgentesSimple, getAgente, type AgenteDirectorioItem, type AgenteRow } from "@/lib/queries/agentes";
+import { Button, Loading } from "@/components/agentes/ui";
+import {
+  listAgentesDirectorio,
+  listOficinasSimple,
+  listAgentesSimple,
+  getAgente,
+  actualizarEstadoAgente,
+  type AgenteDirectorioItem,
+  type AgenteRow,
+} from "@/lib/queries/agentes";
 
 function AgentesContent() {
   const router = useRouter();
@@ -22,6 +31,7 @@ function AgentesContent() {
 
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<AgenteRow | null>(null);
   const [loadingAgente, setLoadingAgente] = useState(false);
+  const [cambiandoId, setCambiandoId] = useState<string | null>(null);
 
   const cargarDirectorio = useCallback(() => {
     setLoadingDirectorio(true);
@@ -53,14 +63,22 @@ function AgentesContent() {
     };
   }, [agenteIdParam]);
 
-  useEffect(() => {
-    if (!agenteIdParam && agentes.length > 0) {
-      router.replace(`/comisiones/agentes/?agente=${agentes[0].id}`);
-    }
-  }, [agenteIdParam, agentes, router]);
-
   function seleccionar(id: string) {
     router.push(`/comisiones/agentes/?agente=${id}`);
+  }
+
+  function volverAlListado() {
+    router.push(`/comisiones/agentes/`);
+  }
+
+  async function handleToggleActivo(id: string, activo: boolean) {
+    setCambiandoId(id);
+    try {
+      await actualizarEstadoAgente(id, activo);
+      cargarDirectorio();
+    } finally {
+      setCambiandoId(null);
+    }
   }
 
   return (
@@ -74,23 +92,28 @@ function AgentesContent() {
           </button>
         </div>
       )}
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-6 flex-1 min-h-0">
-        <AgenteDirectorio
-          agentes={agentes}
-          loading={loadingDirectorio}
-          seleccionadoId={agenteIdParam}
-          onSeleccionar={seleccionar}
-          onNuevo={() => setNuevoOpen(true)}
-        />
-        <div className="min-h-0 overflow-y-auto">
-          {loadingAgente && <Loading />}
-          {!loadingAgente && agenteSeleccionado && (
-            <AgenteFicha agente={agenteSeleccionado} onIrExcepciones={() => router.push(`/comisiones/conciliacion/?agente=${agenteSeleccionado.id}`)} />
-          )}
-          {!loadingAgente && !agenteSeleccionado && (
-            <EmptyState title="Elegí un agente" subtitle="Seleccioná un agente del directorio para ver su ficha completa." />
-          )}
-        </div>
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {!agenteIdParam ? (
+          <AgentesTabla
+            agentes={agentes}
+            loading={loadingDirectorio}
+            onVerFicha={seleccionar}
+            onNuevo={() => setNuevoOpen(true)}
+            onToggleActivo={handleToggleActivo}
+            cambiandoId={cambiandoId}
+          />
+        ) : (
+          <div className="flex flex-col gap-3">
+            <Button variant="ghost" size="sm" onClick={volverAlListado} className="self-start">
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Volver al listado
+            </Button>
+            {loadingAgente && <Loading />}
+            {!loadingAgente && agenteSeleccionado && (
+              <AgenteFicha agente={agenteSeleccionado} onIrExcepciones={() => router.push(`/comisiones/conciliacion/?agente=${agenteSeleccionado.id}`)} />
+            )}
+          </div>
+        )}
       </div>
 
       <NuevoAgenteModal

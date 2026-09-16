@@ -82,7 +82,6 @@ export async function listAgentesDirectorio(): Promise<AgenteDirectorioItem[]> {
     supabase
       .from("agentes")
       .select("id, nombre, codigo, oficina_id, supervisor_id, email, telefono, npn, pct_split_default, fecha_alta, activo, es_casa")
-      .eq("activo", true)
       .order("nombre"),
     listOficinasSimple(),
   ]);
@@ -296,6 +295,14 @@ export async function crearAgente(input: NuevoAgente) {
   const { data, error } = await supabase.from("agentes").insert(input).select("id").single();
   if (error) throw error;
   return data;
+}
+
+// No se borra el agente: rompería el historial de comisiones/pólizas ya ligadas a
+// él. Se marca inactivo (o se reactiva) y desaparece/reaparece de los selectores
+// de asignación, igual que "Active/Inactive" en Apizeal.
+export async function actualizarEstadoAgente(id: string, activo: boolean) {
+  const { error } = await supabase.from("agentes").update({ activo }).eq("id", id);
+  if (error) throw error;
 }
 
 export async function listAseguradorasSimple() {
