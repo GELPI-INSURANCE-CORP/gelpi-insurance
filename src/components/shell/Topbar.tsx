@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell, Menu, Search } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
@@ -15,6 +16,7 @@ const TITLES: Record<string, string> = {
   "/comisiones/oficinas": "Oficinas",
   "/comisiones/bonos": "Bonos",
   "/comisiones/configuracion": "Configuración",
+  "/comisiones/cuenta": "Mi cuenta",
 };
 
 export function Topbar({ onMenu }: { onMenu?: () => void }) {
@@ -97,6 +99,13 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
               <div className="truncate border-b border-border px-3 py-2 text-[13px] text-foreground">
                 {displayName(user)}
               </div>
+              <Link
+                href="/comisiones/cuenta/"
+                onClick={() => setMenuOpen(false)}
+                className="block px-3 py-2 text-left text-[13px] text-foreground hover:bg-background"
+              >
+                Cambiar contraseña
+              </Link>
               <button
                 type="button"
                 onClick={handleSignOut}
