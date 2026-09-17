@@ -451,6 +451,7 @@ Reglas:
 - Montos como número; los chargebacks/cancelaciones son montos NEGATIVOS.
 - tipo_transaccion: traducí códigos de aseguradora (NB/NBS/NEW->nueva, RWL/REN->renovacion, END/ENDT/XLC->endoso, CAN/CNL/CXL/CB->cancelacion, ADJ->ajuste) o dejá "otro".
 - Algunas aseguradoras (ej. United Automobile) incluyen en el statement una fila de referencia con el total ya pagado en el período anterior, sin póliza real asociada (número de póliza en ceros como "00000000000", o vacío). Esa fila no es una transacción nueva de este período: clasificala como tipo_transaccion="ajuste" y poné en nombre_asegurado algo descriptivo como "Pago período anterior (referencia)" en vez de dejarlo vacío. No inventes un número de póliza.
+- numero_poliza: incluí SIEMPRE el prefijo de letras del número de póliza. Si la referencia viene como "01 UAD -610794900", el número de póliza es "UAD-610794900" (el "01" inicial es un código de línea, no parte de la póliza); nunca devuelvas solo "-610794900".
 - CRÍTICO al extraer filas de un PDF/imagen con una tabla larga: transcribí TODAS las filas de TODAS las páginas, una por una, sin resumir, sin muestrear ni saltear ninguna aunque haya decenas o cientos. No es aceptable devolver solo una parte de la tabla. Si el documento trae en algún resumen/pie de página cuántas transacciones tiene en total (ej. "Transactions processed: 219"), reportá ese número en total_filas_documento — se usa para verificar que no falte ninguna fila.
 - Cualquier columna que no tenga un campo destino claro, listala en columnas_sin_mapeo y, si te piden las filas completas, guardá su valor en campos_extra.
 - Sé conservador con la confianza (0-100): bajala si el archivo es ambiguo o está mal escaneado.`;
@@ -984,6 +985,57 @@ Deno.serve(async (req: Request) => {
       await procesarBono(admin, reporteId!, reporte, filasFinal, aseguradoraId, extraccion, metaUpdate);
     } else {
       // comision_aseguradora / chargebacks / produccion / cancelaciones / renovaciones / resumen_anual
+
+      // Reparar números de póliza sin prefijo alfabético usando el Book de la misma aseguradora.
+      // En statements tipo "01 UAD -610794900" el extractor a veces se queda solo con
+      // "-610794900" y pierde el "UAD"; el Book tiene "UAD610794900", así que el match exacto
+      // por numero_normalizado nunca cruza. Si el bloque numérico coincide con UNA sola póliza
+      // de esta aseguradora en el Book, usamos ese número completo.
+      if (aseguradoraId) {
+        const soloDigitos = (v: unknown) => String(v ?? "").replace(/\D/g, "").replace(/^0+/, "");
+        const sinPrefijo = filasFinal.filter((f) => f.numero_poliza && !/[A-Za-z]/.test(String(f.numero_poliza)) && soloDigitos(f.numero_poliza));
+        if (sinPrefijo.length > 0) {
+          const { data: polizasAseg } = await admin.from("polizas").select("numero_normalizado").eq("aseguradora_id", aseguradoraId);
+          const porDigitos = new Map<string, string[]>();
+          for (const p of polizasAseg ?? []) {
+            const d = soloDigitos(p.numero_normalizado);
+            if (!d) continue;
+            if (!porDigitos.has(d)) porDigitos.set(d, []);
+            porDigitos.get(d)!.push(p.numero_normalizado);
+          }
+          let reparadas = 0;
+          for (const f of sinPrefijo) {
+            const candidatos = porDigitos.get(soloDigitos(f.numero_poliza));
+            if (candidatos && candidatos.length === 1) {
+              f.numero_poliza = candidatos[0];
+              reparadas++;
+            }
+          }
+          if (reparadas > 0) {
+            metaUpdate.resumen_ia = `${metaUpdate.resumen_ia ?? ""} (${reparadas} número(s) de póliza completados con el prefijo del Book)`.trim();
+          }
+        }
+      }
+
+      // Normalizar el signo de las comisiones. Algunas aseguradoras (ej. United Automobile)
+      // muestran la comisión ganada como NEGATIVA (es "lo que te debemos" desde su contabilidad)
+      // y el chargeback como positivo — exactamente al revés de la convención del sistema
+      // (positivo = ganado, negativo = chargeback). Si las líneas del statement son
+      // mayoritariamente negativas, es esa convención invertida: se da vuelta el signo de todas.
+      // Solo aplica al statement general de comisiones; un reporte de tipo "chargebacks" es
+      // legítimamente todo negativo.
+      if (tipoEfectivo === "comision_aseguradora") {
+        const montos = filasFinal.map((f) => coerceNumber(f.monto) ?? 0).filter((m) => m !== 0);
+        const negativos = montos.filter((m) => m < 0).length;
+        if (montos.length >= 10 && negativos / montos.length >= 0.75) {
+          for (const f of filasFinal) {
+            const m = coerceNumber(f.monto);
+            if (m != null && m !== 0) f.monto = -m;
+          }
+          metaUpdate.resumen_ia = `${metaUpdate.resumen_ia ?? ""} (Signos normalizados: esta aseguradora muestra las comisiones ganadas como negativas; se invirtieron para que positivo = ganado)`.trim();
+        }
+      }
+
       const batch = filasFinal.map((f) => ({
         reporte_id: reporteId,
         fila: f.fila ?? null,
