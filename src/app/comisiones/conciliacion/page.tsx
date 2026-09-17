@@ -299,18 +299,22 @@ function ConciliacionContent() {
   const MINI_BOX_WIDTH = 420;
   const MINI_BOX_MARGIN = 16;
 
-  function abrirMiniBox(id: string, target: HTMLElement) {
-    const rect = target.getBoundingClientRect();
-    const left = Math.min(rect.left, window.innerWidth - MINI_BOX_WIDTH - MINI_BOX_MARGIN);
-    const top = Math.min(rect.bottom + 6, window.innerHeight - 200);
-    setPopoverPos({ top: Math.max(MINI_BOX_MARGIN, top), left: Math.max(MINI_BOX_MARGIN, left) });
+  // Posición fija y predecible (no pegada a la fila donde se hizo clic): con una tabla
+  // larga, anclar al punto exacto del clic hacía que la caja se cortara o quedara
+  // perdida cerca del borde de la pantalla cuando la fila estaba abajo del todo.
+  function posicionMiniBoxFija() {
+    return { top: 88, left: Math.max(MINI_BOX_MARGIN, window.innerWidth - MINI_BOX_WIDTH - MINI_BOX_MARGIN) };
+  }
+
+  function abrirMiniBox(id: string) {
+    setPopoverPos(posicionMiniBoxFija());
     cargarDetalle(id);
   }
 
   // ----- deep-link: ?excepcion=<id> abre el panel directo (viene de AgenteFicha "Ver en Conciliación") -----
   useEffect(() => {
     if (excepcionUrl) {
-      setPopoverPos({ top: 96, left: Math.max(16, window.innerWidth - 420 - 16) });
+      setPopoverPos(posicionMiniBoxFija());
       cargarDetalle(excepcionUrl);
     }
     // Solo al montar: es un deep-link de entrada, no debe reabrirse si excepcionUrl cambia por otra causa.
@@ -718,7 +722,7 @@ function ConciliacionContent() {
                     return (
                       <tr
                         key={r.id}
-                        onClick={(e) => abrirMiniBox(r.id, e.currentTarget)}
+                        onClick={() => abrirMiniBox(r.id)}
                         className={`cursor-pointer border-b border-border last:border-0 hover:bg-background ${
                           activeId === r.id ? "bg-brand-tint" : ""
                         }`}
@@ -808,8 +812,8 @@ function ConciliacionContent() {
         <>
           <div className="fixed inset-0 z-40" onClick={closePanel} />
           <div
-            className="fixed z-50 flex max-h-[70vh] w-[420px] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
-            style={{ top: popoverPos.top, left: popoverPos.left }}
+            className="fixed z-50 flex w-[420px] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
+            style={{ top: popoverPos.top, left: popoverPos.left, maxHeight: `calc(100vh - ${popoverPos.top + 16}px)` }}
             onClick={(e) => e.stopPropagation()}
           >
             {detailLoading ? (
@@ -1141,28 +1145,18 @@ function PanelResolucion(p: PanelProps) {
         )}
 
         {excepcion.tipo === "duplicado" && lineaComision && (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <div className="text-[12px] font-semibold text-foreground">Línea A (esta)</div>
-              <FieldRow label="Póliza" value={lineaComision.numero_poliza_crudo ?? "—"} />
-              <FieldRow label="Asegurado" value={lineaComision.nombre_asegurado_crudo ?? "—"} />
-              <FieldRow label="Monto" value={money(lineaComision.monto)} />
-              <FieldRow label="Statement" value={fecha(lineaComision.fecha_statement)} />
-              <FieldRow label="Tipo" value={lineaComision.tipo_transaccion ?? "—"} />
+          <div className="flex flex-col gap-1 rounded-lg border border-border p-3">
+            <div className="text-[13px] font-medium text-foreground">
+              {lineaComision.nombre_asegurado_crudo ?? "Asegurado sin nombre"} · Póliza {lineaComision.numero_poliza_crudo ?? "—"}
             </div>
-            <div className="flex flex-col gap-1.5">
-              <div className="text-[12px] font-semibold text-foreground">Línea B (relacionada)</div>
-              {lineaRelacionada ? (
-                <>
-                  <FieldRow label="Póliza" value={lineaRelacionada.numero_poliza_crudo ?? "—"} />
-                  <FieldRow label="Asegurado" value={lineaRelacionada.nombre_asegurado_crudo ?? "—"} />
-                  <FieldRow label="Monto" value={money(lineaRelacionada.monto)} />
-                  <FieldRow label="Statement" value={fecha(lineaRelacionada.fecha_statement)} />
-                  <FieldRow label="Tipo" value={lineaRelacionada.tipo_transaccion ?? "—"} />
-                </>
-              ) : (
-                <span className="text-[12px] text-muted">Sin línea relacionada.</span>
-              )}
+            <div className="text-[12px] text-muted">
+              Statement {fecha(lineaComision.fecha_statement)} · {lineaComision.tipo_transaccion ?? "—"} — aparece 2 veces con el mismo monto:
+            </div>
+            <div className="mt-1 flex items-center gap-5 text-[13px]">
+              <span className="font-medium text-foreground">Línea A: {money(lineaComision.monto)}</span>
+              <span className="font-medium text-foreground">
+                Línea B: {lineaRelacionada ? money(lineaRelacionada.monto) : "sin línea relacionada"}
+              </span>
             </div>
           </div>
         )}
