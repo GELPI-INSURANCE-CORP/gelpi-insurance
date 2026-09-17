@@ -442,6 +442,7 @@ Reglas:
 - Fechas siempre en formato ISO YYYY-MM-DD.
 - Montos como número; los chargebacks/cancelaciones son montos NEGATIVOS.
 - tipo_transaccion: traducí códigos de aseguradora (NB/NBS/NEW->nueva, RWL/REN->renovacion, END/ENDT/XLC->endoso, CAN/CNL/CXL/CB->cancelacion, ADJ->ajuste) o dejá "otro".
+- Algunas aseguradoras (ej. United Automobile) incluyen en el statement una fila de referencia con el total ya pagado en el período anterior, sin póliza real asociada (número de póliza en ceros como "00000000000", o vacío). Esa fila no es una transacción nueva de este período: clasificala como tipo_transaccion="ajuste" y poné en nombre_asegurado algo descriptivo como "Pago período anterior (referencia)" en vez de dejarlo vacío. No inventes un número de póliza.
 - Cualquier columna que no tenga un campo destino claro, listala en columnas_sin_mapeo y, si te piden las filas completas, guardá su valor en campos_extra.
 - Sé conservador con la confianza (0-100): bajala si el archivo es ambiguo o está mal escaneado.`;
 
