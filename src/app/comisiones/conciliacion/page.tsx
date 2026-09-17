@@ -12,6 +12,7 @@ import {
   Loader2,
   Search as SearchIcon,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import {
   Badge,
@@ -23,7 +24,6 @@ import {
   Input,
   Kpi,
   Select,
-  SidePanel,
   Tabs,
   type TabItem,
 } from "@/components/ui";
@@ -158,6 +158,9 @@ function ConciliacionContent() {
     debouncedSetBuscar(buscarTexto);
   }, [buscarTexto, debouncedSetBuscar]);
 
+  // ----- mini box flotante (posición anclada a la fila que se clickeó) -----
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
+
   // ----- selección -----
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [asignandoLote, setAsignandoLote] = useState(false);
@@ -290,11 +293,26 @@ function ConciliacionContent() {
   function closePanel() {
     setActiveId(null);
     setDetail(null);
+    setPopoverPos(null);
+  }
+
+  const MINI_BOX_WIDTH = 420;
+  const MINI_BOX_MARGIN = 16;
+
+  function abrirMiniBox(id: string, target: HTMLElement) {
+    const rect = target.getBoundingClientRect();
+    const left = Math.min(rect.left, window.innerWidth - MINI_BOX_WIDTH - MINI_BOX_MARGIN);
+    const top = Math.min(rect.bottom + 6, window.innerHeight - 200);
+    setPopoverPos({ top: Math.max(MINI_BOX_MARGIN, top), left: Math.max(MINI_BOX_MARGIN, left) });
+    cargarDetalle(id);
   }
 
   // ----- deep-link: ?excepcion=<id> abre el panel directo (viene de AgenteFicha "Ver en Conciliación") -----
   useEffect(() => {
-    if (excepcionUrl) cargarDetalle(excepcionUrl);
+    if (excepcionUrl) {
+      setPopoverPos({ top: 96, left: Math.max(16, window.innerWidth - 420 - 16) });
+      cargarDetalle(excepcionUrl);
+    }
     // Solo al montar: es un deep-link de entrada, no debe reabrirse si excepcionUrl cambia por otra causa.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -611,10 +629,9 @@ function ConciliacionContent() {
         )}
       </Card>
 
-      {/* TABLA + PANEL */}
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-        {/* TABLA (65%) */}
-        <Card className="flex min-w-0 flex-1 flex-col overflow-hidden lg:flex-[0_0_65%]">
+      {/* TABLA — a todo el ancho; el detalle se abre como caja flotante anclada a la fila */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <CardHead
             title="Excepciones abiertas"
             action={
@@ -701,7 +718,7 @@ function ConciliacionContent() {
                     return (
                       <tr
                         key={r.id}
-                        onClick={() => cargarDetalle(r.id)}
+                        onClick={(e) => abrirMiniBox(r.id, e.currentTarget)}
                         className={`cursor-pointer border-b border-border last:border-0 hover:bg-background ${
                           activeId === r.id ? "bg-brand-tint" : ""
                         }`}
@@ -784,58 +801,63 @@ function ConciliacionContent() {
             )}
           </div>
         </Card>
-
-        {/* PANEL LATERAL (35%) */}
-        <div className="min-w-0 flex-1 lg:flex-[0_0_35%]">
-          {!activeId ? (
-            <Card className="flex h-full items-center justify-center">
-              <EmptyState title="Elegí una excepción" description="Hacé clic en una fila de la tabla para ver el detalle y resolverla." />
-            </Card>
-          ) : detailLoading ? (
-            <Card className="flex h-full items-center justify-center">
-              <Loader2 className="animate-spin text-brand" size={22} />
-            </Card>
-          ) : detailError ? (
-            <Card className="flex h-full items-center justify-center p-6 text-center text-[13px] text-bad-fg">{detailError}</Card>
-          ) : detail ? (
-            <PanelResolucion
-              detail={detail}
-              agentes={agentes}
-              oficinas={oficinas}
-              motivo={motivo}
-              setMotivo={setMotivo}
-              showReasignar={showReasignar}
-              setShowReasignar={setShowReasignar}
-              reasignarAgente={reasignarAgente}
-              setReasignarAgente={setReasignarAgente}
-              reasignarOficina={reasignarOficina}
-              setReasignarOficina={setReasignarOficina}
-              candidatoElegido={candidatoElegido}
-              setCandidatoElegido={setCandidatoElegido}
-              busquedaPoliza={busquedaPoliza}
-              onBuscarPoliza={buscarPolizaAhora}
-              resultadosPoliza={resultadosPoliza}
-              buscandoPoliza={buscandoPoliza}
-              polizaElegida={polizaElegida}
-              setPolizaElegida={setPolizaElegida}
-              agenteParaPoliza={agenteParaPoliza}
-              setAgenteParaPoliza={setAgenteParaPoliza}
-              showCrearPoliza={showCrearPoliza}
-              setShowCrearPoliza={setShowCrearPoliza}
-              nuevoCliente={nuevoCliente}
-              setNuevoCliente={setNuevoCliente}
-              agenteNuevaPoliza={agenteNuevaPoliza}
-              setAgenteNuevaPoliza={setAgenteNuevaPoliza}
-              agenteDirecto={agenteDirecto}
-              setAgenteDirecto={setAgenteDirecto}
-              accionEnCurso={accionEnCurso}
-              accionError={accionError}
-              ejecutarAccion={ejecutarAccion}
-              onClose={closePanel}
-            />
-          ) : null}
-        </div>
       </div>
+
+      {/* MINI BOX flotante — anclada a la fila que se clickeó, en vez de un panel fijo */}
+      {popoverPos && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={closePanel} />
+          <div
+            className="fixed z-50 flex max-h-[70vh] w-[420px] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl"
+            style={{ top: popoverPos.top, left: popoverPos.left }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {detailLoading ? (
+              <div className="flex items-center justify-center p-10">
+                <Loader2 className="animate-spin text-brand" size={22} />
+              </div>
+            ) : detailError ? (
+              <div className="p-5 text-center text-[13px] text-bad-fg">{detailError}</div>
+            ) : detail ? (
+              <PanelResolucion
+                detail={detail}
+                agentes={agentes}
+                oficinas={oficinas}
+                motivo={motivo}
+                setMotivo={setMotivo}
+                showReasignar={showReasignar}
+                setShowReasignar={setShowReasignar}
+                reasignarAgente={reasignarAgente}
+                setReasignarAgente={setReasignarAgente}
+                reasignarOficina={reasignarOficina}
+                setReasignarOficina={setReasignarOficina}
+                candidatoElegido={candidatoElegido}
+                setCandidatoElegido={setCandidatoElegido}
+                busquedaPoliza={busquedaPoliza}
+                onBuscarPoliza={buscarPolizaAhora}
+                resultadosPoliza={resultadosPoliza}
+                buscandoPoliza={buscandoPoliza}
+                polizaElegida={polizaElegida}
+                setPolizaElegida={setPolizaElegida}
+                agenteParaPoliza={agenteParaPoliza}
+                setAgenteParaPoliza={setAgenteParaPoliza}
+                showCrearPoliza={showCrearPoliza}
+                setShowCrearPoliza={setShowCrearPoliza}
+                nuevoCliente={nuevoCliente}
+                setNuevoCliente={setNuevoCliente}
+                agenteNuevaPoliza={agenteNuevaPoliza}
+                setAgenteNuevaPoliza={setAgenteNuevaPoliza}
+                agenteDirecto={agenteDirecto}
+                setAgenteDirecto={setAgenteDirecto}
+                accionEnCurso={accionEnCurso}
+                accionError={accionError}
+                ejecutarAccion={ejecutarAccion}
+                onClose={closePanel}
+              />
+            ) : null}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1056,7 +1078,14 @@ function PanelResolucion(p: PanelProps) {
   );
 
   return (
-    <SidePanel title={`Resolver excepción — ${badge.label}`} onClose={p.onClose} footer={footer}>
+    <>
+      <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <h3 className="text-[14px] font-semibold text-foreground">Resolver excepción — {badge.label}</h3>
+        <button type="button" onClick={p.onClose} className="rounded p-1 text-muted hover:bg-background hover:text-foreground">
+          <X size={16} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4">
       <div className="flex flex-col gap-3.5">
         <div className="text-[13px] text-muted">
           {excepcion.aseguradora ?? "Sin aseguradora"} · Póliza {excepcion.numero_poliza_crudo ?? excepcion.venta_poliza ?? "—"} · {money(excepcion.monto)} · Statement{" "}
@@ -1163,7 +1192,9 @@ function PanelResolucion(p: PanelProps) {
           </div>
         )}
       </div>
-    </SidePanel>
+      </div>
+      <div className="flex-shrink-0 border-t border-border p-4">{footer}</div>
+    </>
   );
 }
 
