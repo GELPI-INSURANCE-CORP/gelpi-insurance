@@ -2,7 +2,7 @@
 import Link from "next/link";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Users } from "lucide-react";
 import { Card, CardHead, Select, Button, Loading, EmptyState } from "@/components/agentes/ui";
 import OficinaModal from "@/components/oficinas/OficinaModal";
 import { money, pct } from "@/lib/format";
@@ -51,16 +51,24 @@ export default function OficinasPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-lg font-semibold text-foreground">Oficinas</h1>
-        <Button
-          size="sm"
-          onClick={() => {
-            setEditando(null);
-            setModalOpen(true);
-          }}
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Nueva oficina
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link href="/comisiones/agentes">
+            <Button size="sm" variant="secondary">
+              <Users className="w-3.5 h-3.5" />
+              Ver agentes
+            </Button>
+          </Link>
+          <Button
+            size="sm"
+            onClick={() => {
+              setEditando(null);
+              setModalOpen(true);
+            }}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Nueva oficina
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

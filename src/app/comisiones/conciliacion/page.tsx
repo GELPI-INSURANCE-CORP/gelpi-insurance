@@ -1212,9 +1212,43 @@ function SinIdentificarAcciones({
   ramoOptions: { value: string; label: string }[];
 }) {
   const excepcionId = p.detail.excepcion.id;
+  const candidatos = p.detail.candidatos;
 
   return (
     <div className="flex flex-col gap-3">
+      {candidatos.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[12px] font-semibold text-foreground">Candidato sugerido</label>
+          {candidatos.map((c, idx) => (
+            <div
+              key={c.poliza_id ?? idx}
+              className="flex items-center justify-between gap-2 rounded-lg border border-border px-2.5 py-2"
+            >
+              <div className="flex flex-col gap-0.5 text-[12px]">
+                <span className="font-medium text-foreground">{c.cliente ?? c.numero_poliza ?? "Candidato"}</span>
+                <span className="text-muted">
+                  Póliza {c.numero_poliza ?? "—"} {c.score != null && `· ${pct(c.score)} de parecido`}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={p.accionEnCurso || !c.agente_id}
+                onClick={() =>
+                  p.ejecutarAccion(
+                    { excepcionId, accion: "asignar", agenteId: c.agente_id ?? null, polizaId: c.poliza_id ?? null },
+                    "Candidato asignado."
+                  )
+                }
+              >
+                Asignar
+              </Button>
+            </div>
+          ))}
+          <div className="h-px bg-border" />
+        </div>
+      )}
+
       <div className="flex flex-col gap-1.5">
         <label className="text-[12px] font-semibold text-foreground">Buscar póliza en el ABB</label>
         <Input placeholder="N° de póliza o nombre de cliente…" value={p.busquedaPoliza} onChange={(e) => p.onBuscarPoliza(e.target.value)} />
