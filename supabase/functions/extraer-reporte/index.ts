@@ -226,10 +226,22 @@ function parseCsv(text: string): Record<string, string>[] {
     }
   }
   if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
-  const nonEmpty = rows.filter((r) => r.some((c) => c.trim() !== ""));
-  if (nonEmpty.length === 0) return [];
-  const headers = nonEmpty[0].map((h) => h.trim());
-  return nonEmpty.slice(1).map((r) => {
+  // Igual que parseXlsx: algunos reportes (ej. "Active Book of Business by Class") traen
+  // varias filas de título/filtros ("POLICY CLASS (All)", "AGENT (All)", ...) antes de la
+  // fila real de encabezados, y subtítulos de sección intercalados entre los datos. Se
+  // detecta el encabezado real como la primera fila con varias celdas no vacías (las de
+  // metadata traen una sola), no simplemente la primera fila no vacía.
+  const MIN_CELDAS_ENCABEZADO = 4;
+  const MIN_CELDAS_FILA = 3;
+  const contarNoVacias = (fila: string[] | undefined) =>
+    (fila ?? []).filter((c) => c.trim() !== "").length;
+  const idxEncabezado = rows.findIndex((fila) => contarNoVacias(fila) >= MIN_CELDAS_ENCABEZADO);
+  if (idxEncabezado === -1) return [];
+  const headers = rows[idxEncabezado].map((h) => h.trim());
+  const out: Record<string, string>[] = [];
+  for (let i = idxEncabezado + 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (contarNoVacias(r) < MIN_CELDAS_FILA) continue; // fila vacía, separador o subtítulo de sección
     const obj: Record<string, string> = {};
     headers.forEach((h, idx) => { obj[h || `col_${idx}`] = (r[idx] ?? "").trim(); });
     // Fila con más columnas que encabezados (típicamente una coma sin escapar en un campo de
@@ -238,8 +250,9 @@ function parseCsv(text: string): Record<string, string>[] {
     for (let extraIdx = headers.length; extraIdx < r.length; extraIdx++) {
       obj[`_csv_col_extra_${extraIdx}`] = (r[extraIdx] ?? "").trim();
     }
-    return obj;
-  });
+    out.push(obj);
+  }
+  return out;
 }
 
 function parseXlsx(bytes: Uint8Array): Record<string, unknown>[] {
@@ -975,6 +988,22 @@ async function procesarAbb(
     return exact ? exact.id : aseguradoraIdReporte;
   }
 
+  // Tiene que ser IDÉNTICA a la función SQL normalizar_poliza() (la usa el trigger
+  // polizas_normalizar_trg antes de cada insert/update): separa letras/dígitos y recorta los
+  // ceros a la izquierda del bloque numérico. Antes esta función hacía solo
+  // toUpperCase()+quitar símbolos, sin tocar los ceros — entonces "UAE000279928" (como viene
+  // en el statement) y "UAE279928" (como quedó guardado, ya normalizado por el trigger) no
+  // coincidían nunca en la búsqueda de abajo, y cada reimportación creaba una póliza duplicada
+  // en vez de actualizar la que ya existía.
+  function normalizarPoliza(p: string | null | undefined): string | null {
+    const s = String(p ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!s) return null;
+    const letras = s.match(/^[A-Z]*/)?.[0] ?? "";
+    const digitos = s.slice(letras.length);
+    if (digitos === "") return letras || null;
+    return letras + (digitos.replace(/^0+/, "") || "0");
+  }
+
   // 1. Marcar versiones anteriores como históricas y crear la nueva.
   await admin.from("abb_versiones").update({ estado: "historica" }).eq("estado", "vigente");
   const { data: nuevaVersion, error: versErr } = await admin
@@ -984,19 +1013,36 @@ async function procesarAbb(
     .single();
   if (versErr || !nuevaVersion) throw new ReporteError(`Creando abb_versiones: ${versErr?.message}`);
 
-  let creadas = 0;
-  let actualizadas = 0;
+  // 2. Resolver cada fila en memoria (sin ir a la base todavía). Antes esto se hacía fila por
+  // fila con 3-4 idas y vueltas a la base por fila (buscar/crear cliente, buscar/crear
+  // póliza): con un libro real de ~2000 pólizas son miles de llamadas secuenciales, y la
+  // función se queda sin tiempo de ejecución de la plataforma a mitad de camino — corta en un
+  // número arbitrario de filas sin ningún error, porque nunca llega a la actualización final
+  // de `reportes` (quedaba en "extrayendo" para siempre). Ahora se resuelve todo en memoria y
+  // se lee/escribe la base en lotes chicos, sin importar cuántas filas traiga el archivo.
+  interface FilaAbb {
+    numeroPoliza: string;
+    numeroNormalizado: string;
+    aseguradoraId: string;
+    nombreAsegurado: string;
+    nombreNorm: string;
+    telefono: string | null;
+    email: string | null;
+    agenteId: string | null;
+    oficinaId: string | null;
+    ramo: string;
+    fechaVigencia: string | null;
+    fechaVencimiento: string | null;
+    prima: number | null;
+  }
+  const prepPorClave = new Map<string, FilaAbb>();
   let sinNumeroPoliza = 0;
   let sinAseguradora = 0;
 
   for (const f of filas) {
     const numeroPoliza = (f.numero_poliza as string) ?? null;
-    if (!numeroPoliza) {
-      sinNumeroPoliza++;
-      continue;
-    }
-    const numeroNormalizado = String(numeroPoliza).toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (!numeroNormalizado) {
+    const numeroNormalizado = numeroPoliza ? normalizarPoliza(numeroPoliza) : null;
+    if (!numeroPoliza || !numeroNormalizado) {
       sinNumeroPoliza++;
       continue;
     }
@@ -1014,58 +1060,102 @@ async function procesarAbb(
     const { agenteId, oficinaId: oficinaPorAgente } = resolverAgente(agenteNombre as string | null);
     const oficinaId = resolverOficina(oficinaNombre as string | null) ?? oficinaPorAgente;
 
-    // Cliente: buscar por nombre normalizado, si no existe se crea.
-    const nombreNorm = normalizarTexto(nombreAsegurado);
-    let clienteId: string | null = null;
-    if (nombreNorm) {
-      const { data: clienteMatch } = await admin
-        .from("clientes")
-        .select("id")
-        .eq("nombre_normalizado", nombreNorm)
-        .limit(1);
-      if (clienteMatch && clienteMatch.length > 0) clienteId = clienteMatch[0].id;
-    }
-    if (!clienteId) {
-      const { data: nuevoCliente, error: cliErr } = await admin
-        .from("clientes")
-        .insert({ nombre: nombreAsegurado, telefono: f.telefono ?? null, email: f.email ?? null })
-        .select("id")
-        .single();
-      if (cliErr) throw new ReporteError(`Creando cliente: ${cliErr.message}`);
-      clienteId = nuevoCliente!.id;
-    }
-
-    const polizaRow = {
-      cliente_id: clienteId,
-      numero_poliza: numeroPoliza,
-      aseguradora_id: aseguradoraId,
+    // Si dos filas del mismo archivo son la misma póliza (misma aseguradora + número), se
+    // queda con la última — igual que antes, cuando se procesaba fila por fila y la segunda
+    // terminaba actualizando el registro que había dejado la primera.
+    prepPorClave.set(`${aseguradoraId}|${numeroNormalizado}`, {
+      numeroPoliza,
+      numeroNormalizado,
+      aseguradoraId,
+      nombreAsegurado,
+      nombreNorm: normalizarTexto(nombreAsegurado),
+      telefono: (f.telefono as string) ?? null,
+      email: (f.email as string) ?? null,
+      agenteId,
+      oficinaId,
       ramo: coerceRamo(f.ramo) ?? "otro",
-      agente_id: agenteId,
-      oficina_id: oficinaId,
-      fecha_vigencia: coerceDate(f.fecha_vigencia),
-      fecha_vencimiento: coerceDate((f as any).fecha_vencimiento),
+      fechaVigencia: coerceDate(f.fecha_vigencia),
+      fechaVencimiento: coerceDate((f as any).fecha_vencimiento),
       prima: coerceNumber(f.prima),
+    });
+  }
+  const prep = Array.from(prepPorClave.values());
+
+  const LOOKUP_CHUNK = 150; // conservador para no pasarse del largo de URL en filtros .in()
+  const WRITE_CHUNK = 500;
+  async function enLotes<T>(items: T[], size: number, fn: (trozo: T[]) => Promise<void>) {
+    for (let i = 0; i < items.length; i += size) await fn(items.slice(i, i + size));
+  }
+
+  // 3. Resolver clientes en lote: buscar por nombre_normalizado, crear los que falten.
+  const nombresUnicos = Array.from(new Set(prep.map((p) => p.nombreNorm).filter(Boolean)));
+  const clienteIdPorNombre = new Map<string, string>();
+  await enLotes(nombresUnicos, LOOKUP_CHUNK, async (trozo) => {
+    const { data, error } = await admin.from("clientes").select("id, nombre_normalizado").in("nombre_normalizado", trozo);
+    if (error) throw new ReporteError(`Buscando clientes: ${error.message}`);
+    for (const c of data ?? []) if (c.nombre_normalizado) clienteIdPorNombre.set(c.nombre_normalizado, c.id);
+  });
+  const primeraPorNombre = new Map<string, FilaAbb>();
+  for (const p of prep) if (p.nombreNorm && !primeraPorNombre.has(p.nombreNorm)) primeraPorNombre.set(p.nombreNorm, p);
+  const nombresNuevos = nombresUnicos.filter((n) => !clienteIdPorNombre.has(n));
+  await enLotes(nombresNuevos, WRITE_CHUNK, async (trozo) => {
+    const filasNuevas = trozo.map((n) => {
+      const ref = primeraPorNombre.get(n)!;
+      return { nombre: ref.nombreAsegurado, telefono: ref.telefono, email: ref.email };
+    });
+    const { data, error } = await admin.from("clientes").insert(filasNuevas).select("id, nombre_normalizado");
+    if (error) throw new ReporteError(`Creando clientes: ${error.message}`);
+    for (const c of data ?? []) if (c.nombre_normalizado) clienteIdPorNombre.set(c.nombre_normalizado, c.id);
+  });
+
+  // 4. Resolver pólizas ya existentes en lote (misma clave que la unique de la tabla).
+  const numerosUnicos = Array.from(new Set(prep.map((p) => p.numeroNormalizado)));
+  const existentePorClave = new Map<string, string>();
+  await enLotes(numerosUnicos, LOOKUP_CHUNK, async (trozo) => {
+    const { data, error } = await admin.from("polizas").select("id, aseguradora_id, numero_normalizado").in("numero_normalizado", trozo);
+    if (error) throw new ReporteError(`Buscando pólizas existentes: ${error.message}`);
+    for (const p of data ?? []) existentePorClave.set(`${p.aseguradora_id}|${p.numero_normalizado}`, p.id);
+  });
+
+  // 5. Armar filas a guardar y separarlas: nuevas (insert) vs existentes (upsert por id). No
+  // se mezclan en un mismo lote porque `id` es NOT NULL — mandar esa columna vacía en una fila
+  // nueva del mismo lote rompe el insert de todo el lote, no solo el de esa fila.
+  const nuevas: Record<string, unknown>[] = [];
+  const actualizaciones: Record<string, unknown>[] = [];
+  let creadas = 0;
+  let actualizadas = 0;
+  for (const p of prep) {
+    const idExistente = existentePorClave.get(`${p.aseguradoraId}|${p.numeroNormalizado}`);
+    const fila: Record<string, unknown> = {
+      cliente_id: clienteIdPorNombre.get(p.nombreNorm) ?? null,
+      numero_poliza: p.numeroPoliza,
+      aseguradora_id: p.aseguradoraId,
+      ramo: p.ramo,
+      agente_id: p.agenteId,
+      oficina_id: p.oficinaId,
+      fecha_vigencia: p.fechaVigencia,
+      fecha_vencimiento: p.fechaVencimiento,
+      prima: p.prima,
       origen: "import",
       abb_version_id: nuevaVersion.id,
     };
-
-    const { data: existente } = await admin
-      .from("polizas")
-      .select("id")
-      .eq("aseguradora_id", aseguradoraId)
-      .eq("numero_normalizado", numeroNormalizado)
-      .maybeSingle();
-
-    if (existente) {
-      const { error: updErr } = await admin.from("polizas").update(polizaRow).eq("id", existente.id);
-      if (updErr) throw new ReporteError(`Actualizando poliza: ${updErr.message}`);
+    if (idExistente) {
+      actualizaciones.push({ id: idExistente, ...fila });
       actualizadas++;
     } else {
-      const { error: insErr } = await admin.from("polizas").insert(polizaRow);
-      if (insErr) throw new ReporteError(`Creando poliza: ${insErr.message}`);
+      nuevas.push(fila);
       creadas++;
     }
   }
+
+  await enLotes(nuevas, WRITE_CHUNK, async (trozo) => {
+    const { error } = await admin.from("polizas").insert(trozo);
+    if (error) throw new ReporteError(`Creando pólizas: ${error.message}`);
+  });
+  await enLotes(actualizaciones, WRITE_CHUNK, async (trozo) => {
+    const { error } = await admin.from("polizas").upsert(trozo, { onConflict: "id" });
+    if (error) throw new ReporteError(`Actualizando pólizas: ${error.message}`);
+  });
 
   // Si había filas pero ninguna se pudo cargar, no lo marquemos como 'cerrado' exitoso: eso
   // oculta el problema (ver "Libro actualizado: 0 pólizas procesadas." sin ningún error visible).
