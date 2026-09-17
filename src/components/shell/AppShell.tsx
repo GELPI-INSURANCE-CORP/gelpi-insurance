@@ -30,7 +30,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex-1 bg-black/30" onClick={() => setMobileOpen(false)} />
         </div>
       )}
-      <div className="flex min-h-full flex-col md:pl-64">
+      <div className="flex min-h-full flex-col md:pl-[72px]">
         <Topbar onMenu={() => setMobileOpen(true)} />
         <main className="flex-1 p-4 md:p-8">{children}</main>
       </div>
