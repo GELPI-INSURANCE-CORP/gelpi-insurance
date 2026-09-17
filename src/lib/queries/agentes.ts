@@ -161,7 +161,7 @@ export async function getAgenteKpis(agenteId: string) {
       .gte("fecha_statement", anioDesde)
       .lte("fecha_statement", anioHasta),
     supabase.from("bono_reparto").select("monto, bonos!inner(periodo)").eq("agente_id", agenteId),
-    supabase.from("v_polizas").select("id", { count: "exact", head: true }).eq("agente_id", agenteId).eq("estado", "activa"),
+    supabase.from("v_polizas").select("prima").eq("agente_id", agenteId).eq("estado", "activa"),
     supabase.from("v_excepciones").select("id", { count: "exact", head: true }).eq("agente_sugerido_id", agenteId).eq("estado", "pendiente"),
   ]);
   if (mes.error) throw mes.error;
@@ -185,11 +185,13 @@ export async function getAgenteKpis(agenteId: string) {
     return incluye ? s + Number(b.monto ?? 0) : s;
   }, 0);
 
+  const polizasData = polizas.data ?? [];
   return {
     comisionMes: sum(mes.data),
     comisionYtd: sum(ytd.data),
     bonosYtd,
-    polizasActivas: polizas.count ?? 0,
+    polizasActivas: polizasData.length,
+    premiumActivo: polizasData.reduce((s, p) => s + Number(p.prima ?? 0), 0),
     excepcionesAbiertas: excepciones.count ?? 0,
   };
 }

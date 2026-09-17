@@ -80,6 +80,7 @@ export default function AgenteFicha({
     comisionYtd: number;
     bonosYtd: number;
     polizasActivas: number;
+    premiumActivo: number;
     excepcionesAbiertas: number;
   } | null>(null);
   const [tab, setTab] = useState<"comisiones" | "bonos" | "excepciones">("comisiones");
@@ -129,7 +130,12 @@ export default function AgenteFicha({
         <Kpi label="Comisión del mes" value={kpis ? money(kpis.comisionMes) : "…"} />
         <Kpi label="Comisión YTD" value={kpis ? money(kpis.comisionYtd) : "…"} />
         <Kpi label="Bonos YTD" value={kpis ? money(kpis.bonosYtd) : "…"} sub="Separado de la comisión" tone="muted" />
-        <Kpi label="Pólizas activas (ABB)" value={kpis ? String(kpis.polizasActivas) : "…"} />
+        <Kpi
+          label="Premium activo (ABB)"
+          value={kpis ? money(kpis.premiumActivo) : "…"}
+          sub={kpis ? `${kpis.polizasActivas} pólizas activas` : undefined}
+          tone="brand"
+        />
         <Kpi
           label="Excepciones abiertas"
           value={kpis ? String(kpis.excepcionesAbiertas) : "…"}
