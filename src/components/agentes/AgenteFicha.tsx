@@ -2,7 +2,7 @@
 import Link from "next/link";
 
 import { useEffect, useState } from "react";
-import { Download, RefreshCw, ExternalLink } from "lucide-react";
+import { Download, RefreshCw, ExternalLink, Pencil } from "lucide-react";
 import {
   Card,
   Kpi,
@@ -66,7 +66,15 @@ interface LineaComision {
   productor_crudo: string | null;
 }
 
-export default function AgenteFicha({ agente, onIrExcepciones }: { agente: AgenteRow; onIrExcepciones: () => void }) {
+export default function AgenteFicha({
+  agente,
+  onIrExcepciones,
+  onEditar,
+}: {
+  agente: AgenteRow;
+  onIrExcepciones: () => void;
+  onEditar?: () => void;
+}) {
   const [kpis, setKpis] = useState<{
     comisionMes: number;
     comisionYtd: number;
@@ -102,6 +110,12 @@ export default function AgenteFicha({ agente, onIrExcepciones }: { agente: Agent
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          {onEditar && (
+            <Button size="sm" variant="secondary" onClick={onEditar}>
+              <Pencil className="w-3.5 h-3.5" />
+              Editar
+            </Button>
+          )}
           <ExportarEstadoCuenta agenteId={agente.id} agenteNombre={agente.nombre} />
           <Button size="sm" onClick={onIrExcepciones} disabled={!kpis || kpis.excepcionesAbiertas === 0}>
             <ExternalLink className="w-3.5 h-3.5" />

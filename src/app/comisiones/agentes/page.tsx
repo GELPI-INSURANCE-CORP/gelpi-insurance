@@ -32,6 +32,7 @@ function AgentesContent() {
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<AgenteRow | null>(null);
   const [loadingAgente, setLoadingAgente] = useState(false);
   const [cambiandoId, setCambiandoId] = useState<string | null>(null);
+  const [editando, setEditando] = useState<AgenteRow | null>(null);
 
   const cargarDirectorio = useCallback(() => {
     setLoadingDirectorio(true);
@@ -67,6 +68,14 @@ function AgentesContent() {
     router.push(`/comisiones/agentes/?agente=${id}`);
   }
 
+  async function abrirEditar(id: string) {
+    const a = agenteSeleccionado?.id === id ? agenteSeleccionado : await getAgente(id);
+    if (a) {
+      setEditando(a);
+      setNuevoOpen(true);
+    }
+  }
+
   function volverAlListado() {
     router.push(`/comisiones/agentes/`);
   }
@@ -98,7 +107,11 @@ function AgentesContent() {
             agentes={agentes}
             loading={loadingDirectorio}
             onVerFicha={seleccionar}
-            onNuevo={() => setNuevoOpen(true)}
+            onNuevo={() => {
+              setEditando(null);
+              setNuevoOpen(true);
+            }}
+            onEditar={abrirEditar}
             onToggleActivo={handleToggleActivo}
             cambiandoId={cambiandoId}
           />
@@ -110,7 +123,11 @@ function AgentesContent() {
             </Button>
             {loadingAgente && <Loading />}
             {!loadingAgente && agenteSeleccionado && (
-              <AgenteFicha agente={agenteSeleccionado} onIrExcepciones={() => router.push(`/comisiones/conciliacion/?agente=${agenteSeleccionado.id}`)} />
+              <AgenteFicha
+                agente={agenteSeleccionado}
+                onIrExcepciones={() => router.push(`/comisiones/conciliacion/?agente=${agenteSeleccionado.id}`)}
+                onEditar={() => abrirEditar(agenteSeleccionado.id)}
+              />
             )}
           </div>
         )}
@@ -118,10 +135,17 @@ function AgentesContent() {
 
       <NuevoAgenteModal
         open={nuevoOpen}
-        onClose={() => setNuevoOpen(false)}
-        onCreated={cargarDirectorio}
+        onClose={() => {
+          setNuevoOpen(false);
+          setEditando(null);
+        }}
+        onCreated={() => {
+          cargarDirectorio();
+          if (editando && agenteIdParam === editando.id) getAgente(editando.id).then(setAgenteSeleccionado);
+        }}
         oficinas={oficinas}
         agentes={agentesSimple}
+        editando={editando}
       />
     </div>
   );

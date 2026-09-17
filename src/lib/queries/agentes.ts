@@ -297,6 +297,11 @@ export async function crearAgente(input: NuevoAgente) {
   return data;
 }
 
+export async function actualizarAgente(id: string, input: NuevoAgente) {
+  const { error } = await supabase.from("agentes").update(input).eq("id", id);
+  if (error) throw error;
+}
+
 // No se borra el agente: rompería el historial de comisiones/pólizas ya ligadas a
 // él. Se marca inactivo (o se reactiva) y desaparece/reaparece de los selectores
 // de asignación, igual que "Active/Inactive" en Apizeal.

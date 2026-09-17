@@ -89,3 +89,29 @@ export async function getExcepcionesPendientesCount(): Promise<number> {
   if (error) throw error;
   return count ?? 0;
 }
+
+// Total de prima de las pólizas activas del Active Business Book, por oficina — no es
+// comisión conciliada, es lo que hoy está vigente y vendido (v_polizas.prima), sin
+// importar en qué mes se cargó ni si ya se cobró su comisión.
+export async function getPrimaActivaPorOficina(): Promise<Map<string, number>> {
+  const porOficina = new Map<string, number>();
+  const pageSize = 1000;
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from("v_polizas")
+      .select("oficina_id, prima")
+      .eq("estado", "activa")
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    for (const p of page) {
+      if (!p.oficina_id) continue;
+      porOficina.set(p.oficina_id, (porOficina.get(p.oficina_id) ?? 0) + Number(p.prima ?? 0));
+    }
+    if (page.length < pageSize) break;
+    from += pageSize;
+  }
+  return porOficina;
+}

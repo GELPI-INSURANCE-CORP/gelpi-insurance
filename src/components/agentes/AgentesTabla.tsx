@@ -10,6 +10,7 @@ export default function AgentesTabla({
   loading,
   onVerFicha,
   onNuevo,
+  onEditar,
   onToggleActivo,
   cambiandoId,
 }: {
@@ -17,6 +18,7 @@ export default function AgentesTabla({
   loading: boolean;
   onVerFicha: (id: string) => void;
   onNuevo: () => void;
+  onEditar: (id: string) => void;
   onToggleActivo: (id: string, activo: boolean) => void;
   cambiandoId: string | null;
 }) {
@@ -104,6 +106,9 @@ export default function AgentesTabla({
                     <div className="flex items-center gap-2">
                       <Button size="sm" variant="secondary" onClick={() => onVerFicha(a.id)}>
                         Ver
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => onEditar(a.id)}>
+                        Editar
                       </Button>
                       <Button
                         size="sm"

@@ -24,6 +24,7 @@ import {
   type ResumenKpis,
   getExcepcionesPendientesCount,
   getExcepcionesTop,
+  getPrimaActivaPorOficina,
   getResumenKpis,
   rangoDelMes,
 } from "@/lib/queries/resumen";
@@ -77,6 +78,7 @@ export default function ResumenPage() {
   const [kpis, setKpis] = useState<ResumenKpis | null>(null);
   const [excepciones, setExcepciones] = useState<ExcepcionRow[]>([]);
   const [totalPendientes, setTotalPendientes] = useState(0);
+  const [primaPorOficina, setPrimaPorOficina] = useState<Map<string, number>>(new Map());
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,12 +96,13 @@ export default function ResumenPage() {
     setError(null);
     const { desde, hasta } = rangoDelMes(mes);
 
-    Promise.all([getResumenKpis(desde, hasta), getExcepcionesTop(5), getExcepcionesPendientesCount()])
-      .then(([k, ex, n]) => {
+    Promise.all([getResumenKpis(desde, hasta), getExcepcionesTop(5), getExcepcionesPendientesCount(), getPrimaActivaPorOficina()])
+      .then(([k, ex, n, prima]) => {
         if (!activo) return;
         setKpis(k);
         setExcepciones(ex);
         setTotalPendientes(n);
+        setPrimaPorOficina(prima);
       })
       .catch((err: unknown) => {
         if (!activo) return;
@@ -108,6 +111,7 @@ export default function ResumenPage() {
         setKpis(null);
         setExcepciones([]);
         setTotalPendientes(0);
+        setPrimaPorOficina(new Map());
       })
       .finally(() => {
         if (activo) setCargando(false);
@@ -128,8 +132,9 @@ export default function ResumenPage() {
     () => ({
       comision: totalOficinas.reduce((s, o) => s + o.comision, 0),
       excepciones: totalOficinas.reduce((s, o) => s + o.excepciones, 0),
+      prima: totalOficinas.reduce((s, o) => s + (primaPorOficina.get(o.oficina_id) ?? 0), 0),
     }),
-    [totalOficinas]
+    [totalOficinas, primaPorOficina]
   );
 
   return (
@@ -281,6 +286,7 @@ export default function ResumenPage() {
                       <thead>
                         <tr className="bg-background">
                           <th className="whitespace-nowrap px-5 py-2.5 text-left font-medium text-muted">Oficina</th>
+                          <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">Prima activa (Book)</th>
                           <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">Comisión</th>
                           <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">Excep.</th>
                           <th className="whitespace-nowrap px-5 py-2.5 text-left font-medium text-muted">Antigüedad</th>
@@ -290,6 +296,7 @@ export default function ResumenPage() {
                         {totalOficinas.map((o) => (
                           <tr key={o.oficina_id} className="border-t border-border">
                             <td className="px-5 py-3 font-medium text-foreground">{o.oficina}</td>
+                            <td className="px-5 py-3 text-right tabular-nums text-foreground">{money(primaPorOficina.get(o.oficina_id) ?? 0)}</td>
                             <td className="px-5 py-3 text-right tabular-nums text-foreground">{money(o.comision)}</td>
                             <td className="px-5 py-3 text-right tabular-nums text-foreground">{o.excepciones}</td>
                             <td className="px-5 py-3 text-muted">
@@ -300,6 +307,7 @@ export default function ResumenPage() {
                         ))}
                         <tr className="border-t border-border bg-background">
                           <td className="px-5 py-3 font-medium text-foreground">{totalOficinas.length} oficinas</td>
+                          <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">{money(sumaOficinas.prima)}</td>
                           <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">{money(sumaOficinas.comision)}</td>
                           <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">{sumaOficinas.excepciones}</td>
                           <td className="px-5 py-3 text-muted">—</td>
