@@ -141,15 +141,34 @@ export async function sha256Hex(file: File): Promise<string> {
   return bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function checkHashExists(hash: string): Promise<boolean> {
+export interface ReporteExistente {
+  id: string;
+  estado: EstadoReporte;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function buscarReportePorHash(hash: string): Promise<ReporteExistente | null> {
   const { data, error } = await supabase
     .from("reportes")
-    .select("id")
+    .select("id, estado, created_at, updated_at")
     .eq("hash_archivo", hash)
     .limit(1)
     .maybeSingle();
   if (error) throw error;
-  return !!data;
+  return data;
+}
+
+// Mismo criterio en toda la app para decidir si un reporte "atascado" (crash o límite de
+// wall-clock de la función de extracción, que muere sin escribir 'error') puede reintentarse:
+// o quedó en 'error' explícito, o lleva más de este tiempo en 'extrayendo' sin novedad.
+const MINUTOS_ATASCADO = 5;
+export function esReporteReintentable(r: Pick<ReporteExistente, "estado" | "updated_at" | "created_at">): boolean {
+  if (r.estado === "error") return true;
+  if (r.estado !== "extrayendo") return false;
+  const desde = new Date(r.updated_at ?? r.created_at).getTime();
+  if (Number.isNaN(desde)) return false;
+  return Date.now() - desde > MINUTOS_ATASCADO * 60 * 1000;
 }
 
 // =========================================================
@@ -157,9 +176,11 @@ export async function checkHashExists(hash: string): Promise<boolean> {
 // =========================================================
 
 export class DuplicadoError extends Error {
-  constructor() {
+  reporte: ReporteExistente | null;
+  constructor(reporte: ReporteExistente | null = null) {
     super("Archivo idéntico ya subido (mismo hash).");
     this.name = "DuplicadoError";
+    this.reporte = reporte;
   }
 }
 
@@ -178,9 +199,9 @@ export async function uploadReporte({
 }: UploadReporteParams): Promise<{ reporteId: string }> {
   const hash = await sha256Hex(file);
 
-  const yaExiste = await checkHashExists(hash);
-  if (yaExiste) {
-    throw new DuplicadoError();
+  const existente = await buscarReportePorHash(hash);
+  if (existente) {
+    throw new DuplicadoError(existente);
   }
 
   const now = new Date();

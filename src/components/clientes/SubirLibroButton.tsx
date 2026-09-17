@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Upload, Loader2 } from "lucide-react";
 import { Button, Banner } from "@/components/agentes/ui";
 import { supabase } from "@/lib/supabase";
-import { uploadReporte, DuplicadoError } from "@/lib/queries/subir";
+import { uploadReporte, reintentarExtraccion, esReporteReintentable, DuplicadoError } from "@/lib/queries/subir";
 
 type Fase = "idle" | "subiendo" | "procesando" | "listo" | "error";
 
@@ -21,6 +21,8 @@ export default function SubirLibroButton({ onDone }: { onDone: () => void }) {
   const [fase, setFase] = useState<Fase>("idle");
   const [mensaje, setMensaje] = useState<string>("");
   const [reporteId, setReporteId] = useState<string | null>(null);
+  const [reintentableId, setReintentableId] = useState<string | null>(null);
+  const [reintentando, setReintentando] = useState(false);
 
   useEffect(() => {
     if (!reporteId || fase !== "procesando") return;
@@ -45,16 +47,39 @@ export default function SubirLibroButton({ onDone }: { onDone: () => void }) {
     if (!file) return;
     setFase("subiendo");
     setMensaje(`Subiendo ${file.name}…`);
+    setReintentableId(null);
     try {
       const { reporteId: id } = await uploadReporte({ file, tipo: "actualizacion_abb" });
       setReporteId(id);
       setFase("procesando");
       setMensaje(LABEL.subido);
     } catch (e) {
-      setFase("error");
-      setMensaje(e instanceof DuplicadoError ? "Ese archivo ya se subió antes (idéntico)." : e instanceof Error ? e.message : "No se pudo subir el archivo.");
+      if (e instanceof DuplicadoError && e.reporte && esReporteReintentable(e.reporte)) {
+        setFase("error");
+        setMensaje("Ese archivo ya se había subido pero no terminó de procesarse.");
+        setReintentableId(e.reporte.id);
+      } else {
+        setFase("error");
+        setMensaje(e instanceof DuplicadoError ? "Ese archivo ya se subió antes (idéntico)." : e instanceof Error ? e.message : "No se pudo subir el archivo.");
+      }
     } finally {
       if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  async function onReintentar() {
+    if (!reintentableId) return;
+    setReintentando(true);
+    try {
+      await reintentarExtraccion(reintentableId);
+      setReporteId(reintentableId);
+      setReintentableId(null);
+      setFase("procesando");
+      setMensaje(LABEL.subido);
+    } catch (e) {
+      setMensaje(e instanceof Error ? e.message : "No se pudo reintentar la extracción.");
+    } finally {
+      setReintentando(false);
     }
   }
 
@@ -75,7 +100,18 @@ export default function SubirLibroButton({ onDone }: { onDone: () => void }) {
       </Button>
       {fase !== "idle" && (
         <div className="basis-full">
-          <Banner tone={fase === "error" ? "bad" : "info"} action={fase === "listo" || fase === "error" ? <button type="button" className="text-xs underline" onClick={() => setFase("idle")}>Cerrar</button> : undefined}>
+          <Banner
+            tone={fase === "error" ? "bad" : "info"}
+            action={
+              reintentableId ? (
+                <button type="button" className="text-xs underline disabled:opacity-50" disabled={reintentando} onClick={onReintentar}>
+                  {reintentando ? "Reintentando…" : "Reintentar"}
+                </button>
+              ) : fase === "listo" || fase === "error" ? (
+                <button type="button" className="text-xs underline" onClick={() => setFase("idle")}>Cerrar</button>
+              ) : undefined
+            }
+          >
             {mensaje}
           </Banner>
         </div>

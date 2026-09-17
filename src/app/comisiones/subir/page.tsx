@@ -18,6 +18,7 @@ import { Badge, Button, Card, CardHead, EmptyState, Select, type Tone } from "@/
 import { fechaHora, money, pct, TIPOS_REPORTE, ESTADOS_LINEA } from "@/lib/format";
 import {
   DuplicadoError,
+  esReporteReintentable,
   getReporteLineas,
   listAseguradoras,
   listReportes,
@@ -64,17 +65,6 @@ type ZoneKey = "aseguradora" | "venta" | "bono" | "abb";
 interface ZoneMsg {
   tone: Tone;
   text: string;
-}
-
-// Si la función de extracción muere sin escribir 'error' (crash, límite de wall-clock de la
-// plataforma), el reporte queda para siempre en 'extrayendo'. Pasados unos minutos sin novedad
-// lo tratamos como atascado y ofrecemos el mismo botón de reintentar que usa estado==='error'.
-const MINUTOS_ATASCADO = 5;
-function reporteAtascado(r: Reporte): boolean {
-  if (r.estado !== "extrayendo") return false;
-  const desde = new Date(r.updated_at ?? r.created_at).getTime();
-  if (Number.isNaN(desde)) return false;
-  return Date.now() - desde > MINUTOS_ATASCADO * 60 * 1000;
 }
 
 function estadoReporteBadge(r: Reporte): { tone: Tone; label: string } {
@@ -514,14 +504,12 @@ export default function SubirPage() {
                               {r.total_lineas - r.total_ok - r.total_excepciones === 1 ? "" : "s"} sin cuadrar (ni OK ni en excepción)
                             </span>
                           )}
-                          {(r.estado === "error" || reporteAtascado(r)) && (
+                          {esReporteReintentable(r) && (
                             <div className="flex flex-col gap-0.5">
                               {r.error ? (
                                 <span className="text-xs text-bad-fg">{r.error}</span>
                               ) : (
-                                reporteAtascado(r) && (
-                                  <span className="text-xs text-bad-fg">La extracción no respondió a tiempo.</span>
-                                )
+                                <span className="text-xs text-bad-fg">La extracción no respondió a tiempo.</span>
                               )}
                               <button
                                 type="button"
