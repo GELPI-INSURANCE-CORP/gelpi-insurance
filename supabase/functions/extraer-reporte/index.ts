@@ -245,10 +245,35 @@ function parseCsv(text: string): Record<string, string>[] {
 function parseXlsx(bytes: Uint8Array): Record<string, unknown>[] {
   const wb = XLSX.read(bytes, { type: "array" });
   const allRows: Record<string, unknown>[] = [];
+  const MIN_CELDAS_ENCABEZADO = 4;
+  const MIN_CELDAS_FILA = 3;
   for (const sheetName of wb.SheetNames) {
     const sheet = wb.Sheets[sheetName];
-    const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
-    for (const r of rows) allRows.push(r);
+    // Algunos reportes (ej. "Active Book of Business by Class") traen varias filas de
+    // título/filtros ("POLICY CLASS (All)", "AGENT (All)", ...) antes de la fila real de
+    // encabezados, y a veces subtítulos de sección intercalados entre los datos ("LOB
+    // Class: Personal Lines (228 records)"). Si se asume que la fila 1 siempre es el
+    // encabezado, esas filas de metadata terminan tratadas como datos y las columnas
+    // quedan corridas. Se lee la hoja como matriz cruda, se detecta la fila de
+    // encabezados como la primera con varias celdas no vacías (las de metadata traen
+    // una sola), y se descartan como filas de metadata/separador las que después
+    // tengan muy pocas celdas llenas.
+    const matriz = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }) as unknown[][];
+    const contarNoVacias = (fila: unknown[] | undefined) =>
+      (fila ?? []).filter((c) => String(c ?? "").trim() !== "").length;
+    const idxEncabezado = matriz.findIndex((fila) => contarNoVacias(fila) >= MIN_CELDAS_ENCABEZADO);
+    if (idxEncabezado === -1) continue; // hoja sin datos reconocibles
+    const headers = matriz[idxEncabezado].map((h, i) => {
+      const s = String(h ?? "").trim();
+      return s || `col_${i}`;
+    });
+    for (let i = idxEncabezado + 1; i < matriz.length; i++) {
+      const fila = matriz[i];
+      if (contarNoVacias(fila) < MIN_CELDAS_FILA) continue; // fila vacía, separador o subtítulo de sección
+      const obj: Record<string, unknown> = {};
+      headers.forEach((h, idx) => { obj[h] = fila[idx] ?? ""; });
+      allRows.push(obj);
+    }
   }
   return allRows;
 }
