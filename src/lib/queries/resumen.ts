@@ -90,28 +90,48 @@ export async function getExcepcionesPendientesCount(): Promise<number> {
   return count ?? 0;
 }
 
-// Total de prima de las pólizas activas del Active Business Book, por oficina — no es
-// comisión conciliada, es lo que hoy está vigente y vendido (v_polizas.prima), sin
-// importar en qué mes se cargó ni si ya se cobró su comisión.
-export async function getPrimaActivaPorOficina(): Promise<Map<string, number>> {
-  const porOficina = new Map<string, number>();
+export interface BookResumen {
+  primaPorOficina: Map<string, number>;
+  premiumActivo: number;
+  polizasActivas: number;
+  premiumCancelado: number;
+  polizasCanceladas: number;
+}
+
+// Datos del Active Business Book en sí (no de comisiones): cuánta prima hay vigente y
+// vendida hoy, cuántas pólizas activas y cuántas canceladas, total y por oficina.
+// v_polizas.prima/estado, sin importar en qué mes se cargó ni si ya se conciliaron
+// sus comisiones.
+export async function getBookResumen(): Promise<BookResumen> {
+  const primaPorOficina = new Map<string, number>();
+  let premiumActivo = 0;
+  let polizasActivas = 0;
+  let premiumCancelado = 0;
+  let polizasCanceladas = 0;
   const pageSize = 1000;
   let from = 0;
   for (;;) {
     const { data, error } = await supabase
       .from("v_polizas")
-      .select("oficina_id, prima")
-      .eq("estado", "activa")
+      .select("oficina_id, prima, estado")
+      .in("estado", ["activa", "cancelada"])
       .order("id", { ascending: true })
       .range(from, from + pageSize - 1);
     if (error) throw error;
     const page = data ?? [];
     for (const p of page) {
-      if (!p.oficina_id) continue;
-      porOficina.set(p.oficina_id, (porOficina.get(p.oficina_id) ?? 0) + Number(p.prima ?? 0));
+      const prima = Number(p.prima ?? 0);
+      if (p.estado === "activa") {
+        premiumActivo += prima;
+        polizasActivas += 1;
+        if (p.oficina_id) primaPorOficina.set(p.oficina_id, (primaPorOficina.get(p.oficina_id) ?? 0) + prima);
+      } else if (p.estado === "cancelada") {
+        premiumCancelado += prima;
+        polizasCanceladas += 1;
+      }
     }
     if (page.length < pageSize) break;
     from += pageSize;
   }
-  return porOficina;
+  return { primaPorOficina, premiumActivo, polizasActivas, premiumCancelado, polizasCanceladas };
 }

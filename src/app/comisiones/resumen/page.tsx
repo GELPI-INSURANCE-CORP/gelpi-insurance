@@ -20,11 +20,12 @@ import { Badge, Button, Card, CardHead, Chip, EmptyState } from "@/components/ui
 import type { Tone } from "@/components/ui/Badge";
 import { money } from "@/lib/format";
 import {
+  type BookResumen,
   type ExcepcionRow,
   type ResumenKpis,
+  getBookResumen,
   getExcepcionesPendientesCount,
   getExcepcionesTop,
-  getPrimaActivaPorOficina,
   getResumenKpis,
   rangoDelMes,
 } from "@/lib/queries/resumen";
@@ -78,7 +79,7 @@ export default function ResumenPage() {
   const [kpis, setKpis] = useState<ResumenKpis | null>(null);
   const [excepciones, setExcepciones] = useState<ExcepcionRow[]>([]);
   const [totalPendientes, setTotalPendientes] = useState(0);
-  const [primaPorOficina, setPrimaPorOficina] = useState<Map<string, number>>(new Map());
+  const [book, setBook] = useState<BookResumen | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,13 +97,13 @@ export default function ResumenPage() {
     setError(null);
     const { desde, hasta } = rangoDelMes(mes);
 
-    Promise.all([getResumenKpis(desde, hasta), getExcepcionesTop(5), getExcepcionesPendientesCount(), getPrimaActivaPorOficina()])
-      .then(([k, ex, n, prima]) => {
+    Promise.all([getResumenKpis(desde, hasta), getExcepcionesTop(5), getExcepcionesPendientesCount(), getBookResumen()])
+      .then(([k, ex, n, b]) => {
         if (!activo) return;
         setKpis(k);
         setExcepciones(ex);
         setTotalPendientes(n);
-        setPrimaPorOficina(prima);
+        setBook(b);
       })
       .catch((err: unknown) => {
         if (!activo) return;
@@ -111,7 +112,7 @@ export default function ResumenPage() {
         setKpis(null);
         setExcepciones([]);
         setTotalPendientes(0);
-        setPrimaPorOficina(new Map());
+        setBook(null);
       })
       .finally(() => {
         if (activo) setCargando(false);
@@ -128,6 +129,7 @@ export default function ResumenPage() {
     [kpis]
   );
   const totalOficinas = kpis?.por_oficina ?? [];
+  const primaPorOficina = book?.primaPorOficina ?? new Map<string, number>();
   const sumaOficinas = useMemo(
     () => ({
       comision: totalOficinas.reduce((s, o) => s + o.comision, 0),
@@ -186,7 +188,30 @@ export default function ResumenPage() {
         </div>
       ) : (
         <>
-          {/* KPI row */}
+          {/* KPI del Book de negocio — lo primero que se ve */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <KpiCard
+              label="Premium total (pólizas activas)"
+              value={money(book?.premiumActivo ?? 0)}
+              sub={`${book?.polizasActivas ?? 0} pólizas activas`}
+              subTone="brand"
+            />
+            <KpiCard
+              label="Pólizas activas"
+              value={String(book?.polizasActivas ?? 0)}
+              sub="en el Active Business Book"
+              subTone="ok"
+            />
+            <KpiCard
+              label="Pólizas canceladas"
+              value={String(book?.polizasCanceladas ?? 0)}
+              sub={`${money(book?.premiumCancelado ?? 0)} en premium cancelado`}
+              subTone="muted"
+            />
+          </div>
+
+          {/* KPI de conciliación de comisiones — secundario */}
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Conciliación de comisiones</div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
             <KpiComisionesConciliadas monto={kpis?.conciliado ?? 0} mes={mes} numOficinas={totalOficinas.length} />
             <KpiCard label="Sin identificar" value={money(kpis?.sin_identificar.monto ?? 0)} sub={`${kpis?.sin_identificar.n ?? 0} líneas`} subTone="warn" />
