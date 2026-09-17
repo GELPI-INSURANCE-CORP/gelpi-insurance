@@ -266,6 +266,39 @@ export async function actualizarPeriodoReporte(id: string, periodo: string | nul
   if (error) throw error;
 }
 
+// A diferencia de reintentarExtraccion (pensado para un reporte que nunca llegó a insertar
+// nada — estado 'error' o trabado en 'extrayendo'), esto es para un reporte que SÍ terminó
+// de procesar pero con datos incompletos o incorrectos (ej. la IA extrajo solo una fracción
+// de las filas reales). Reintentar sin más duplicaría las líneas ya insertadas — por eso acá
+// primero se borran las líneas y excepciones de este reporte antes de re-extraer desde cero.
+// Solo sirve para tipos que insertan en lineas_comision/lineas_venta; actualizacion_abb y
+// bono_contingencia tocan otras tablas (polizas, bonos) y necesitarían su propia limpieza.
+export async function reprocesarReporte(reporteId: string): Promise<void> {
+  const [{ data: lineasComision }, { data: lineasVenta }] = await Promise.all([
+    supabase.from("lineas_comision").select("id").eq("reporte_id", reporteId),
+    supabase.from("lineas_venta").select("id").eq("reporte_id", reporteId),
+  ]);
+  const idsComision = (lineasComision ?? []).map((l) => l.id);
+  const idsVenta = (lineasVenta ?? []).map((l) => l.id);
+  if (idsComision.length > 0) {
+    const { error } = await supabase.from("excepciones").delete().in("linea_comision_id", idsComision);
+    if (error) throw error;
+  }
+  if (idsVenta.length > 0) {
+    const { error } = await supabase.from("excepciones").delete().in("linea_venta_id", idsVenta);
+    if (error) throw error;
+  }
+  await supabase.from("lineas_comision").delete().eq("reporte_id", reporteId);
+  await supabase.from("lineas_venta").delete().eq("reporte_id", reporteId);
+  const { error: updErr } = await supabase
+    .from("reportes")
+    .update({ estado: "subido", error: null, total_lineas: 0, total_ok: 0, total_excepciones: 0 })
+    .eq("id", reporteId);
+  if (updErr) throw updErr;
+  const { error: fnErr } = await supabase.functions.invoke("extraer-reporte", { body: { reporte_id: reporteId } });
+  if (fnErr) throw fnErr;
+}
+
 // =========================================================
 // Listados
 // =========================================================

@@ -2,16 +2,23 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Info, ArrowRight, Eye, X, Pencil } from "lucide-react";
+import { Info, ArrowRight, Eye, X, Pencil, RotateCcw } from "lucide-react";
 import { SidePanel, Button, Badge, TextInput, Loading, type Tone } from "@/components/agentes/ui";
 import { money, pct, fechaHora, TIPOS_REPORTE, ESTADOS_LINEA } from "@/lib/format";
 import {
   actualizarPeriodoReporte,
+  reprocesarReporte,
   type BonoResumen,
   type LineaComision,
   type LineaVenta,
   type Reporte,
 } from "@/lib/queries/subir";
+
+// Tipos cuya limpieza sabemos hacer bien en reprocesarReporte() (insertan en lineas_comision o
+// lineas_venta). actualizacion_abb y bono_contingencia tocan otras tablas y no se ofrecen acá.
+const TIPOS_REPROCESABLES = new Set([
+  "comision_aseguradora", "produccion", "cancelaciones", "renovaciones", "chargebacks", "resumen_anual", "otro", "venta_interna",
+]);
 
 const ESTADOS_VENTA_ABB: Record<string, { label: string; tone: Tone }> = {
   pendiente: { label: "Pendiente", tone: "neutral" },
@@ -39,8 +46,25 @@ export default function ReporteDrawer({
 }) {
   const [rawModal, setRawModal] = useState<{ titulo: string; datos: Record<string, unknown> | null } | null>(null);
   const verCrudo = (titulo: string, datos: Record<string, unknown> | null) => setRawModal({ titulo, datos });
+  const [reprocesando, setReprocesando] = useState(false);
 
   const conflictosVenta = lineasVenta.filter((l) => l.estado_en_abb === "conflicto");
+
+  async function reprocesar() {
+    const ok = window.confirm(
+      `Esto borra las ${reporte.total_lineas || 0} línea(s) ya extraídas de "${reporte.nombre_archivo}" y vuelve a leer el archivo desde cero. ¿Continuar?`,
+    );
+    if (!ok) return;
+    setReprocesando(true);
+    try {
+      await reprocesarReporte(reporte.id);
+      onClose();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "No se pudo reprocesar el reporte.");
+    } finally {
+      setReprocesando(false);
+    }
+  }
 
   return (
     <>
@@ -58,6 +82,12 @@ export default function ReporteDrawer({
               <Badge tone="ok">Confianza promedio {pct(reporte.confianza_promedio)}</Badge>
             )}
             <PeriodoEditor reporte={reporte} onActualizado={onPeriodoActualizado} />
+            {TIPOS_REPROCESABLES.has(reporte.tipo) && (
+              <Button size="sm" variant="secondary" onClick={reprocesar} disabled={reprocesando} title="Borra las líneas ya extraídas y vuelve a leer el archivo desde cero">
+                <RotateCcw className="w-3.5 h-3.5" />
+                {reprocesando ? "Reprocesando…" : "Reprocesar"}
+              </Button>
+            )}
           </div>
 
           {reporte.mapeo_columnas && Object.keys(reporte.mapeo_columnas).length > 0 && (
