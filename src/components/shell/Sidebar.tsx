@@ -51,11 +51,11 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </div>
       <nav className="flex flex-grow flex-col gap-1 overflow-y-auto overflow-x-hidden p-3">
-        <div className="flex items-center gap-3 rounded-lg bg-brand px-3 py-2.5 text-sm font-semibold text-white">
+        <div className="flex items-center justify-center gap-3 rounded-lg bg-brand px-2.5 py-2.5 text-sm font-semibold text-white group-hover:justify-start group-hover:px-3">
           <PieChart size={16} className="flex-shrink-0" />
           <span className="hidden whitespace-nowrap group-hover:inline">GELPI AMS</span>
         </div>
-        <div className="ml-5 mt-1.5 flex flex-col gap-0.5 border-l border-border pl-3">
+        <div className="mt-1.5 flex flex-col gap-0.5 border-l border-transparent pl-0 group-hover:ml-5 group-hover:border-border group-hover:pl-3">
           {SUBTABS.map((t) => {
             const active = pathname?.startsWith(t.href);
             const Icon = t.icon;
@@ -66,14 +66,15 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 onClick={onNavigate}
                 title={t.label}
                 className={clsx(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px]",
-                  active
-                    ? "bg-brand-tint font-medium text-brand-dark before:h-1.5 before:w-1.5 before:flex-shrink-0 before:rounded-full before:bg-brand before:content-['']"
-                    : "text-[#4b5563] hover:bg-background"
+                  "flex items-center justify-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] group-hover:justify-start",
+                  active ? "bg-brand-tint font-medium text-brand-dark" : "text-[#4b5563] hover:bg-background"
                 )}
               >
-                <Icon size={15} className="flex-shrink-0" />
+                <Icon size={16} className="flex-shrink-0" />
                 <span className="hidden whitespace-nowrap group-hover:inline">{t.label}</span>
+                {active && (
+                  <span className="hidden h-1.5 w-1.5 flex-shrink-0 rounded-full bg-brand group-hover:ml-auto group-hover:inline-block" />
+                )}
               </Link>
             );
           })}
