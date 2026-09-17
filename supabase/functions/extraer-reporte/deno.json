@@ -1,5 +1,6 @@
 {
   "imports": {
-    "xlsx": "npm:xlsx@0.18.5"
+    "xlsx": "npm:xlsx@0.18.5",
+    "pdf-lib": "npm:pdf-lib@1.17.1"
   }
 }

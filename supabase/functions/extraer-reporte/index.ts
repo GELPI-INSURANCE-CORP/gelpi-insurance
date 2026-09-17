@@ -803,30 +803,85 @@ Deno.serve(async (req: Request) => {
         : ext === "gif"
         ? "image/gif"
         : "image/jpeg";
-      const b64 = base64FromBytes(bytes);
-      const dataUrl = `data:${mediaType};base64,${b64}`;
-      const instructionText =
-        `Archivo: ${reporte.nombre_archivo} (tipo declarado: ${reporte.tipo}). ` +
-        `Extraé TODAS las filas/registros que encuentres en el documento, de todas las páginas, completando el array "filas" ` +
-        `por completo — no resumas ni muestrees, aunque el documento tenga cientos de filas repetitivas. ` +
-        `Si hay un total de transacciones en el resumen/pie de página, reportalo en total_filas_documento. ` +
-        `Completá también tipo_detectado, aseguradora_detectada, periodo, mapeo_columnas, columnas_sin_mapeo, confianza_promedio y resumen.`;
-      const block = esPdf
-        ? { type: "input_file", filename: reporte.nombre_archivo || "reporte.pdf", file_data: dataUrl }
-        : { type: "input_image", image_url: dataUrl };
 
-      extraccion = await callOpenAI({
-        apiKey: OPENAI_API_KEY,
-        model: OPENAI_MODEL,
-        esVenta: esVentaEsperada,
-        // Techo real de salida de gpt-4o-mini (Responses API); con 8192 un statement con
-        // ~100+ filas ya truncaba el array "filas" a mitad de camino.
-        maxTokens: 16384,
-        content: [
-          { type: "input_text", text: instructionText },
-          block,
-        ],
-      });
+      // Con un PDF largo (statements de aseguradora con decenas/cientos de filas
+      // repetitivas) el modelo tiende a dejar de transcribir a mitad de camino sin avisar —
+      // no es un límite de tokens (eso ya se detecta como "incomplete" más arriba), simplemente
+      // deja de leer. Partir el PDF en páginas individuales y pedirle a la IA una extracción
+      // por página reduce mucho ese problema: cada llamada solo tiene que leer una página, no
+      // el documento entero. Import dinámico + try/catch a propósito: si pdf-lib no puede
+      // partir este PDF en particular (estructura rara, PDF encriptado, etc.) o directamente no
+      // carga en este runtime, seguimos con el documento entero en un solo llamado — el mismo
+      // comportamiento que había antes de este cambio — en vez de romper toda la extracción.
+      let paginasBytes: Uint8Array[] = [bytes];
+      if (esPdf) {
+        try {
+          const { PDFDocument } = await import("pdf-lib");
+          const pdfDoc = await PDFDocument.load(bytes);
+          const numPaginas = pdfDoc.getPageCount();
+          if (numPaginas > 1) {
+            const partes: Uint8Array[] = [];
+            for (let i = 0; i < numPaginas; i++) {
+              const nuevoPdf = await PDFDocument.create();
+              const [pagina] = await nuevoPdf.copyPages(pdfDoc, [i]);
+              nuevoPdf.addPage(pagina);
+              partes.push(await nuevoPdf.save());
+            }
+            paginasBytes = partes;
+          }
+        } catch (splitErr) {
+          console.error("No se pudo partir el PDF en páginas, se procesa entero:", splitErr);
+        }
+      }
+
+      const totalPaginas = paginasBytes.length;
+      const resultadosPorPagina = await Promise.all(
+        paginasBytes.map((paginaBytes, i) => {
+          const b64 = base64FromBytes(paginaBytes);
+          const dataUrl = `data:${mediaType};base64,${b64}`;
+          const sufijoPagina = totalPaginas > 1 ? ` (página ${i + 1} de ${totalPaginas})` : "";
+          const instructionText =
+            `Archivo: ${reporte.nombre_archivo}${sufijoPagina} (tipo declarado: ${reporte.tipo}). ` +
+            `Extraé TODAS las filas/registros que encuentres en ${totalPaginas > 1 ? "esta página" : "el documento"}, ` +
+            `completando el array "filas" por completo — no resumas ni muestrees, aunque tenga muchas filas repetitivas. ` +
+            `Si acá aparece un total de transacciones en el resumen/pie de página, reportalo en total_filas_documento. ` +
+            `Completá también tipo_detectado, aseguradora_detectada, periodo, mapeo_columnas, columnas_sin_mapeo, confianza_promedio y resumen.`;
+          const block = esPdf
+            ? { type: "input_file", filename: reporte.nombre_archivo || "reporte.pdf", file_data: dataUrl }
+            : { type: "input_image", image_url: dataUrl };
+
+          return callOpenAI({
+            apiKey: OPENAI_API_KEY,
+            model: OPENAI_MODEL,
+            esVenta: esVentaEsperada,
+            // Techo real de salida de gpt-4o-mini (Responses API); con 8192 un statement con
+            // ~100+ filas ya truncaba el array "filas" a mitad de camino.
+            maxTokens: 16384,
+            content: [{ type: "input_text", text: instructionText }, block],
+          });
+        }),
+      );
+
+      if (resultadosPorPagina.length === 1) {
+        extraccion = resultadosPorPagina[0];
+      } else {
+        // Combinar las filas de todas las páginas en un solo resultado. El resto de los
+        // metadatos (tipo, aseguradora, período, mapeo) se toman de la primera página porque
+        // son los mismos en todo el documento. total_filas_documento normalmente solo viene en
+        // la página que trae el resumen final (no necesariamente la primera).
+        const filasCombinadas: Record<string, unknown>[] = [];
+        for (const r of resultadosPorPagina) {
+          for (const f of (r.filas ?? []) as Record<string, unknown>[]) {
+            filasCombinadas.push({ ...f, fila: filasCombinadas.length + 1 });
+          }
+        }
+        const totalReportado = resultadosPorPagina.map((r) => r.total_filas_documento).find((n) => n != null) ?? null;
+        extraccion = {
+          ...resultadosPorPagina[0],
+          filas: filasCombinadas,
+          total_filas_documento: totalReportado,
+        } as ExtraccionResultado;
+      }
     }
 
     const tipoDetectado = extraccion.tipo_detectado || reporte.tipo;
