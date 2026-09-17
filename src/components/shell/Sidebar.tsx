@@ -16,7 +16,7 @@ import clsx from "clsx";
 
 const SUBTABS = [
   { href: "/comisiones/resumen", label: "Resumen", icon: LayoutDashboard },
-  { href: "/comisiones/subir", label: "Subir Reportes", icon: Upload },
+  { href: "/comisiones/subir", label: "Comisiones", icon: Upload },
   { href: "/comisiones/conciliacion", label: "Conciliación", icon: GitCompare },
   { href: "/comisiones/clientes", label: "Clientes (Book)", icon: BookOpen },
   { href: "/comisiones/oficinas", label: "Oficinas", icon: Building2 },

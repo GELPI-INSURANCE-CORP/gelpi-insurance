@@ -9,7 +9,7 @@ import { displayName, initials, signOut } from "@/lib/auth";
 
 const TITLES: Record<string, string> = {
   "/comisiones/resumen": "Resumen",
-  "/comisiones/subir": "Subir Reportes",
+  "/comisiones/subir": "Comisiones",
   "/comisiones/conciliacion": "Conciliación",
   "/comisiones/agentes": "Agentes",
   "/comisiones/clientes": "Clientes (Book)",

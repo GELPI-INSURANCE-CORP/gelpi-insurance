@@ -1,11 +1,11 @@
 "use client";
-import Link from "next/link";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { Plus, Upload } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Card, Select, Input, Button, Badge, Loading, EmptyState, Banner } from "@/components/agentes/ui";
 import BonoDetalleModal from "@/components/bonos/BonoDetalleModal";
 import NuevoBonoModal from "@/components/bonos/NuevoBonoModal";
+import SubirBonoButton from "@/components/bonos/SubirBonoButton";
 import { money } from "@/lib/format";
 import { listBonos, type BonoRow, type FiltrosBonos } from "@/lib/queries/bonos";
 import { listAgentesSimple, listAseguradorasSimple, listOficinasSimple } from "@/lib/queries/agentes";
@@ -66,12 +66,7 @@ function BonosContent() {
             <Plus className="w-3.5 h-3.5" />
             Cargar bono manual
           </Button>
-          <Link href="/comisiones/subir/">
-            <Button size="sm">
-              <Upload className="w-3.5 h-3.5" />
-              Subir statement de bono
-            </Button>
-          </Link>
+          <SubirBonoButton aseguradoras={refs.aseguradoras} onDone={cargar} />
         </div>
       </div>
 

@@ -258,6 +258,14 @@ export async function reintentarExtraccion(reporteId: string): Promise<void> {
   await supabase.functions.invoke("extraer-reporte", { body: { reporte_id: reporteId } });
 }
 
+export async function actualizarPeriodoReporte(id: string, periodo: string | null): Promise<void> {
+  const { error } = await supabase
+    .from("reportes")
+    .update({ periodo, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
 // =========================================================
 // Listados
 // =========================================================
