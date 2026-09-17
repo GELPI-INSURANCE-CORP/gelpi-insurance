@@ -80,6 +80,7 @@ interface ExtraccionResultado {
   confianza_promedio?: number | null;
   resumen?: string | null;
   filas?: (FilaComision | FilaVenta)[];
+  total_filas_documento?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +384,11 @@ function buildJsonSchema(esVenta: boolean): Record<string, unknown> {
           "Dejar vacío ([]) cuando sólo se pide mapeo de columnas (CSV/XLSX); completar todas las filas cuando el documento es PDF/imagen.",
         items: buildFilaSchema(esVenta),
       },
+      total_filas_documento: {
+        type: ["integer", "null"],
+        description:
+          "Solo para PDF/imagen: si el documento indica en algún resumen/pie de página cuántas transacciones o filas tiene en total (ej. 'Transactions processed: 219'), poné ese número acá para poder verificar que 'filas' las incluya todas. Si el documento no trae ese total, dejar null.",
+      },
     },
     required: [
       "tipo_detectado",
@@ -393,6 +399,7 @@ function buildJsonSchema(esVenta: boolean): Record<string, unknown> {
       "confianza_promedio",
       "resumen",
       "filas",
+      "total_filas_documento",
     ],
     additionalProperties: false,
   };
@@ -426,6 +433,7 @@ function normalizarExtraccion(raw: any): ExtraccionResultado {
     confianza_promedio: raw?.confianza_promedio ?? null,
     resumen: raw?.resumen ?? null,
     filas,
+    total_filas_documento: typeof raw?.total_filas_documento === "number" ? raw.total_filas_documento : null,
   };
 }
 
@@ -443,6 +451,7 @@ Reglas:
 - Montos como número; los chargebacks/cancelaciones son montos NEGATIVOS.
 - tipo_transaccion: traducí códigos de aseguradora (NB/NBS/NEW->nueva, RWL/REN->renovacion, END/ENDT/XLC->endoso, CAN/CNL/CXL/CB->cancelacion, ADJ->ajuste) o dejá "otro".
 - Algunas aseguradoras (ej. United Automobile) incluyen en el statement una fila de referencia con el total ya pagado en el período anterior, sin póliza real asociada (número de póliza en ceros como "00000000000", o vacío). Esa fila no es una transacción nueva de este período: clasificala como tipo_transaccion="ajuste" y poné en nombre_asegurado algo descriptivo como "Pago período anterior (referencia)" en vez de dejarlo vacío. No inventes un número de póliza.
+- CRÍTICO al extraer filas de un PDF/imagen con una tabla larga: transcribí TODAS las filas de TODAS las páginas, una por una, sin resumir, sin muestrear ni saltear ninguna aunque haya decenas o cientos. No es aceptable devolver solo una parte de la tabla. Si el documento trae en algún resumen/pie de página cuántas transacciones tiene en total (ej. "Transactions processed: 219"), reportá ese número en total_filas_documento — se usa para verificar que no falte ninguna fila.
 - Cualquier columna que no tenga un campo destino claro, listala en columnas_sin_mapeo y, si te piden las filas completas, guardá su valor en campos_extra.
 - Sé conservador con la confianza (0-100): bajala si el archivo es ambiguo o está mal escaneado.`;
 
@@ -798,8 +807,10 @@ Deno.serve(async (req: Request) => {
       const dataUrl = `data:${mediaType};base64,${b64}`;
       const instructionText =
         `Archivo: ${reporte.nombre_archivo} (tipo declarado: ${reporte.tipo}). ` +
-        `Extraé TODAS las filas/registros que encuentres en el documento, completando el array "filas" por completo, ` +
-        `además de tipo_detectado, aseguradora_detectada, periodo, mapeo_columnas, columnas_sin_mapeo, confianza_promedio y resumen.`;
+        `Extraé TODAS las filas/registros que encuentres en el documento, de todas las páginas, completando el array "filas" ` +
+        `por completo — no resumas ni muestrees, aunque el documento tenga cientos de filas repetitivas. ` +
+        `Si hay un total de transacciones en el resumen/pie de página, reportalo en total_filas_documento. ` +
+        `Completá también tipo_detectado, aseguradora_detectada, periodo, mapeo_columnas, columnas_sin_mapeo, confianza_promedio y resumen.`;
       const block = esPdf
         ? { type: "input_file", filename: reporte.nombre_archivo || "reporte.pdf", file_data: dataUrl }
         : { type: "input_image", image_url: dataUrl };
@@ -866,6 +877,21 @@ Deno.serve(async (req: Request) => {
     const filasFinal: Record<string, unknown>[] = usarFilasDelModelo
       ? (extraccion.filas as Record<string, unknown>[]).map((f, idx) => ({ fila: f.fila ?? idx + 1, ...f }))
       : filasDesdeMapeo();
+
+    // Freno de seguridad: en documentos PDF/imagen largos y repetitivos, el modelo a veces
+    // devuelve una respuesta "completa" (sin error de OpenAI) pero con solo una fracción de
+    // las filas reales — no es un truncamiento por límite de tokens (eso ya se detecta arriba
+    // como incomplete), sino que el modelo deja de transcribir antes de terminar. Cuando el
+    // documento reporta su propio total de transacciones, lo comparamos y preferimos fallar
+    // con un mensaje claro antes que guardar un statement a medias como si estuviera completo.
+    if (usarFilasDelModelo && extraccion.total_filas_documento != null && extraccion.total_filas_documento > 0) {
+      const esperadas = extraccion.total_filas_documento;
+      if (filasFinal.length < esperadas * 0.9) {
+        throw new ReporteError(
+          `La IA extrajo solo ${filasFinal.length} de ${esperadas} filas que el documento dice tener — probablemente se salteó filas de un documento largo. No se guardó nada para evitar un statement incompleto. Reintentá la extracción.`,
+        );
+      }
+    }
 
     // -----------------------------------------------------------------------
     // Ramas por tipo de reporte
