@@ -508,6 +508,12 @@ export default function SubirPage() {
                           <Badge tone={badge.tone} icon={r.estado === "bloqueado" ? <Ban size={12} /> : undefined}>
                             {badge.label}
                           </Badge>
+                          {r.total_lineas > 0 && r.total_lineas - r.total_ok - r.total_excepciones > 0 && (
+                            <span className="text-xs font-medium text-bad-fg">
+                              ⚠ {r.total_lineas - r.total_ok - r.total_excepciones} fila
+                              {r.total_lineas - r.total_ok - r.total_excepciones === 1 ? "" : "s"} sin cuadrar (ni OK ni en excepción)
+                            </span>
+                          )}
                           {(r.estado === "error" || reporteAtascado(r)) && (
                             <div className="flex flex-col gap-0.5">
                               {r.error ? (
