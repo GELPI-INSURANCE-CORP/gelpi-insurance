@@ -205,11 +205,6 @@ function ClientesContent() {
             options={[{ value: "", label: "Aseguradora: Todas" }, ...refs.aseguradoras.map((a) => ({ value: a.id, label: a.nombre }))]}
           />
           <Select
-            value={filtros.ramo ?? ""}
-            onChange={(v) => { setFiltros((f) => ({ ...f, ramo: v || undefined })); setPage(1); }}
-            options={[{ value: "", label: "Ramo: Todos" }, ...Object.entries(RAMOS).map(([value, label]) => ({ value, label }))]}
-          />
-          <Select
             value={filtros.estado ?? ""}
             onChange={(v) => { setFiltros((f) => ({ ...f, estado: v || undefined })); setPage(1); }}
             options={[
@@ -229,7 +224,6 @@ function ClientesContent() {
                 <th className="px-4 py-2.5 font-medium whitespace-nowrap">Cliente</th>
                 <th className="px-4 py-2.5 font-medium whitespace-nowrap">N° póliza</th>
                 <th className="px-4 py-2.5 font-medium whitespace-nowrap">Aseguradora</th>
-                <th className="px-4 py-2.5 font-medium whitespace-nowrap">Ramo</th>
                 <th className="px-4 py-2.5 font-medium whitespace-nowrap">Agente</th>
                 <th className="px-4 py-2.5 font-medium whitespace-nowrap">Oficina</th>
                 <th className="px-4 py-2.5 font-medium whitespace-nowrap">Vigencia</th>
@@ -244,7 +238,6 @@ function ClientesContent() {
                   <td className="px-4 py-2.5 font-medium">{r.cliente}</td>
                   <td className="px-4 py-2.5 text-muted whitespace-nowrap">{r.numero_poliza}</td>
                   <td className="px-4 py-2.5">{r.aseguradora}</td>
-                  <td className="px-4 py-2.5">{RAMOS[r.ramo] ?? r.ramo}</td>
                   <td className="px-4 py-2.5">{r.agente ?? <span className="text-bad-fg">Sin asignar</span>}</td>
                   <td className="px-4 py-2.5">{r.oficina ?? <span className="text-bad-fg">Sin asignar</span>}</td>
                   <td className="px-4 py-2.5 text-muted whitespace-nowrap">{fecha(r.fecha_vigencia)}</td>
