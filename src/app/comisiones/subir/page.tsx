@@ -22,6 +22,7 @@ import {
   type Reporte,
   type TipoReporte,
 } from "@/lib/queries/subir";
+import { crearAseguradora } from "@/lib/queries/configuracion";
 import ReporteDrawer from "@/components/reportes/ReporteDrawer";
 
 const SUBTIPOS_ASEGURADORA: TipoReporte[] = [
@@ -123,6 +124,9 @@ export default function SubirPage() {
   const [filtroEstado, setFiltroEstado] = useState("");
 
   const [aseguradoraSel, setAseguradoraSel] = useState("");
+  const [altaAsegAbierta, setAltaAsegAbierta] = useState(false);
+  const [nuevaAsegNombre, setNuevaAsegNombre] = useState("");
+  const [creandoAseg, setCreandoAseg] = useState(false);
   const [periodoInput, setPeriodoInput] = useState("");
   const [subtipo, setSubtipo] = useState<TipoReporte>("comision_aseguradora");
   const [dragKey, setDragKey] = useState<ZoneKey | null>(null);
@@ -163,6 +167,29 @@ export default function SubirPage() {
       .then(setAseguradoras)
       .catch((err) => setPageError(err instanceof Error ? err.message : "No se pudieron cargar las aseguradoras."));
   }, []);
+
+  // Alta de aseguradora sin salir de esta pantalla. Ya se podía hacer desde Configuración, pero
+  // enterrada en la pestaña "Plantillas por aseguradora": el momento en que hace falta es este,
+  // cuando llega un statement de una compañía nueva y no está en la lista.
+  async function crearAseguradoraInline() {
+    const nombre = nuevaAsegNombre.trim();
+    if (!nombre) return;
+    setCreandoAseg(true);
+    try {
+      await crearAseguradora(nombre, "");
+      const lista = await listAseguradoras();
+      setAseguradoras(lista);
+      // Queda elegida la recién creada, que es para lo que se la creó.
+      const creada = lista.find((a) => a.nombre.toLowerCase() === nombre.toLowerCase());
+      if (creada) setAseguradoraSel(creada.id);
+      setNuevaAsegNombre("");
+      setAltaAsegAbierta(false);
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : "No se pudo crear la aseguradora.");
+    } finally {
+      setCreandoAseg(false);
+    }
+  }
 
   useEffect(() => {
     refreshReportes();
@@ -312,6 +339,47 @@ export default function SubirPage() {
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setAseguradoraSel(e.target.value)}
             className="h-8 bg-surface text-xs"
           />
+          {altaAsegAbierta ? (
+            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <input
+                value={nuevaAsegNombre}
+                onChange={(e) => setNuevaAsegNombre(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") crearAseguradoraInline();
+                  if (e.key === "Escape") setAltaAsegAbierta(false);
+                }}
+                placeholder="Nombre (ej: Responsive)"
+                autoFocus
+                className="h-8 flex-1 rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground outline-none placeholder:text-muted"
+              />
+              <button
+                type="button"
+                onClick={crearAseguradoraInline}
+                disabled={creandoAseg || !nuevaAsegNombre.trim()}
+                className="h-8 rounded-lg bg-brand px-2.5 text-xs font-medium text-white disabled:opacity-50"
+              >
+                {creandoAseg ? "…" : "Crear"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAltaAsegAbierta(false)}
+                className="h-8 rounded-lg border border-border px-2.5 text-xs text-muted"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAltaAsegAbierta(true);
+              }}
+              className="self-start text-[11px] text-brand underline"
+            >
+              ¿No está tu aseguradora? Agregala
+            </button>
+          )}
           <Select
             options={subtipoOptions}
             value={subtipo}

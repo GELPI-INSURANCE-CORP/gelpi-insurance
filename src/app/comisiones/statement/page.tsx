@@ -397,18 +397,21 @@ function StatementContent() {
           value={money(totales.montoAprobado)}
           sub={`${totales.countAprobado} línea${totales.countAprobado === 1 ? "" : "s"} · ya tienen agente`}
           tone="ok"
+          destacado
         />
         <Kpi
           label="Pendiente"
           value={money(totales.montoPendiente)}
           sub={`${totales.countPendiente} línea${totales.countPendiente === 1 ? "" : "s"} · necesitan una decisión`}
           tone="warn"
+          destacado
         />
         <Kpi
           label="Sin asignar"
           value={money(totales.montoSinAsignar)}
           sub={`${totales.countSinAsignar} línea${totales.countSinAsignar === 1 ? "" : "s"} · el sistema no las reconoció`}
           tone="bad"
+          destacado
         />
       </div>
 
