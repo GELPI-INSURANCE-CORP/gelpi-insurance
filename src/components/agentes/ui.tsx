@@ -40,6 +40,7 @@ export function Kpi({
   sub,
   tone = "muted",
   destacado = false,
+  compact = false,
 }: {
   label: string;
   value: string;
@@ -47,6 +48,8 @@ export function Kpi({
   tone?: "ok" | "warn" | "bad" | "brand" | "muted";
   /** Resalta la tarjeta con fondo y borde del color del tono (además del texto), para KPIs que deben distinguirse de un vistazo. */
   destacado?: boolean;
+  /** Menos padding, para pantallas donde estas tarjetas compiten por espacio con mucho contenido debajo. No cambia el tamaño de letra: siguen siendo lo primero que salta a la vista. */
+  compact?: boolean;
 }) {
   const toneClass: Record<string, string> = {
     ok: "text-ok-fg",
@@ -65,7 +68,8 @@ export function Kpi({
   return (
     <div
       className={clsx(
-        "rounded-xl border p-5 flex flex-col gap-1 min-w-0",
+        "rounded-xl border flex flex-col gap-1 min-w-0",
+        compact ? "p-4" : "p-5",
         destacado ? destacadoClass[tone] : "bg-surface border-border"
       )}
     >
