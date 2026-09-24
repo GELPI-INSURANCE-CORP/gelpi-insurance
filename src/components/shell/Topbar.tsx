@@ -11,6 +11,7 @@ const TITLES: Record<string, string> = {
   "/comisiones/resumen": "Resumen",
   "/comisiones/subir": "Comisiones",
   "/comisiones/conciliacion": "Conciliación",
+  "/comisiones/liquidacion": "Liquidación",
   "/comisiones/agentes": "Agentes",
   "/comisiones/clientes": "Clientes (Book)",
   "/comisiones/oficinas": "Oficinas",

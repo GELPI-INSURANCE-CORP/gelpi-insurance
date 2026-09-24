@@ -32,7 +32,7 @@ function monthRange(d = new Date()) {
 // PostgREST recorta cada respuesta a `max_rows` (1000, ver supabase/config.toml) sin avisar.
 // Company-wide (todas las oficinas/agentes) puede superar eso en un mes cargado, así que
 // paginamos en bloques con un orden estable (id) hasta agotar los resultados.
-async function fetchTodasLineasComision(
+export async function fetchTodasLineasComision(
   desde: string,
   hasta: string,
   estados: string[]

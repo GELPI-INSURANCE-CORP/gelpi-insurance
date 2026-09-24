@@ -11,6 +11,7 @@ import {
   Building2,
   Gift,
   Settings,
+  Wallet,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -18,6 +19,7 @@ const SUBTABS = [
   { href: "/comisiones/resumen", label: "Resumen", icon: LayoutDashboard },
   { href: "/comisiones/subir", label: "Comisiones", icon: Upload },
   { href: "/comisiones/conciliacion", label: "Conciliación", icon: GitCompare },
+  { href: "/comisiones/liquidacion", label: "Liquidación", icon: Wallet },
   { href: "/comisiones/clientes", label: "Clientes (Book)", icon: BookOpen },
   { href: "/comisiones/oficinas", label: "Oficinas", icon: Building2 },
   { href: "/comisiones/bonos", label: "Bonos", icon: Gift },
