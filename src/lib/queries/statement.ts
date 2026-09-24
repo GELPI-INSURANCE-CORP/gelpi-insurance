@@ -184,6 +184,52 @@ export async function reabrirStatement(reporteId: string): Promise<void> {
   if (error) throw error;
 }
 
+// Categorías de las líneas que no son comisión de nadie. Se guardan con una clave fija (no con el
+// texto que se muestra) para poder desglosarlas después: "cuánto me cobraron de MVR este año" es
+// una pregunta que se responde agrupando por esta clave, y no se puede responder agrupando por una
+// nota escrita a mano, donde el mismo concepto aparece como "MVR", "mvr", "M.V.R." y "vehiculos".
+export const CATEGORIAS_AJUSTE: { value: string; label: string; ayuda: string }[] = [
+  { value: "mvr", label: "MVR", ayuda: "Cargo por correr el reporte de vehículo de una cotización" },
+  { value: "ajuste_aseguradora", label: "Ajuste de la aseguradora", ayuda: "Correcciones o devoluciones que hace el carrier" },
+  { value: "cargo_administrativo", label: "Cargo administrativo", ayuda: "Cuotas, fees o cargos de la cuenta de la agencia" },
+  { value: "otro", label: "Otro", ayuda: "Cualquier otra cosa que no sea comisión de un agente" },
+];
+
+// Marca una línea como gasto/ajuste de la agencia: deja de buscar agente y pasa a la cuenta de la
+// casa, conservando su monto en el statement. La categoría se guarda en la línea, aparte de la
+// nota, para que un reporte futuro pueda sumarlas por concepto.
+export async function marcarLineaComoAjuste(params: {
+  excepcionId: string;
+  lineaId: string;
+  categoria: string;
+  nota: string;
+}): Promise<void> {
+  const etiqueta = CATEGORIAS_AJUSTE.find((c) => c.value === params.categoria)?.label ?? params.categoria;
+  const nota = params.nota.trim();
+
+  const { error: errRpc } = await supabase.rpc("resolver_excepcion", {
+    p_excepcion_id: params.excepcionId,
+    p_accion: "cuenta_casa",
+    p_agente_id: null,
+    p_oficina_id: null,
+    p_poliza_id: null,
+    p_motivo: nota ? `${etiqueta} — ${nota}` : etiqueta,
+    p_cliente: null,
+  });
+  if (errRpc) throw errRpc;
+
+  // La categoría va en campos_extra de la línea, no solo en la nota de la excepción: la línea es lo
+  // que sobrevive y lo que se suma en los reportes. Se lee y se reescribe el objeto entero para no
+  // pisar lo que el extractor haya guardado ahí del archivo original.
+  const { data: linea } = await supabase.from("lineas_comision").select("campos_extra").eq("id", params.lineaId).single();
+  const extra = (linea?.campos_extra ?? {}) as Record<string, unknown>;
+  const { error: errLinea } = await supabase
+    .from("lineas_comision")
+    .update({ campos_extra: { ...extra, categoria_ajuste: params.categoria, nota_ajuste: nota || null } })
+    .eq("id", params.lineaId);
+  if (errLinea) throw errLinea;
+}
+
 // Corrige el agente de una línea que YA está conciliada. Las acciones de Conciliación
 // (resolver_excepcion) solo sirven mientras hay una excepción abierta; una vez que la línea se
 // concilió — sola o a mano — no quedaba forma de tocarla. Pero el sistema acierta ~3 de cada 4, y
