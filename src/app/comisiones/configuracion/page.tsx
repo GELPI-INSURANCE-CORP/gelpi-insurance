@@ -1,10 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Trash2, ShieldAlert, CheckCircle2, Eye, EyeOff, Sparkles } from "lucide-react";
 import { Card, CardHead, Input, TextInput, TextArea, Button, Badge, Banner, Loading, EmptyState, Field, Modal, Tabs, Select } from "@/components/agentes/ui";
 import { fechaHora } from "@/lib/format";
+import { AliasAseguradoraEditor } from "@/components/configuracion/AliasAseguradoraEditor";
+import { FusionarAseguradoraModal } from "@/components/configuracion/FusionarAseguradoraModal";
 import {
   listAlias,
   agregarAlias,
@@ -15,6 +17,7 @@ import {
   listAseguradoras,
   actualizarPlantillaMapeo,
   crearAseguradora,
+  listAliasAseguradora,
   listOficinasConGerente,
   actualizarPctOverride,
   getAgenteCasa,
@@ -28,6 +31,7 @@ import {
   type AliasAgencia,
   type ConfigValores,
   type AseguradoraRow,
+  type AliasAseguradora,
   type AgenteCasa,
   type OficinaCasa,
   type ConfigIA,
@@ -495,8 +499,10 @@ function SeccionIA() {
 
 function SeccionPlantillas() {
   const [aseguradoras, setAseguradoras] = useState<AseguradoraRow[]>([]);
+  const [alias, setAlias] = useState<AliasAseguradora[]>([]);
   const [loading, setLoading] = useState(true);
   const [editando, setEditando] = useState<AseguradoraRow | null>(null);
+  const [fusionando, setFusionando] = useState<AseguradoraRow | null>(null);
   const [nuevaOpen, setNuevaOpen] = useState(false);
   const [nombre, setNombre] = useState("");
   const [codigo, setCodigo] = useState("");
@@ -505,11 +511,30 @@ function SeccionPlantillas() {
 
   const cargar = () => {
     setLoading(true);
-    listAseguradoras()
-      .then(setAseguradoras)
+    Promise.all([listAseguradoras(), listAliasAseguradora()])
+      .then(([a, al]) => {
+        setAseguradoras(a);
+        setAlias(al);
+      })
       .finally(() => setLoading(false));
   };
   useEffect(cargar, []);
+
+  // Recarga liviana para cuando se agrega/borra un alias: no muestra el spinner de página
+  // completa, porque no cambia la lista de aseguradoras ni sus columnas.
+  const recargarAlias = () => {
+    listAliasAseguradora().then(setAlias);
+  };
+
+  const aliasPorAseguradora = useMemo(() => {
+    const map = new Map<string, AliasAseguradora[]>();
+    for (const a of alias) {
+      const arr = map.get(a.aseguradora_id);
+      if (arr) arr.push(a);
+      else map.set(a.aseguradora_id, [a]);
+    }
+    return map;
+  }, [alias]);
 
   async function crear() {
     if (!nombre.trim()) return;
@@ -530,8 +555,12 @@ function SeccionPlantillas() {
 
   return (
     <div>
-      <div className="flex justify-end mb-3">
-        <Button size="sm" onClick={() => setNuevaOpen(true)}>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <p className="text-xs text-muted max-w-xl">
+          Si el archivo de una compañía llega con otro nombre, agregalo como alias acá abajo y el sistema lo va a
+          reconocer en vez de crear una aseguradora nueva.
+        </p>
+        <Button size="sm" onClick={() => setNuevaOpen(true)} className="shrink-0">
           <Plus className="w-3.5 h-3.5" />
           Nueva aseguradora
         </Button>
@@ -552,13 +581,21 @@ function SeccionPlantillas() {
             <tbody>
               {aseguradoras.map((a) => (
                 <tr key={a.id} className="border-t border-border">
-                  <td className="px-4 py-2.5 font-medium">{a.nombre}</td>
-                  <td className="px-4 py-2.5 text-muted">{a.codigo ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-muted">{fechaHora(a.created_at)}</td>
-                  <td className="px-4 py-2.5">
-                    <button className="text-brand text-xs hover:underline" onClick={() => setEditando(a)}>
-                      Ver/editar plantilla
-                    </button>
+                  <td className="px-4 py-2.5 align-top font-medium">
+                    <div className="text-foreground">{a.nombre}</div>
+                    <AliasAseguradoraEditor aseguradoraId={a.id} alias={aliasPorAseguradora.get(a.id) ?? []} onChange={recargarAlias} />
+                  </td>
+                  <td className="px-4 py-2.5 align-top text-muted">{a.codigo ?? "—"}</td>
+                  <td className="px-4 py-2.5 align-top text-muted">{fechaHora(a.created_at)}</td>
+                  <td className="px-4 py-2.5 align-top">
+                    <div className="flex items-center gap-3">
+                      <button className="text-brand text-xs hover:underline" onClick={() => setEditando(a)}>
+                        Ver/editar plantilla
+                      </button>
+                      <button className="text-brand text-xs hover:underline" onClick={() => setFusionando(a)}>
+                        Fusionar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -573,6 +610,18 @@ function SeccionPlantillas() {
           onClose={() => setEditando(null)}
           onSaved={() => {
             setEditando(null);
+            cargar();
+          }}
+        />
+      )}
+
+      {fusionando && (
+        <FusionarAseguradoraModal
+          aseguradora={fusionando}
+          todas={aseguradoras}
+          onClose={() => setFusionando(null)}
+          onFusionado={() => {
+            setFusionando(null);
             cargar();
           }}
         />
