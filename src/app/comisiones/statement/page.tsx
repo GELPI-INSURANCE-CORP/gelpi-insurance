@@ -374,7 +374,7 @@ function StatementContent() {
         l.tasa ?? "",
         l.monto.toFixed(2),
         l.agente ?? "",
-        ESTADOS_LINEA[l.estadoLinea]?.label ?? l.estadoLinea,
+        l.categoriaAjuste ? (CATEGORIAS_AJUSTE.find((c) => c.value === l.categoriaAjuste)?.label ?? l.categoriaAjuste) : (ESTADOS_LINEA[l.estadoLinea]?.label ?? l.estadoLinea),
       ]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`)
         .join(",")
@@ -902,6 +902,10 @@ function FilaLinea({
   onCorregir: (l: LineaStatement) => void;
 }) {
   const estado = ESTADOS_LINEA[l.estadoLinea] ?? { label: l.estadoLinea, tone: "neutral" as const };
+  // Si la linea se marco como gasto de la agencia, su categoria manda sobre las etiquetas genericas
+  const etiquetaAjuste = l.categoriaAjuste
+    ? CATEGORIAS_AJUSTE.find((c) => c.value === l.categoriaAjuste)?.label ?? l.categoriaAjuste
+    : null;
   return (
     <tr className={clsx("border-t border-border", selected && "bg-brand-tint/40")}>
       <td className="px-4 py-2.5">
@@ -924,18 +928,33 @@ function FilaLinea({
           )}
         </div>
       </td>
-      <td className="px-4 py-2.5 text-muted">{TIPOS_TRANSACCION[l.tipoTransaccion] ?? l.tipoTransaccion}</td>
+      {/* Una línea marcada como gasto de la agencia se muestra por lo que es. "Other" y "Cuenta de
+          la casa" no dicen nada, y el nombre del agente de la casa es peor que nada: hace parecer
+          que Arturo se ganó -$180 personalmente. Lo que se eligió al marcarla (MVR, fee, ajuste)
+          es el dato verdadero, y es el que hay que ver para poder desglosarlo después. */}
+      <td className="px-4 py-2.5 text-muted">
+        {etiquetaAjuste ?? TIPOS_TRANSACCION[l.tipoTransaccion] ?? l.tipoTransaccion}
+      </td>
       <td className="px-4 py-2.5 text-right tabular-nums">{l.prima != null ? money(l.prima) : "—"}</td>
       <td className="px-4 py-2.5 text-right tabular-nums">{l.tasa != null ? `${l.tasa}%` : "—"}</td>
       <td className="px-4 py-2.5 text-right tabular-nums font-medium">{money(l.monto)}</td>
       <td className="px-4 py-2.5">
         <div className="flex flex-col gap-0.5">
-          <span className="whitespace-nowrap text-foreground">{l.agente ?? "—"}</span>
-          {l.oficina && <span className="text-[11px] text-muted">{l.oficina}</span>}
+          {etiquetaAjuste ? (
+            <>
+              <span className="whitespace-nowrap text-muted italic">No es de un agente</span>
+              <span className="text-[11px] text-muted">Gasto de la agencia</span>
+            </>
+          ) : (
+            <>
+              <span className="whitespace-nowrap text-foreground">{l.agente ?? "—"}</span>
+              {l.oficina && <span className="text-[11px] text-muted">{l.oficina}</span>}
+            </>
+          )}
         </div>
       </td>
       <td className="px-4 py-2.5">
-        <Badge tone={estado.tone}>{estado.label}</Badge>
+        <Badge tone={etiquetaAjuste ? "brand" : estado.tone}>{etiquetaAjuste ?? estado.label}</Badge>
       </td>
       <td className="px-4 py-2.5">
         {l.excepcionId ? (
