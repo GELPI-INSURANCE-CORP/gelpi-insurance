@@ -1405,6 +1405,18 @@ async function procesarAbb(
   // caer pólizas sin dueño todos los meses. Decir sólo "260 pólizas sin agente" no sirve de nada.
   // Las aseguradoras que se dieron de alta solas se nombran: el usuario tiene que enterarse de que
   // aparecieron compañías nuevas en su libro, aunque no haya tenido que hacer nada.
+  // Las filas que no entraron se dicen con su motivo. La pantalla ya mostraba "13 filas sin cuadrar
+  // (ni OK ni en excepción)", que deja al usuario con un número y ninguna forma de saber qué pasó ni
+  // qué revisar. El motivo es dato que ya teníamos contado y nos lo estábamos guardando.
+  const salteadas = sinNumeroPoliza + sinAseguradora;
+  const motivosSalteadas = [
+    sinNumeroPoliza > 0 ? `${sinNumeroPoliza} sin número de póliza` : null,
+    sinAseguradora > 0 ? `${sinAseguradora} sin aseguradora en la fila` : null,
+  ].filter(Boolean);
+  const avisoSalteadas = salteadas > 0
+    ? ` No entraron ${salteadas} fila(s): ${motivosSalteadas.join(" y ")}. Sin esos datos no se puede identificar la póliza.`
+    : "";
+
   const avisoAseguradoras = aseguradorasCreadas.length
     ? ` Se dieron de alta ${aseguradorasCreadas.length} aseguradora(s) que no existían: ${aseguradorasCreadas.join(", ")}.`
     : "";
@@ -1429,7 +1441,7 @@ async function procesarAbb(
       total_lineas: filas.length,
       total_ok: creadas + actualizadas,
       resumen_ia:
-        `${metaUpdate.resumen_ia ?? ""} (ABB: ${creadas} pólizas nuevas, ${actualizadas} actualizadas)${avisoAseguradoras}${avisoAgentes}`.trim(),
+        `${metaUpdate.resumen_ia ?? ""} (ABB: ${creadas} pólizas nuevas, ${actualizadas} actualizadas)${avisoSalteadas}${avisoAseguradoras}${avisoAgentes}`.trim(),
     })
     .eq("id", reporteId);
 }
