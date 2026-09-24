@@ -1204,6 +1204,10 @@ async function procesarAbb(
   const prepPorClave = new Map<string, FilaAbb>();
   let sinNumeroPoliza = 0;
   let sinAseguradora = 0;
+  // Nombres de agente que el archivo trae pero que no matchean con ningún agente cargado. Antes se
+  // descartaban en silencio y el usuario terminaba con cientos de pólizas sin dueño sin ninguna
+  // pista de por qué; ahora se cuentan para poder nombrarlos al final.
+  const agentesNoReconocidos = new Map<string, number>();
 
   for (const f of filas) {
     const numeroPoliza = (f.numero_poliza as string) ?? null;
@@ -1225,6 +1229,10 @@ async function procesarAbb(
     const oficinaNombre = (f.oficina_nombre_crudo as string) ?? (f.campos_extra as any)?.oficina ?? null;
     const { agenteId, oficinaId: oficinaPorAgente } = resolverAgente(agenteNombre as string | null);
     const oficinaId = resolverOficina(oficinaNombre as string | null) ?? oficinaPorAgente;
+    if (agenteNombre && !agenteId) {
+      const crudo = String(agenteNombre).trim();
+      if (crudo) agentesNoReconocidos.set(crudo, (agentesNoReconocidos.get(crudo) ?? 0) + 1);
+    }
 
     // Si dos filas del mismo archivo son la misma póliza (misma aseguradora + número), se
     // queda con la última — igual que antes, cuando se procesaba fila por fila y la segunda
@@ -1288,8 +1296,16 @@ async function procesarAbb(
   // nueva del mismo lote rompe el insert de todo el lote, no solo el de esa fila.
   const nuevas: Record<string, unknown>[] = [];
   const actualizaciones: Record<string, unknown>[] = [];
+  // Pólizas que ya existían y cuyo agente el archivo NO trae reconocible. Van en su propio lote,
+  // SIN las columnas agente_id/oficina_id, para que el upsert no las toque y quede el agente que
+  // ya tenían. Antes iban en el mismo lote con agente_id = null y cada subida del Book borraba en
+  // silencio las asignaciones hechas a mano en Conciliación — el trabajo del mes anterior.
+  // Van aparte y no con una columna menos dentro del mismo lote porque PostgREST arma el UPDATE
+  // con el juego de claves del lote: una fila con menos columnas no se salta, se manda como null.
+  const actualizacionesSinAgente: Record<string, unknown>[] = [];
   let creadas = 0;
   let actualizadas = 0;
+  let agenteRespetado = 0;
   for (const p of prep) {
     const idExistente = existentePorClave.get(`${p.aseguradoraId}|${p.numeroNormalizado}`);
     const fila: Record<string, unknown> = {
@@ -1297,8 +1313,6 @@ async function procesarAbb(
       numero_poliza: p.numeroPoliza,
       aseguradora_id: p.aseguradoraId,
       ramo: p.ramo,
-      agente_id: p.agenteId,
-      oficina_id: p.oficinaId,
       fecha_vigencia: p.fechaVigencia,
       fecha_vencimiento: p.fechaVencimiento,
       prima: p.prima,
@@ -1306,10 +1320,17 @@ async function procesarAbb(
       abb_version_id: nuevaVersion.id,
     };
     if (idExistente) {
-      actualizaciones.push({ id: idExistente, ...fila });
+      if (p.agenteId) {
+        actualizaciones.push({ id: idExistente, ...fila, agente_id: p.agenteId, oficina_id: p.oficinaId });
+      } else {
+        actualizacionesSinAgente.push({ id: idExistente, ...fila });
+        agenteRespetado++;
+      }
       actualizadas++;
     } else {
-      nuevas.push(fila);
+      // En una póliza nueva no hay nada que preservar: si no se reconoció el agente queda vacía y
+      // el nombre sale en la lista de no reconocidos para que el usuario lo enseñe una vez.
+      nuevas.push({ ...fila, agente_id: p.agenteId, oficina_id: p.oficinaId });
       creadas++;
     }
   }
@@ -1322,6 +1343,10 @@ async function procesarAbb(
     const { error } = await admin.from("polizas").upsert(trozo, { onConflict: "id" });
     if (error) throw new ReporteError(`Actualizando pólizas: ${error.message}`);
   });
+  await enLotes(actualizacionesSinAgente, WRITE_CHUNK, async (trozo) => {
+    const { error } = await admin.from("polizas").upsert(trozo, { onConflict: "id" });
+    if (error) throw new ReporteError(`Actualizando pólizas (sin tocar el agente): ${error.message}`);
+  });
 
   // Si había filas pero ninguna se pudo cargar, no lo marquemos como 'cerrado' exitoso: eso
   // oculta el problema (ver "Libro actualizado: 0 pólizas procesadas." sin ningún error visible).
@@ -1333,6 +1358,20 @@ async function procesarAbb(
     ? "No se pudo resolver el número de póliza de ninguna fila del libro. Revisá que el archivo incluya el número de póliza por fila."
     : "No se pudo resolver la aseguradora de ninguna fila del libro. Revisá que el archivo incluya la aseguradora por póliza.";
 
+  // Los nombres que no se reconocieron se dicen por su nombre y ordenados por cuántas pólizas
+  // arrastra cada uno: esa es la lista corta que hay que mapear una sola vez para que dejen de
+  // caer pólizas sin dueño todos los meses. Decir sólo "260 pólizas sin agente" no sirve de nada.
+  const noReconocidos = Array.from(agentesNoReconocidos.entries()).sort((a, b) => b[1] - a[1]);
+  const avisoAgentes = noReconocidos.length
+    ? ` ⚠ No se reconocieron ${noReconocidos.length} nombre(s) de agente del archivo: ` +
+      noReconocidos.slice(0, 10).map(([n, c]) => `"${n}" (${c} póliza${c === 1 ? "" : "s"})`).join(", ") +
+      (noReconocidos.length > 10 ? `, y ${noReconocidos.length - 10} más` : "") +
+      `. Revisá que estén cargados en Agentes con ese mismo nombre.` +
+      (agenteRespetado > 0
+        ? ` Se conservó el agente que ya tenían ${agenteRespetado} póliza(s) en vez de dejarlas sin dueño.`
+        : "")
+    : "";
+
   await admin
     .from("reportes")
     .update({
@@ -1341,7 +1380,8 @@ async function procesarAbb(
       error: sinResultados ? errorMsg : null,
       total_lineas: filas.length,
       total_ok: creadas + actualizadas,
-      resumen_ia: `${metaUpdate.resumen_ia ?? ""} (ABB: ${creadas} pólizas nuevas, ${actualizadas} actualizadas)`.trim(),
+      resumen_ia:
+        `${metaUpdate.resumen_ia ?? ""} (ABB: ${creadas} pólizas nuevas, ${actualizadas} actualizadas)${avisoAgentes}`.trim(),
     })
     .eq("id", reporteId);
 }
