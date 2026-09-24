@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowLeft, Check, Download, Info, Pencil, RotateCcw } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Download, Info, Pencil, RotateCcw } from "lucide-react";
 import {
   Banner,
   Badge,
@@ -504,15 +504,35 @@ function StatementContent() {
             <span className="text-muted">Fecha:</span>
             <span className="font-medium text-foreground">{fechaHora(reporte.created_at)}</span>
           </div>
+          {/* El total del statement no es ninguno de los tres números de arriba: es lo que la
+              aseguradora pagó en total. Sirve para cuadrar contra el cheque que llegó. */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted">Total del statement:</span>
+            <span className="font-semibold tabular-nums text-foreground">
+              {money(data.lineas.reduce((s, l) => s + l.monto, 0))}
+            </span>
+            <span className="text-muted">· {data.lineas.length} líneas</span>
+          </div>
         </div>
+        {/* El resumen de la IA es un párrafo largo que describe el archivo. Es útil una vez, cuando
+            uno quiere entender qué leyó el sistema, pero ocupaba media pantalla arriba de las
+            líneas — que es lo que uno viene a mirar todos los meses. Va plegado. Las advertencias
+            (las que empiezan con ⚠) son la excepción: esas avisan que puede faltar algo, así que
+            se muestran siempre y no se dejan esconder. */}
         {reporte.resumen_ia &&
           (reporte.resumen_ia.trim().startsWith("⚠") ? (
             <Banner tone="warn">{reporte.resumen_ia}</Banner>
           ) : (
-            <div className="flex items-start gap-2 text-[13px] text-muted">
-              <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-              <span>{reporte.resumen_ia}</span>
-            </div>
+            <details className="group/detalle">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted hover:text-foreground">
+                <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="underline decoration-dotted underline-offset-2">Qué leyó el sistema de este archivo</span>
+                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open/detalle:rotate-180" />
+              </summary>
+              <p className="mt-2 border-l-2 border-border pl-3 text-[13px] leading-relaxed text-muted">
+                {reporte.resumen_ia}
+              </p>
+            </details>
           ))}
       </Card>
 
@@ -593,7 +613,7 @@ function StatementContent() {
         )}
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-[13px]">
+          <table className="w-full min-w-[1280px] text-[13px]">
             <thead>
               <tr className="text-left text-muted bg-background/60">
                 <th className="px-4 py-2.5 w-9">
@@ -610,9 +630,9 @@ function StatementContent() {
                 <th className="px-4 py-2.5 font-medium text-right">Prima</th>
                 <th className="px-4 py-2.5 font-medium text-right">%</th>
                 <th className="px-4 py-2.5 font-medium text-right">Comisión</th>
-                <th className="px-4 py-2.5 font-medium">Agente</th>
+                <th className="px-4 py-2.5 font-medium min-w-[160px]">Agente</th>
                 <th className="px-4 py-2.5 font-medium">Estado</th>
-                <th className="px-4 py-2.5 font-medium">Acciones</th>
+                <th className="px-4 py-2.5 font-medium min-w-[300px]">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -848,7 +868,7 @@ function FilaLinea({
       <td className="px-4 py-2.5 text-right tabular-nums font-medium">{money(l.monto)}</td>
       <td className="px-4 py-2.5">
         <div className="flex flex-col gap-0.5">
-          <span className="text-foreground">{l.agente ?? "—"}</span>
+          <span className="whitespace-nowrap text-foreground">{l.agente ?? "—"}</span>
           {l.oficina && <span className="text-[11px] text-muted">{l.oficina}</span>}
         </div>
       </td>
@@ -873,7 +893,7 @@ function FilaLinea({
               value={valorAsignar}
               onChange={(v) => onCambiarAsignar(l.id, v)}
               options={[{ value: "", label: "Asignar a…" }, ...agentesOptions]}
-              className="h-8 text-xs w-32"
+              className="h-8 w-44 text-xs"
             />
             <Button size="sm" variant="secondary" disabled={enCurso || !valorAsignar} onClick={() => onAsignar(l, valorAsignar)}>
               Asignar
