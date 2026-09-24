@@ -16,8 +16,12 @@ import {
 
 // Tipos cuya limpieza sabemos hacer bien en reprocesarReporte() (insertan en lineas_comision o
 // lineas_venta). actualizacion_abb y bono_contingencia tocan otras tablas y no se ofrecen acá.
+// El Active Business Book también se reprocesa: cuando el importador no reconoce un nombre de
+// agente o una aseguradora, uno los da de alta y necesita volver a correr el mismo archivo. Sin
+// esto hay que re-subirlo, y el archivo idéntico queda bloqueado por hash — o sea, no había salida.
 const TIPOS_REPROCESABLES = new Set([
   "comision_aseguradora", "produccion", "cancelaciones", "renovaciones", "chargebacks", "resumen_anual", "otro", "venta_interna",
+  "actualizacion_abb",
 ]);
 
 const ESTADOS_VENTA_ABB: Record<string, { label: string; tone: Tone }> = {
@@ -51,8 +55,12 @@ export default function ReporteDrawer({
   const conflictosVenta = lineasVenta.filter((l) => l.estado_en_abb === "conflicto");
 
   async function reprocesar() {
+    // El Book no genera líneas de comisión, así que el aviso de "borra N líneas" no aplica y
+    // asustaría por nada: lo que hace es volver a pasar el mismo archivo sobre las pólizas.
     const ok = window.confirm(
-      `Esto borra las ${reporte.total_lineas || 0} línea(s) ya extraídas de "${reporte.nombre_archivo}" y vuelve a leer el archivo desde cero. ¿Continuar?`,
+      reporte.tipo === "actualizacion_abb"
+        ? `Esto vuelve a leer "${reporte.nombre_archivo}" y actualiza las pólizas del Book con los agentes y aseguradoras que existan ahora. No borra pólizas ni pierde las asignaciones que ya hiciste. ¿Continuar?`
+        : `Esto borra las ${reporte.total_lineas || 0} línea(s) ya extraídas de "${reporte.nombre_archivo}" y vuelve a leer el archivo desde cero. ¿Continuar?`,
     );
     if (!ok) return;
     setReprocesando(true);
