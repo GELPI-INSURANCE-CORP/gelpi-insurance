@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { useRouter } from "next/navigation";
 import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, X, Inbox } from "lucide-react";
 import clsx from "clsx";
 import { Badge, Card, CardHead, EmptyState, Input, Select, type Tone } from "@/components/ui";
@@ -78,6 +79,19 @@ function isPreviewable(estado: Reporte["estado"]) {
   return estado === "extraido" || estado === "matcheado" || estado === "cerrado";
 }
 
+// Reportes de comisiones (statement de aseguradora y afines): al hacer click van a la pantalla de
+// detalle dedicada (/comisiones/statement/). El resto (venta interna, bonos, ABB) sigue abriendo el
+// drawer lateral de siempre porque esa pantalla nueva está pensada solo para conciliar comisiones.
+const TIPOS_PANTALLA_STATEMENT = new Set<TipoReporte>([
+  "comision_aseguradora",
+  "chargebacks",
+  "produccion",
+  "cancelaciones",
+  "renovaciones",
+  "resumen_anual",
+  "otro",
+]);
+
 // Agrupa por período (o, si no se asignó uno, por el mes de subida) para que la tabla se lea
 // como una sola lista larga con encabezados, en vez de una fila plana por archivo. Los reportes
 // ya llegan ordenados por fecha descendente, así que recorrerlos una vez con un Map alcanza para
@@ -98,6 +112,7 @@ function agruparReportesPorPeriodo(lista: Reporte[]): { clave: string; reportes:
 }
 
 export default function SubirPage() {
+  const router = useRouter();
   const [aseguradoras, setAseguradoras] = useState<Aseguradora[]>([]);
   const [reportes, setReportes] = useState<Reporte[]>([]);
   const [loadingReportes, setLoadingReportes] = useState(true);
@@ -238,6 +253,15 @@ export default function SubirPage() {
       setPageError(err instanceof Error ? err.message : "No se pudo cargar la vista previa de extracción.");
     } finally {
       if (solicitudLineasRef.current === reporte.id) setLoadingLineas(false);
+    }
+  }
+
+  function onFilaClick(reporte: Reporte) {
+    if (!isPreviewable(reporte.estado)) return;
+    if (TIPOS_PANTALLA_STATEMENT.has(reporte.tipo)) {
+      router.push(`/comisiones/statement/?id=${reporte.id}`);
+    } else {
+      abrirVistaPrevia(reporte);
     }
   }
 
@@ -432,7 +456,7 @@ export default function SubirPage() {
                       return (
                         <tr
                           key={r.id}
-                          onClick={() => clickable && abrirVistaPrevia(r)}
+                          onClick={() => onFilaClick(r)}
                           className={clsx(
                             "border-b border-border last:border-b-0",
                             clickable && "cursor-pointer hover:bg-background",
