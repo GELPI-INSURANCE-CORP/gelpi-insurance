@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, X, Inbox } from "lucide-react";
+import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, CheckCircle2, X, Inbox } from "lucide-react";
 import clsx from "clsx";
 import { Badge, Card, CardHead, EmptyState, Input, Select, type Tone } from "@/components/ui";
 import { fechaHora, TIPOS_REPORTE } from "@/lib/format";
@@ -52,25 +52,27 @@ interface ZoneMsg {
   text: string;
 }
 
-function estadoReporteBadge(r: Reporte): { tone: Tone; label: string } {
+function estadoReporteBadge(r: Reporte): { tone: Tone; label: string; icon?: ReactNode } {
   const pend = r.total_excepciones ?? 0;
   switch (r.estado) {
     case "subido":
       return { tone: "neutral", label: "Subido" };
     case "extrayendo":
-      return { tone: "info", label: "Extrayendo…" };
+      return { tone: "info", label: "Extrayendo…", icon: <RefreshCw size={12} className="animate-spin" /> };
     case "extraido":
       return pend > 0
-        ? { tone: "warn", label: `Extraído · revisar mapeo (${pend} pend.)` }
-        : { tone: "ok", label: "Extraído" };
+        ? { tone: "warn", label: `Extraído · revisar mapeo (${pend} pend.)`, icon: <AlertTriangle size={12} /> }
+        : { tone: "ok", label: "Extraído", icon: <CheckCircle2 size={12} /> };
     case "matcheado":
-      return pend > 0 ? { tone: "warn", label: `Matcheado · ${pend} pend.` } : { tone: "ok", label: "Matcheado" };
+      return pend > 0
+        ? { tone: "warn", label: `Matcheado · ${pend} pend.`, icon: <AlertTriangle size={12} /> }
+        : { tone: "ok", label: "Matcheado", icon: <CheckCircle2 size={12} /> };
     case "cerrado":
-      return { tone: "ok", label: "Cerrado" };
+      return { tone: "ok", label: "Cerrado", icon: <CheckCircle2 size={12} /> };
     case "error":
-      return { tone: "bad", label: "Error" };
+      return { tone: "bad", label: "Error", icon: <AlertTriangle size={12} /> };
     case "bloqueado":
-      return { tone: "bad", label: "Bloqueado" };
+      return { tone: "bad", label: "Bloqueado", icon: <Ban size={12} /> };
     default:
       return { tone: "neutral", label: r.estado };
   }
@@ -308,7 +310,7 @@ export default function SubirPage() {
   const gruposReportes = agruparReportesPorPeriodo(reportes);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-7">
       {pageError && (
         <div className="flex items-center gap-2 rounded-lg border border-bad-fg/30 bg-bad-bg px-4 py-3 text-[13px] text-bad-fg">
           <AlertTriangle size={16} className="flex-shrink-0" />
@@ -320,7 +322,7 @@ export default function SubirPage() {
       )}
 
       {/* ZONAS DE CARGA */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         {/* 1. Reporte de aseguradora */}
         <DropZone
           active={dragKey === "aseguradora"}
@@ -428,15 +430,15 @@ export default function SubirPage() {
       </div>
 
       {/* CATÁLOGO */}
-      <Card className="flex flex-col gap-2 px-5 py-3.5">
-        <div className="flex flex-wrap items-center justify-between gap-1.5">
+      <Card className="flex flex-col gap-3 overflow-hidden rounded-2xl! px-6 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <FileText size={16} className="text-brand" />
             <span className="text-sm font-semibold text-foreground">Reportes que acepta el sistema</span>
           </div>
           <span className="text-xs text-muted">Formatos: PDF · Excel · CSV — la IA lee cualquiera</span>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="mr-0.5 text-xs text-muted">Por aseguradora:</span>
           <Badge tone="info">Statement de comisiones</Badge>
           <Badge tone="info">Reporte de producción / nuevo negocio</Badge>
@@ -451,13 +453,13 @@ export default function SubirPage() {
       </Card>
 
       {/* TABLA DE ARCHIVOS */}
-      <Card className="flex flex-col">
+      <Card className="flex flex-col overflow-hidden rounded-2xl!">
         <CardHead
           title="Archivos subidos"
           subtitle="La suma de “en excepción” de este lote no coincide necesariamente con los casos abiertos en Conciliación: esa cola acumula también statements de meses anteriores sin resolver."
           action={<Badge tone="neutral">{reportes.length} archivo{reportes.length === 1 ? "" : "s"}</Badge>}
         />
-        <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-5 py-2.5">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-5 py-3">
           <Select
             options={tipoFiltroOptions}
             placeholder="Tipo de archivo"
@@ -499,7 +501,7 @@ export default function SubirPage() {
                       <th
                         key={h}
                         className={clsx(
-                          "whitespace-nowrap border-b border-border px-5 py-2.5 text-left font-medium text-muted",
+                          "whitespace-nowrap border-b border-border px-5 py-3 text-left font-medium text-muted",
                           i >= 5 && i <= 7 && "text-right"
                         )}
                       >
@@ -513,7 +515,10 @@ export default function SubirPage() {
                 {gruposReportes.map((grupo) => (
                   <Fragment key={grupo.clave}>
                     <tr className="bg-background">
-                      <td colSpan={9} className="px-5 py-2 text-xs font-semibold text-muted">
+                      <td
+                        colSpan={9}
+                        className="border-t border-border px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted"
+                      >
                         {grupo.clave} · {grupo.reportes.length} archivo{grupo.reportes.length === 1 ? "" : "s"}
                       </td>
                     </tr>
@@ -526,22 +531,22 @@ export default function SubirPage() {
                           key={r.id}
                           onClick={() => onFilaClick(r)}
                           className={clsx(
-                            "border-b border-border last:border-b-0",
-                            clickable && "cursor-pointer hover:bg-background",
+                            "border-b border-border transition-colors last:border-b-0",
+                            clickable && "cursor-pointer hover:bg-brand-tint/50",
                             selected && "bg-brand-tint"
                           )}
                         >
-                          <td className="px-5 py-2 font-medium text-foreground">{r.nombre_archivo}</td>
-                          <td className="px-5 py-2 text-muted">{TIPOS_REPORTE[r.tipo] ?? r.tipo}</td>
-                          <td className="px-5 py-2">{r.aseguradora?.nombre ?? "—"}</td>
-                          <td className="px-5 py-2 text-muted">{r.subido_por ? r.subido_por.slice(0, 8) : "—"}</td>
-                          <td className="px-5 py-2 text-muted">{fechaHora(r.created_at)}</td>
-                          <td className="px-5 py-2 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_lineas}</td>
-                          <td className="px-5 py-2 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_ok}</td>
-                          <td className="px-5 py-2 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_excepciones}</td>
-                          <td className="px-5 py-2">
+                          <td className="px-5 py-2.5 font-medium text-foreground">{r.nombre_archivo}</td>
+                          <td className="px-5 py-2.5 text-muted">{TIPOS_REPORTE[r.tipo] ?? r.tipo}</td>
+                          <td className="px-5 py-2.5">{r.aseguradora?.nombre ?? "—"}</td>
+                          <td className="px-5 py-2.5 text-muted">{r.subido_por ? r.subido_por.slice(0, 8) : "—"}</td>
+                          <td className="px-5 py-2.5 text-muted">{fechaHora(r.created_at)}</td>
+                          <td className="px-5 py-2.5 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_lineas}</td>
+                          <td className="px-5 py-2.5 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_ok}</td>
+                          <td className="px-5 py-2.5 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_excepciones}</td>
+                          <td className="px-5 py-2.5">
                             <div className="flex flex-col items-start gap-1">
-                              <Badge tone={badge.tone} icon={r.estado === "bloqueado" ? <Ban size={12} /> : undefined}>
+                              <Badge tone={badge.tone} icon={badge.icon}>
                                 {badge.label}
                               </Badge>
                               {r.total_lineas > 0 && r.total_lineas - r.total_ok - r.total_excepciones > 0 && (
@@ -624,7 +629,7 @@ function DropZone({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       className={clsx(
-        "flex flex-col gap-2 rounded-xl border-[1.5px] border-dashed bg-brand-tint p-4 transition",
+        "flex flex-col gap-3 rounded-2xl border-[1.5px] border-dashed bg-brand-tint p-5 transition",
         active ? "border-brand bg-brand-tint/80" : "border-brand-tint"
       )}
     >

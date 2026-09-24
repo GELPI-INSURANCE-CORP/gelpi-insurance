@@ -16,7 +16,9 @@ import {
   Input,
   Kpi,
   Loading,
+  Modal,
   Select,
+  TextArea,
   TextInput,
 } from "@/components/agentes/ui";
 import { money, fechaHora, TIPOS_REPORTE, ESTADOS_LINEA } from "@/lib/format";
@@ -24,6 +26,7 @@ import {
   getStatementDetalle,
   finalizarStatement,
   reabrirStatement,
+  reasignarLinea,
   type GrupoLinea,
   type LineaStatement,
   type StatementDetalle,
@@ -56,6 +59,12 @@ function StatementContent() {
 
   const [cerrando, setCerrando] = useState(false);
   const [reprocesando, setReprocesando] = useState(false);
+
+  // Corrección manual de una línea ya conciliada (ver reasignarLinea en queries/statement.ts)
+  const [lineaACorregir, setLineaACorregir] = useState<LineaStatement | null>(null);
+  const [correccionAgenteId, setCorreccionAgenteId] = useState("");
+  const [correccionMotivo, setCorreccionMotivo] = useState("");
+  const [corrigiendo, setCorrigiendo] = useState(false);
 
   const cargar = useCallback(() => {
     if (!reporteId) {
@@ -225,6 +234,33 @@ function StatementContent() {
     setSelectedIds(new Set());
     setError(fail > 0 ? `${ok} asignada(s), ${fail} fallaron.` : null);
     cargar();
+  }
+
+  function abrirCorreccion(l: LineaStatement) {
+    setLineaACorregir(l);
+    setCorreccionAgenteId(l.agenteId ?? "");
+    setCorreccionMotivo("");
+  }
+
+  async function guardarCorreccion() {
+    if (!lineaACorregir || !correccionAgenteId || !correccionMotivo.trim()) return;
+    setCorrigiendo(true);
+    try {
+      await reasignarLinea({
+        lineaId: lineaACorregir.id,
+        polizaId: lineaACorregir.polizaId,
+        agenteIdNuevo: correccionAgenteId,
+        agenteAnterior: lineaACorregir.agente,
+        agenteNuevo: agentes.find((a) => a.id === correccionAgenteId)?.nombre ?? "",
+        motivo: correccionMotivo,
+      });
+      setLineaACorregir(null);
+      cargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cambiar el agente.");
+    } finally {
+      setCorrigiendo(false);
+    }
   }
 
   async function onFinalizar() {
@@ -562,6 +598,7 @@ function StatementContent() {
                   enCurso={l.excepcionId != null && l.excepcionId === accionEnCursoId}
                   onConfirmar={confirmarLinea}
                   onAsignar={asignarLinea}
+                  onCorregir={abrirCorreccion}
                 />
               ))}
             </tbody>
@@ -572,6 +609,64 @@ function StatementContent() {
           )}
         </div>
       </Card>
+
+      <Modal
+        open={lineaACorregir !== null}
+        onClose={() => setLineaACorregir(null)}
+        title="Cambiar el agente de esta línea"
+      >
+        {lineaACorregir && (
+          <div className="flex flex-col gap-3 text-[13px]">
+            <div className="rounded-lg bg-background px-3 py-2">
+              <div className="font-medium text-foreground">
+                {lineaACorregir.cliente ?? lineaACorregir.clienteBook ?? "—"}
+              </div>
+              <div className="text-muted">
+                {lineaACorregir.numeroPoliza ?? lineaACorregir.polizaBook ?? "—"} · {money(lineaACorregir.monto)} ·
+                hoy cobra <strong>{lineaACorregir.agente ?? "nadie"}</strong>
+              </div>
+            </div>
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Nuevo agente</span>
+              <Select
+                value={correccionAgenteId}
+                onChange={setCorreccionAgenteId}
+                options={[{ value: "", label: "Elegí un agente" }, ...agentesOptions]}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Motivo del cambio</span>
+              <TextArea
+                value={correccionMotivo}
+                onChange={(e) => setCorreccionMotivo(e.target.value)}
+                rows={2}
+                placeholder="Ej: el cliente pasó a Marleny en julio"
+              />
+            </label>
+            <p className="text-xs text-muted">
+              El cambio también se guarda en el Book, así el mes que viene esta póliza ya sale con el agente
+              correcto. Queda registrado quién lo cambió y por qué.
+            </p>
+            {lineaACorregir.polizaId === null && (
+              <Banner tone="warn">
+                Esta línea no está atada a una póliza del Book, así que la corrección vale solo para este mes.
+              </Banner>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="secondary" onClick={() => setLineaACorregir(null)} disabled={corrigiendo}>
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                onClick={guardarCorreccion}
+                disabled={corrigiendo || !correccionAgenteId || !correccionMotivo.trim()}
+              >
+                {corrigiendo ? "Guardando…" : "Guardar cambio"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -638,6 +733,7 @@ function FilaLinea({
   enCurso,
   onConfirmar,
   onAsignar,
+  onCorregir,
 }: {
   l: LineaStatement;
   selected: boolean;
@@ -648,6 +744,7 @@ function FilaLinea({
   enCurso: boolean;
   onConfirmar: (l: LineaStatement) => void;
   onAsignar: (l: LineaStatement, agenteId: string) => void;
+  onCorregir: (l: LineaStatement) => void;
 }) {
   const estado = ESTADOS_LINEA[l.estadoLinea] ?? { label: l.estadoLinea, tone: "neutral" as const };
   return (
@@ -710,7 +807,12 @@ function FilaLinea({
             </Button>
           </div>
         ) : (
-          <span className="text-muted">—</span>
+          // Una línea ya conciliada también se puede corregir: el sistema acierta 3 de cada 4, y
+          // en el resto a veces cree que acertó. Esa plata va al cheque de alguien.
+          <Button size="sm" variant="ghost" onClick={() => onCorregir(l)} title="Cambiar el agente de esta línea">
+            <Pencil className="w-3 h-3" />
+            Cambiar
+          </Button>
         )}
       </td>
     </tr>

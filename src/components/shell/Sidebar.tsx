@@ -68,7 +68,7 @@ export function SidebarContent({ onNavigate, expandida = false }: { onNavigate?:
         </div>
         <div
           className={clsx(
-            "mt-1.5 flex flex-col gap-0.5 border-l",
+            "mt-1.5 flex flex-col gap-1.5 border-l",
             expandida
               ? "ml-5 border-border pl-3"
               : "border-transparent pl-0 group-hover:ml-5 group-hover:border-border group-hover:pl-3"
@@ -84,7 +84,7 @@ export function SidebarContent({ onNavigate, expandida = false }: { onNavigate?:
                 onClick={onNavigate}
                 title={t.label}
                 className={clsx(
-                  "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px]",
+                  "relative flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-[13px]",
                   expandida ? "justify-start" : "justify-center group-hover:justify-start",
                   active ? "bg-brand-tint font-medium text-brand-dark" : "text-[#4b5563] hover:bg-background"
                 )}
