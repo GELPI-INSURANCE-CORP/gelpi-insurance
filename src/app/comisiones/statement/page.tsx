@@ -21,7 +21,7 @@ import {
   TextArea,
   TextInput,
 } from "@/components/agentes/ui";
-import { money, fechaHora, TIPOS_REPORTE, ESTADOS_LINEA } from "@/lib/format";
+import { money, fechaHora, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
 import {
   getStatementDetalle,
   finalizarStatement,
@@ -578,7 +578,7 @@ function StatementContent() {
                 <th className="px-4 py-2.5 font-medium">Cliente</th>
                 <th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 font-medium text-right">Prima</th>
-                <th className="px-4 py-2.5 font-medium text-right">Tasa</th>
+                <th className="px-4 py-2.5 font-medium text-right">%</th>
                 <th className="px-4 py-2.5 font-medium text-right">Comisión</th>
                 <th className="px-4 py-2.5 font-medium">Agente</th>
                 <th className="px-4 py-2.5 font-medium">Estado</th>
@@ -769,7 +769,7 @@ function FilaLinea({
           )}
         </div>
       </td>
-      <td className="px-4 py-2.5 text-muted capitalize">{l.tipoTransaccion}</td>
+      <td className="px-4 py-2.5 text-muted">{TIPOS_TRANSACCION[l.tipoTransaccion] ?? l.tipoTransaccion}</td>
       <td className="px-4 py-2.5 text-right tabular-nums">{l.prima != null ? money(l.prima) : "—"}</td>
       <td className="px-4 py-2.5 text-right tabular-nums">{l.tasa != null ? `${l.tasa}%` : "—"}</td>
       <td className="px-4 py-2.5 text-right tabular-nums font-medium">{money(l.monto)}</td>
