@@ -27,6 +27,8 @@ import {
   finalizarStatement,
   reabrirStatement,
   reasignarLinea,
+  marcarLineaComoAjuste,
+  CATEGORIAS_AJUSTE,
   type GrupoLinea,
   type LineaStatement,
   type StatementDetalle,
@@ -70,6 +72,7 @@ function StatementContent() {
   const [lineaAjuste, setLineaAjuste] = useState<LineaStatement | null>(null);
   const [motivoAjuste, setMotivoAjuste] = useState("");
   const [marcandoAjuste, setMarcandoAjuste] = useState(false);
+  const [categoriaAjuste, setCategoriaAjuste] = useState("mvr");
 
   const cargar = useCallback(() => {
     if (!reporteId) {
@@ -246,16 +249,22 @@ function StatementContent() {
     // Se propone lo que el propio statement dice de esa fila: en el caso real venía como
     // "Unsold Adjustment", que es exactamente la explicación que hay que dejar anotada.
     setMotivoAjuste(l.cliente?.trim() || l.explicacion?.trim() || "");
+    // Se propone la categoría leyendo lo que el propio statement dice de la fila: "Unsold
+    // Adjustment" y "MVR" son cargos por correr reportes de vehículo de cotizaciones que no se
+    // vendieron. Es una propuesta, no una decisión: el desplegable queda abierto para cambiarla.
+    const texto = `${l.cliente ?? ""} ${l.explicacion ?? ""}`.toLowerCase();
+    setCategoriaAjuste(/mvr|unsold|motor vehicle/.test(texto) ? "mvr" : "ajuste_aseguradora");
   }
 
   async function guardarAjuste() {
     if (!lineaAjuste?.excepcionId) return;
     setMarcandoAjuste(true);
     try {
-      await resolverExcepcion({
+      await marcarLineaComoAjuste({
         excepcionId: lineaAjuste.excepcionId,
-        accion: "cuenta_casa",
-        motivo: motivoAjuste.trim() || null,
+        lineaId: lineaAjuste.id,
+        categoria: categoriaAjuste,
+        nota: motivoAjuste,
       });
       setLineaAjuste(null);
       cargar();
@@ -681,7 +690,18 @@ function StatementContent() {
               la casa.
             </p>
             <label className="flex flex-col gap-1">
-              <span className="text-muted">Nota (queda guardada con la línea)</span>
+              <span className="text-muted">¿Qué es este cargo?</span>
+              <Select
+                value={categoriaAjuste}
+                onChange={setCategoriaAjuste}
+                options={CATEGORIAS_AJUSTE.map((c) => ({ value: c.value, label: c.label }))}
+              />
+              <span className="text-xs text-muted">
+                {CATEGORIAS_AJUSTE.find((c) => c.value === categoriaAjuste)?.ayuda}
+              </span>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Nota (opcional)</span>
               <TextArea
                 value={motivoAjuste}
                 onChange={(e) => setMotivoAjuste(e.target.value)}
@@ -689,6 +709,10 @@ function StatementContent() {
                 placeholder="Ej: Unsold Adjustment"
               />
             </label>
+            <p className="text-xs text-muted">
+              La categoría queda guardada con la línea, no solo como texto: así se puede sacar después cuánto se
+              pagó de MVR en el año, sumando por concepto.
+            </p>
             <div className="flex items-center justify-end gap-2">
               <Button variant="secondary" onClick={() => setLineaAjuste(null)} disabled={marcandoAjuste}>
                 Cancelar
