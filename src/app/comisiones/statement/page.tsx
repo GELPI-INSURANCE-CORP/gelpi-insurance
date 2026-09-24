@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import clsx from "clsx";
@@ -31,14 +31,6 @@ import {
 import { listAgentes, resolverExcepcion, type AgenteSimple } from "@/lib/queries/conciliacion";
 import { actualizarPeriodoReporte, reprocesarReporte, type Reporte } from "@/lib/queries/subir";
 
-interface GrupoAgenteVista {
-  agenteId: string;
-  nombre: string;
-  monto: number;
-  lineas: number;
-  filas: LineaStatement[];
-}
-
 function StatementContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -52,7 +44,7 @@ function StatementContent() {
 
   const [busqueda, setBusqueda] = useState("");
   const [filtro, setFiltro] = useState<"todas" | GrupoLinea>("todas");
-  const [agrupar, setAgrupar] = useState(false);
+  const [agenteFiltro, setAgenteFiltro] = useState("");
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<Record<string, string>>({});
@@ -88,10 +80,14 @@ function StatementContent() {
       .catch(() => setAgentes([]));
   }, []);
 
-  const lineasFiltradas = useMemo(() => {
+  // Lo que el usuario está mirando ahora mismo: el agente elegido y la búsqueda. Los tres números
+  // de arriba y los contadores de los chips salen de acá y no del statement completo — si filtra
+  // por Nadira, arriba tiene que decir lo de Nadira. Los chips de grupo quedan fuera a propósito:
+  // esos eligen cuál de los tres números se está listando, así que no pueden además cambiarlos.
+  const lineasDelAgente = useMemo(() => {
     if (!data) return [];
     let out = data.lineas;
-    if (filtro !== "todas") out = out.filter((l) => l.grupo === filtro);
+    if (agenteFiltro) out = out.filter((l) => l.agenteId === agenteFiltro);
     const term = busqueda.trim().toLowerCase();
     if (term) {
       out = out.filter((l) => {
@@ -101,49 +97,38 @@ function StatementContent() {
       });
     }
     return out;
-  }, [data, filtro, busqueda]);
+  }, [data, agenteFiltro, busqueda]);
+
+  const totales = useMemo(() => {
+    const suma = (g: GrupoLinea) => lineasDelAgente.filter((l) => l.grupo === g).reduce((s, l) => s + l.monto, 0);
+    const cuenta = (g: GrupoLinea) => lineasDelAgente.filter((l) => l.grupo === g).length;
+    return {
+      montoAprobado: suma("aprobado"),
+      montoPendiente: suma("pendiente"),
+      montoSinAsignar: suma("sin_asignar"),
+      countAprobado: cuenta("aprobado"),
+      countPendiente: cuenta("pendiente"),
+      countSinAsignar: cuenta("sin_asignar"),
+    };
+  }, [lineasDelAgente]);
+
+  const lineasFiltradas = useMemo(
+    () => (filtro === "todas" ? lineasDelAgente : lineasDelAgente.filter((l) => l.grupo === filtro)),
+    [lineasDelAgente, filtro]
+  );
 
   const seleccionables = useMemo(() => lineasFiltradas.filter((l) => l.excepcionId), [lineasFiltradas]);
 
-  const gruposAgente = useMemo<GrupoAgenteVista[]>(() => {
+  // Solo los agentes que aparecen en este statement: ofrecer los 12 de la agencia cuando apenas 9
+  // tienen líneas hace que elegir uno y no ver nada parezca un error de la pantalla.
+  const agentesDelStatement = useMemo(() => {
     if (!data) return [];
-    const porAgenteLineas = new Map<string, LineaStatement[]>();
-    const sinAgente: LineaStatement[] = [];
-    for (const l of lineasFiltradas) {
-      if (l.grupo === "aprobado" && l.agenteId) {
-        const arr = porAgenteLineas.get(l.agenteId) ?? [];
-        arr.push(l);
-        porAgenteLineas.set(l.agenteId, arr);
-      } else {
-        sinAgente.push(l);
-      }
-    }
-    // Los subtotales salen de las filas visibles, no de data.porAgente: con una búsqueda o un filtro
-    // activo, un subtotal que no cuadre con las líneas que se ven debajo hace dudar de todos los
-    // números de la pantalla.
-    const grupos: GrupoAgenteVista[] = data.porAgente
-      .filter((a) => porAgenteLineas.has(a.agenteId))
-      .map((a) => {
-        const filas = porAgenteLineas.get(a.agenteId) ?? [];
-        return {
-          agenteId: a.agenteId,
-          nombre: a.nombre,
-          monto: filas.reduce((s, l) => s + l.monto, 0),
-          lineas: filas.length,
-          filas,
-        };
-      });
-    if (sinAgente.length > 0) {
-      grupos.push({
-        agenteId: "__sin_agente__",
-        nombre: "Sin agente",
-        monto: sinAgente.reduce((s, l) => s + l.monto, 0),
-        lineas: sinAgente.length,
-        filas: sinAgente,
-      });
-    }
-    return grupos;
-  }, [data, lineasFiltradas]);
+    const m = new Map<string, string>();
+    for (const l of data.lineas) if (l.agenteId) m.set(l.agenteId, l.agente ?? "(sin nombre)");
+    return Array.from(m, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [data]);
+
+  const nombreAgenteFiltro = agentesDelStatement.find((a) => a.value === agenteFiltro)?.label ?? "";
 
   const puedeConfirmarLote = useMemo(
     () => (data ? data.lineas.some((l) => selectedIds.has(l.id) && l.excepcionId && l.agenteSugeridoId) : false),
@@ -390,23 +375,39 @@ function StatementContent() {
         </Banner>
       )}
 
+      {/* Cuando hay un agente elegido los tres números de abajo dejan de ser los del statement, así
+          que se dice explícitamente: un total que cambia sin avisar por qué es un total en el que no
+          se puede confiar. */}
+      {agenteFiltro && (
+        <Banner
+          tone="info"
+          action={
+            <button type="button" className="text-xs underline" onClick={() => setAgenteFiltro("")}>
+              Ver el statement completo
+            </button>
+          }
+        >
+          Mostrando solo las líneas de <strong>{nombreAgenteFiltro}</strong>. Los tres totales son de este agente.
+        </Banner>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Kpi
           label="Aprobado"
-          value={money(data.montoAprobado)}
-          sub={`${data.countAprobado} línea${data.countAprobado === 1 ? "" : "s"} · ya tienen agente`}
+          value={money(totales.montoAprobado)}
+          sub={`${totales.countAprobado} línea${totales.countAprobado === 1 ? "" : "s"} · ya tienen agente`}
           tone="ok"
         />
         <Kpi
           label="Pendiente"
-          value={money(data.montoPendiente)}
-          sub={`${data.countPendiente} línea${data.countPendiente === 1 ? "" : "s"} · necesitan una decisión`}
+          value={money(totales.montoPendiente)}
+          sub={`${totales.countPendiente} línea${totales.countPendiente === 1 ? "" : "s"} · necesitan una decisión`}
           tone="warn"
         />
         <Kpi
           label="Sin asignar"
-          value={money(data.montoSinAsignar)}
-          sub={`${data.countSinAsignar} línea${data.countSinAsignar === 1 ? "" : "s"} · el sistema no las reconoció`}
+          value={money(totales.montoSinAsignar)}
+          sub={`${totales.countSinAsignar} línea${totales.countSinAsignar === 1 ? "" : "s"} · el sistema no las reconoció`}
           tone="bad"
         />
       </div>
@@ -476,21 +477,25 @@ function StatementContent() {
         <div className="flex flex-wrap items-center gap-2 p-3 border-b border-border">
           <Input value={busqueda} onChange={setBusqueda} placeholder="Buscar por cliente o póliza…" className="w-64" />
           <Chip active={filtro === "todas"} onClick={() => setFiltro("todas")}>
-            Todas ({data.lineas.length})
+            Todas ({lineasDelAgente.length})
           </Chip>
           <Chip active={filtro === "aprobado"} onClick={() => setFiltro("aprobado")}>
-            Aprobadas ({data.countAprobado})
+            Aprobadas ({totales.countAprobado})
           </Chip>
           <Chip active={filtro === "pendiente"} onClick={() => setFiltro("pendiente")}>
-            Pendientes ({data.countPendiente})
+            Pendientes ({totales.countPendiente})
           </Chip>
           <Chip active={filtro === "sin_asignar"} onClick={() => setFiltro("sin_asignar")}>
-            Sin asignar ({data.countSinAsignar})
+            Sin asignar ({totales.countSinAsignar})
           </Chip>
           <div className="flex-1" />
-          <Chip active={agrupar} onClick={() => setAgrupar((v) => !v)}>
-            Agrupar por agente
-          </Chip>
+          <span className="text-xs text-muted">Filtrar por agente:</span>
+          <Select
+            value={agenteFiltro}
+            onChange={setAgenteFiltro}
+            options={[{ value: "", label: "Todos los agentes" }, ...agentesDelStatement]}
+            className="w-52"
+          />
         </div>
 
         {asignandoLote && (
@@ -542,44 +547,20 @@ function StatementContent() {
               </tr>
             </thead>
             <tbody>
-              {agrupar
-                ? gruposAgente.map((g) => (
-                    <Fragment key={g.agenteId}>
-                      <tr className="border-t border-border bg-background/60">
-                        <td colSpan={11} className="px-4 py-2 text-xs font-semibold text-foreground">
-                          {g.nombre} · {g.lineas} línea{g.lineas === 1 ? "" : "s"} · {money(g.monto)}
-                        </td>
-                      </tr>
-                      {g.filas.map((l) => (
-                        <FilaLinea
-                          key={l.id}
-                          l={l}
-                          selected={selectedIds.has(l.id)}
-                          onToggleSelected={toggleSelected}
-                          agentesOptions={agentesOptions}
-                          valorAsignar={agenteSeleccionado[l.id] ?? ""}
-                          onCambiarAsignar={(id, v) => setAgenteSeleccionado((prev) => ({ ...prev, [id]: v }))}
-                          enCurso={l.excepcionId != null && l.excepcionId === accionEnCursoId}
-                          onConfirmar={confirmarLinea}
-                          onAsignar={asignarLinea}
-                        />
-                      ))}
-                    </Fragment>
-                  ))
-                : lineasFiltradas.map((l) => (
-                    <FilaLinea
-                      key={l.id}
-                      l={l}
-                      selected={selectedIds.has(l.id)}
-                      onToggleSelected={toggleSelected}
-                      agentesOptions={agentesOptions}
-                      valorAsignar={agenteSeleccionado[l.id] ?? ""}
-                      onCambiarAsignar={(id, v) => setAgenteSeleccionado((prev) => ({ ...prev, [id]: v }))}
-                      enCurso={l.excepcionId != null && l.excepcionId === accionEnCursoId}
-                      onConfirmar={confirmarLinea}
-                      onAsignar={asignarLinea}
-                    />
-                  ))}
+              {lineasFiltradas.map((l) => (
+                <FilaLinea
+                  key={l.id}
+                  l={l}
+                  selected={selectedIds.has(l.id)}
+                  onToggleSelected={toggleSelected}
+                  agentesOptions={agentesOptions}
+                  valorAsignar={agenteSeleccionado[l.id] ?? ""}
+                  onCambiarAsignar={(id, v) => setAgenteSeleccionado((prev) => ({ ...prev, [id]: v }))}
+                  enCurso={l.excepcionId != null && l.excepcionId === accionEnCursoId}
+                  onConfirmar={confirmarLinea}
+                  onAsignar={asignarLinea}
+                />
+              ))}
             </tbody>
           </table>
           {loading && <Loading />}
