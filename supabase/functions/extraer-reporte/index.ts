@@ -116,6 +116,16 @@ function coerceNumber(v: unknown): number | null {
 
 function coerceDate(v: unknown): string | null {
   if (!v) return null;
+  // parseXlsx lee las hojas con cellDates, así que las celdas de fecha llegan como Date. Su
+  // String() es "Wed Sep 09 2026 00:00:00 GMT…", que no matchea ninguno de los patrones de abajo
+  // y se perdería la fecha.
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return null;
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, "0");
+    const d = String(v.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
   const s = String(v).trim();
   if (!s) return null;
   // ISO ya
@@ -257,7 +267,8 @@ function parseCsv(text: string): Record<string, string>[] {
 }
 
 function parseXlsx(bytes: Uint8Array): Record<string, unknown>[] {
-  const wb = XLSX.read(bytes, { type: "array" });
+  // cellDates: las celdas de fecha llegan como Date en vez de serial, y coerceDate las entiende.
+  const wb = XLSX.read(bytes, { type: "array", cellDates: true });
   const allRows: Record<string, unknown>[] = [];
   const MIN_CELDAS_ENCABEZADO = 4;
   const MIN_CELDAS_FILA = 3;
@@ -272,7 +283,12 @@ function parseXlsx(bytes: Uint8Array): Record<string, unknown>[] {
     // encabezados como la primera con varias celdas no vacías (las de metadata traen
     // una sola), y se descartan como filas de metadata/separador las que después
     // tengan muy pocas celdas llenas.
-    const matriz = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }) as unknown[][];
+    // raw: true devuelve el valor real de la celda en vez del texto que Excel muestra. Con
+    // raw:false, un statement cuyas celdas traen formato de porcentaje (el .xls de Responsive)
+    // llegaba como "16682%" donde el valor es 166.82 y "2170%" donde son $21.70: coerceNumber
+    // no puede parsear eso, devuelve null, y las 52 filas quedaron con monto 0 — el statement
+    // entero sin un peso. El valor crudo no miente; el formato es cosa de la planilla.
+    const matriz = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true }) as unknown[][];
     const contarNoVacias = (fila: unknown[] | undefined) =>
       (fila ?? []).filter((c) => String(c ?? "").trim() !== "").length;
     const idxEncabezado = matriz.findIndex((fila) => contarNoVacias(fila) >= MIN_CELDAS_ENCABEZADO);
@@ -1209,6 +1225,32 @@ async function procesarAbb(
   // pista de por qué; ahora se cuentan para poder nombrarlos al final.
   const agentesNoReconocidos = new Map<string, number>();
 
+  // Aseguradoras que el Book trae y que todavía no existen: se dan de alta solas. Antes, cada fila
+  // de una compañía nueva se descartaba en silencio (fueron 199 de un archivo de 2208), y después
+  // su statement no conciliaba nada porque sus pólizas nunca habían entrado. Crear la aseguradora
+  // no compromete nada — es apenas un nombre — y es la única forma de que el libro entre completo
+  // sin tener que acordarse de darlas de alta a mano antes de subirlo.
+  const asegFaltantes = new Map<string, string>(); // normalizado -> nombre tal cual viene
+  for (const f of filas) {
+    const nom = (f.aseguradora_nombre_crudo as string) ?? (f.campos_extra as any)?.aseguradora ?? null;
+    const limpio = String(nom ?? "").trim();
+    if (!limpio) continue;
+    if (resolverAseguradora(limpio)) continue;
+    asegFaltantes.set(normalizarTexto(limpio), limpio);
+  }
+  const aseguradorasCreadas: string[] = [];
+  if (asegFaltantes.size > 0) {
+    const { data: creadas, error: errAseg } = await admin
+      .from("aseguradoras")
+      .insert(Array.from(asegFaltantes.values()).map((nombre) => ({ nombre })))
+      .select("id, nombre");
+    if (errAseg) throw new ReporteError(`Creando aseguradoras nuevas del libro: ${errAseg.message}`);
+    for (const a of creadas ?? []) {
+      aseguradorasNorm.push({ ...a, n: normalizarTexto(a.nombre) } as any);
+      aseguradorasCreadas.push(a.nombre);
+    }
+  }
+
   for (const f of filas) {
     const numeroPoliza = (f.numero_poliza as string) ?? null;
     const numeroNormalizado = numeroPoliza ? normalizarPoliza(numeroPoliza) : null;
@@ -1361,6 +1403,12 @@ async function procesarAbb(
   // Los nombres que no se reconocieron se dicen por su nombre y ordenados por cuántas pólizas
   // arrastra cada uno: esa es la lista corta que hay que mapear una sola vez para que dejen de
   // caer pólizas sin dueño todos los meses. Decir sólo "260 pólizas sin agente" no sirve de nada.
+  // Las aseguradoras que se dieron de alta solas se nombran: el usuario tiene que enterarse de que
+  // aparecieron compañías nuevas en su libro, aunque no haya tenido que hacer nada.
+  const avisoAseguradoras = aseguradorasCreadas.length
+    ? ` Se dieron de alta ${aseguradorasCreadas.length} aseguradora(s) que no existían: ${aseguradorasCreadas.join(", ")}.`
+    : "";
+
   const noReconocidos = Array.from(agentesNoReconocidos.entries()).sort((a, b) => b[1] - a[1]);
   const avisoAgentes = noReconocidos.length
     ? ` ⚠ No se reconocieron ${noReconocidos.length} nombre(s) de agente del archivo: ` +
@@ -1381,7 +1429,7 @@ async function procesarAbb(
       total_lineas: filas.length,
       total_ok: creadas + actualizadas,
       resumen_ia:
-        `${metaUpdate.resumen_ia ?? ""} (ABB: ${creadas} pólizas nuevas, ${actualizadas} actualizadas)${avisoAgentes}`.trim(),
+        `${metaUpdate.resumen_ia ?? ""} (ABB: ${creadas} pólizas nuevas, ${actualizadas} actualizadas)${avisoAseguradoras}${avisoAgentes}`.trim(),
     })
     .eq("id", reporteId);
 }
