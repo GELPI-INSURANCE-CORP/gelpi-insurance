@@ -69,7 +69,7 @@ function StatementContent() {
   const [corrigiendo, setCorrigiendo] = useState(false);
 
   // Líneas que no son comisión de nadie: ajustes que la aseguradora le cobra a la agencia
-  const [lineaAjuste, setLineaAjuste] = useState<LineaStatement | null>(null);
+  const [lineaAjuste, setLineaAjuste] = useState<LineaStatement[] | null>(null);
   const [motivoAjuste, setMotivoAjuste] = useState("");
   const [marcandoAjuste, setMarcandoAjuste] = useState(false);
   const [categoriaAjuste, setCategoriaAjuste] = useState("mvr");
@@ -149,6 +149,13 @@ function StatementContent() {
 
   const puedeConfirmarLote = useMemo(
     () => (data ? data.lineas.some((l) => selectedIds.has(l.id) && l.excepcionId && l.agenteSugeridoId) : false),
+    [data, selectedIds]
+  );
+
+  // Solo las seleccionadas que todavia tienen una excepcion abierta: sobre una linea ya resuelta
+  // no hay nada que marcar, y contarlas haria que el boton prometa mas de lo que hace.
+  const seleccionadasConExcepcion = useMemo(
+    () => (data ? data.lineas.filter((l) => selectedIds.has(l.id) && l.excepcionId) : []),
     [data, selectedIds]
   );
 
@@ -244,35 +251,45 @@ function StatementContent() {
     cargar();
   }
 
-  function abrirAjuste(l: LineaStatement) {
-    setLineaAjuste(l);
-    // Se propone lo que el propio statement dice de esa fila: en el caso real venía como
-    // "Unsold Adjustment", que es exactamente la explicación que hay que dejar anotada.
-    setMotivoAjuste(l.cliente?.trim() || l.explicacion?.trim() || "");
-    // Se propone la categoría leyendo lo que el propio statement dice de la fila: "Unsold
-    // Adjustment" y "MVR" son cargos por correr reportes de vehículo de cotizaciones que no se
-    // vendieron. Es una propuesta, no una decisión: el desplegable queda abierto para cambiarla.
-    const texto = `${l.cliente ?? ""} ${l.explicacion ?? ""}`.toLowerCase();
+  // Abre el diálogo para una línea o para todas las seleccionadas. La categoría y la nota se
+  // proponen leyendo lo que el statement dice de la primera fila: "Unsold Adjustment" y "MVR" son
+  // cargos por correr reportes de vehículo de cotizaciones que no se vendieron. Es una propuesta,
+  // no una decisión — el desplegable queda abierto para cambiarla.
+  function abrirAjuste(lineas: LineaStatement[]) {
+    const conExcepcion = lineas.filter((l) => l.excepcionId);
+    if (conExcepcion.length === 0) return;
+    setLineaAjuste(conExcepcion);
+    const primera = conExcepcion[0];
+    setMotivoAjuste(conExcepcion.length === 1 ? primera.cliente?.trim() || primera.explicacion?.trim() || "" : "");
+    const texto = conExcepcion.map((l) => `${l.cliente ?? ""} ${l.explicacion ?? ""}`).join(" ").toLowerCase();
     setCategoriaAjuste(/mvr|unsold|motor vehicle/.test(texto) ? "mvr" : "ajuste_aseguradora");
   }
 
   async function guardarAjuste() {
-    if (!lineaAjuste?.excepcionId) return;
+    if (!lineaAjuste || lineaAjuste.length === 0) return;
     setMarcandoAjuste(true);
-    try {
-      await marcarLineaComoAjuste({
-        excepcionId: lineaAjuste.excepcionId,
-        lineaId: lineaAjuste.id,
-        categoria: categoriaAjuste,
-        nota: motivoAjuste,
-      });
-      setLineaAjuste(null);
-      cargar();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo marcar la línea como ajuste de la agencia.");
-    } finally {
-      setMarcandoAjuste(false);
+    let ok = 0;
+    const fallidas: string[] = [];
+    for (const l of lineaAjuste) {
+      try {
+        await marcarLineaComoAjuste({
+          excepcionId: l.excepcionId!,
+          lineaId: l.id,
+          categoria: categoriaAjuste,
+          nota: motivoAjuste,
+        });
+        ok += 1;
+      } catch {
+        fallidas.push(l.cliente ?? l.numeroPoliza ?? `fila ${l.fila ?? "?"}`);
+      }
     }
+    setMarcandoAjuste(false);
+    setLineaAjuste(null);
+    setSelectedIds(new Set());
+    // Si alguna falló se dice cuál: un "se marcaron 4 de 5" sin decir cuál quedó afuera obliga a
+    // revisar las cinco a mano para encontrarla.
+    setError(fallidas.length > 0 ? `Se marcaron ${ok}. No se pudo con: ${fallidas.join(", ")}.` : null);
+    cargar();
   }
 
   function abrirCorreccion(l: LineaStatement) {
@@ -564,6 +581,19 @@ function StatementContent() {
               >
                 Asignar agente a seleccionadas
               </Button>
+              {/* Arriba y no solo en la fila: la columna de acciones es la última de una tabla más
+                  ancha que la pantalla, así que el botón quedaba fuera del borde y había que
+                  desplazarse de lado para encontrarlo. Acá además sirve para varias de una vez —
+                  los cargos de MVR suelen venir en tanda. */}
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={seleccionadasConExcepcion.length === 0 || bulkBusy}
+                onClick={() => abrirAjuste(seleccionadasConExcepcion)}
+                title="Marcar las seleccionadas como cargo de la agencia (MVR, ajustes, fees)"
+              >
+                No es de nadie / MVR
+              </Button>
               <Button size="sm" variant="ghost" onClick={exportarCsv} disabled={lineasFiltradas.length === 0}>
                 <Download className="w-3.5 h-3.5" />
                 Exportar a CSV
@@ -658,7 +688,7 @@ function StatementContent() {
                   onConfirmar={confirmarLinea}
                   onAsignar={asignarLinea}
                   onCorregir={abrirCorreccion}
-                  onMarcarAjuste={abrirAjuste}
+                  onMarcarAjuste={(l) => abrirAjuste([l])}
                 />
               ))}
             </tbody>
@@ -671,23 +701,34 @@ function StatementContent() {
       </Card>
 
       <Modal
-        open={lineaAjuste !== null}
+        open={lineaAjuste !== null && lineaAjuste.length > 0}
         onClose={() => setLineaAjuste(null)}
         title="Marcar como ajuste de la agencia"
       >
-        {lineaAjuste && (
+        {lineaAjuste && lineaAjuste.length > 0 && (
           <div className="flex flex-col gap-3 text-[13px]">
-            <div className="rounded-lg bg-background px-3 py-2">
-              <div className="font-medium text-foreground">{lineaAjuste.cliente ?? "(sin cliente)"}</div>
-              <div className="text-muted">
-                {lineaAjuste.numeroPoliza ?? "sin número de póliza"} · {money(lineaAjuste.monto)}
-              </div>
+            <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg bg-background px-3 py-2">
+              {lineaAjuste.map((l) => (
+                <div key={l.id}>
+                  <span className="font-medium text-foreground">{l.cliente ?? "(sin cliente)"}</span>{" "}
+                  <span className="text-muted">
+                    · {l.numeroPoliza ?? "sin número de póliza"} · {money(l.monto)}
+                  </span>
+                </div>
+              ))}
+              {lineaAjuste.length > 1 && (
+                <div className="mt-1 border-t border-border pt-1 font-semibold tabular-nums text-foreground">
+                  {lineaAjuste.length} líneas · {money(lineaAjuste.reduce((s, l) => s + l.monto, 0))}
+                </div>
+              )}
             </div>
             <p className="text-muted">
-              Esta línea deja de buscar agente y pasa a la <strong>cuenta de la agencia</strong>. Es para los
-              ajustes que la aseguradora te cobra o te devuelve a vos, no a un agente. La línea{" "}
-              <strong>no se borra</strong>: queda en el statement, con su monto, y suma en el total como plata de
-              la casa.
+              {lineaAjuste.length === 1 ? "Esta línea deja" : "Estas líneas dejan"} de buscar agente y{" "}
+              {lineaAjuste.length === 1 ? "pasa" : "pasan"} a la <strong>cuenta de la agencia</strong>. Es para los
+              ajustes que la aseguradora te cobra o te devuelve a vos, no a un agente.{" "}
+              {lineaAjuste.length === 1 ? "La línea" : "Las líneas"} <strong>no se borra{lineaAjuste.length === 1 ? "" : "n"}</strong>:
+              queda{lineaAjuste.length === 1 ? "" : "n"} en el statement, con su monto, y suma
+              {lineaAjuste.length === 1 ? "" : "n"} en el total como plata de la casa.
             </p>
             <label className="flex flex-col gap-1">
               <span className="text-muted">¿Qué es este cargo?</span>
@@ -718,7 +759,7 @@ function StatementContent() {
                 Cancelar
               </Button>
               <Button variant="primary" onClick={guardarAjuste} disabled={marcandoAjuste}>
-                {marcandoAjuste ? "Guardando…" : "Marcar como ajuste"}
+                {marcandoAjuste ? "Guardando…" : lineaAjuste.length === 1 ? "Marcar como ajuste" : `Marcar ${lineaAjuste.length} líneas`}
               </Button>
             </div>
           </div>
