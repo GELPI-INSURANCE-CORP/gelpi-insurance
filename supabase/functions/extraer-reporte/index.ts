@@ -146,8 +146,23 @@ function coerceDate(v: unknown): string | null {
       return d.toISOString().slice(0, 10);
     }
   }
+  // AAAAMM: Progressive trae la columna "Month End" como 202608 — el mes al que corresponde el
+  // statement, no una fecha completa. Sin este caso caía en el new Date() de abajo.
+  const aaaamm = s.match(/^(\d{4})(\d{2})$/);
+  if (aaaamm) {
+    const anio = Number(aaaamm[1]);
+    const mes = Number(aaaamm[2]);
+    if (anio >= 1900 && anio <= 2200 && mes >= 1 && mes <= 12) return `${aaaamm[1]}-${aaaamm[2]}-01`;
+  }
+
   const d = new Date(s);
-  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  // El rango es la parte importante, no el isNaN. new Date("202608") NO es inválida: JavaScript la
+  // lee como el año 202608, y toISOString() devuelve "+202608-01-01…". Postgres rechaza eso con
+  // "time zone displacement out of range" y, como las líneas se insertan por lote, una sola fila
+  // así voltea el statement entero — pasó con Progressive: 178 líneas perdidas por una celda.
+  if (!Number.isNaN(d.getTime()) && d.getUTCFullYear() >= 1900 && d.getUTCFullYear() <= 2200) {
+    return d.toISOString().slice(0, 10);
+  }
   return null;
 }
 
