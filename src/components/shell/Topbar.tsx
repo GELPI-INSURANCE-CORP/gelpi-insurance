@@ -8,14 +8,14 @@ import { supabase } from "@/lib/supabase";
 import { displayName, initials, signOut } from "@/lib/auth";
 
 const TITLES: Record<string, string> = {
-  "/comisiones/resumen": "Resumen",
+  "/comisiones/resumen": "Dashboard",
   "/comisiones/subir": "Comisiones",
   "/comisiones/statement": "Detalle del statement",
   "/comisiones/conciliacion": "Conciliación",
   "/comisiones/liquidacion": "Liquidación",
   "/comisiones/agentes": "Agentes",
-  "/comisiones/clientes": "Clientes (Book)",
-  "/comisiones/oficinas": "Oficinas",
+  "/comisiones/clientes": "Book of Business",
+  "/comisiones/oficinas": "Office",
   "/comisiones/bonos": "Bonos",
   "/comisiones/configuracion": "Configuración",
   "/comisiones/cuenta": "Mi cuenta",
