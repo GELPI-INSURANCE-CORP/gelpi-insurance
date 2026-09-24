@@ -10,6 +10,7 @@ import { displayName, initials, signOut } from "@/lib/auth";
 const TITLES: Record<string, string> = {
   "/comisiones/resumen": "Resumen",
   "/comisiones/subir": "Comisiones",
+  "/comisiones/statement": "Detalle del statement",
   "/comisiones/conciliacion": "Conciliación",
   "/comisiones/liquidacion": "Liquidación",
   "/comisiones/agentes": "Agentes",
