@@ -1,12 +1,14 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Download, AlertTriangle } from "lucide-react";
+import { Download, AlertTriangle, Lock, Unlock } from "lucide-react";
 import { Card, Select, TextInput, Button, Badge, Loading, EmptyState, Banner } from "@/components/agentes/ui";
-import { money } from "@/lib/format";
+import { money, fechaHora } from "@/lib/format";
 import {
   getLiquidacion,
   actualizarPctSplit,
+  cerrarLiquidacion,
+  reabrirLiquidacion,
   periodoActual,
   type Liquidacion,
 } from "@/lib/queries/liquidacion";
@@ -42,6 +44,7 @@ function LiquidacionContent() {
   // % en edición por agente (texto libre mientras escribe; se guarda al salir del campo)
   const [pctEditado, setPctEditado] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState<string | null>(null);
+  const [cerrandoMes, setCerrandoMes] = useState(false);
 
   const cargar = useCallback(() => {
     setLoading(true);
@@ -78,6 +81,45 @@ function LiquidacionContent() {
       setError(e instanceof Error ? e.message : "No se pudo guardar el porcentaje.");
     } finally {
       setGuardando(null);
+    }
+  }
+
+  async function onCerrarMes() {
+    if (!data) return;
+    const aviso =
+      data.sinAsignar !== 0
+        ? `Ojo: quedan ${money(data.sinAsignar)} de comisión sin dueño que NO entran en este pago.\n\n`
+        : "";
+    const ok = window.confirm(
+      `${aviso}Cerrar ${etiquetaPeriodo(periodo)} congela lo que se le paga a cada agente: ${money(
+        data.totalAPagar
+      )} en total.\n\nDespués de esto, cambiarle el % a un agente ya no va a mover este mes. ¿Continuar?`
+    );
+    if (!ok) return;
+    setCerrandoMes(true);
+    try {
+      await cerrarLiquidacion(periodo);
+      cargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cerrar el período.");
+    } finally {
+      setCerrandoMes(false);
+    }
+  }
+
+  async function onReabrirMes() {
+    const ok = window.confirm(
+      `Reabrir ${etiquetaPeriodo(periodo)} borra la foto guardada y el mes vuelve a calcularse con los % de hoy.\n\nSi ya le pagaste a los agentes con esos números, los que veas después pueden no coincidir con lo que pagaste. ¿Continuar?`
+    );
+    if (!ok) return;
+    setCerrandoMes(true);
+    try {
+      await reabrirLiquidacion(periodo);
+      cargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo reabrir el período.");
+    } finally {
+      setCerrandoMes(false);
     }
   }
 
@@ -118,6 +160,17 @@ function LiquidacionContent() {
           <Button size="sm" onClick={() => setSoloActivos((v) => !v)}>
             {soloActivos ? "Ver todos" : "Solo activos"}
           </Button>
+          {data?.cerrada ? (
+            <Button size="sm" variant="secondary" onClick={onReabrirMes} disabled={cerrandoMes}>
+              <Unlock className="w-3.5 h-3.5" />
+              {cerrandoMes ? "Reabriendo…" : "Reabrir mes"}
+            </Button>
+          ) : (
+            <Button size="sm" variant="secondary" onClick={onCerrarMes} disabled={cerrandoMes || filas.length === 0}>
+              <Lock className="w-3.5 h-3.5" />
+              {cerrandoMes ? "Cerrando…" : "Cerrar mes"}
+            </Button>
+          )}
           <Button size="sm" variant="primary" onClick={exportarCsv} disabled={filas.length === 0}>
             <Download className="w-3.5 h-3.5" />
             Exportar CSV
@@ -131,10 +184,19 @@ function LiquidacionContent() {
         </Banner>
       )}
 
-      <Banner tone="info">
-        Solo cuenta la comisión ya conciliada (la que el sistema sabe de quién es). Cambiá el % de un agente
-        directo en la tabla: se guarda solo y el cálculo se actualiza al instante.
-      </Banner>
+      {data?.cerrada ? (
+        <Banner tone="info">
+          <Lock className="w-3.5 h-3.5 inline mr-1.5" />
+          Mes cerrado el {fechaHora(data.cerradaEn)}. Estos son los números con los que se pagó: cambiarle el %
+          a un agente de ahora en adelante no los va a mover. Para recalcularlo hay que reabrir el mes.
+        </Banner>
+      ) : (
+        <Banner tone="info">
+          Solo cuenta la comisión ya conciliada (la que el sistema sabe de quién es). Cambiá el % de un agente
+          directo en la tabla: se guarda solo y el cálculo se actualiza al instante. Cuando le pagues, cerrá el
+          mes para congelar estos números.
+        </Banner>
+      )}
 
       {data && data.sinAsignar !== 0 && (
         <Banner
@@ -173,17 +235,23 @@ function LiquidacionContent() {
                     <Badge tone={f.activo ? "ok" : "neutral"}>{f.activo ? "Activo" : "Inactivo"}</Badge>
                   </td>
                   <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <TextInput
-                        value={pctEditado[f.agenteId] ?? String(f.pct)}
-                        onChange={(e) => setPctEditado((prev) => ({ ...prev, [f.agenteId]: e.target.value }))}
-                        onBlur={() => guardarPct(f.agenteId, pctEditado[f.agenteId] ?? String(f.pct))}
-                        inputMode="decimal"
-                        className="w-20 h-8"
-                      />
-                      <span className="text-muted">%</span>
-                      {guardando === f.agenteId && <span className="text-[11px] text-muted">guardando…</span>}
-                    </div>
+                    {/* En un mes cerrado el % es parte del recibo, no un campo: dejarlo editable daría
+                        a entender que cambiarlo corrige lo que ya se pagó, y no lo hace. */}
+                    {data?.cerrada ? (
+                      <span className="tabular-nums">{f.pct}%</span>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <TextInput
+                          value={pctEditado[f.agenteId] ?? String(f.pct)}
+                          onChange={(e) => setPctEditado((prev) => ({ ...prev, [f.agenteId]: e.target.value }))}
+                          onBlur={() => guardarPct(f.agenteId, pctEditado[f.agenteId] ?? String(f.pct))}
+                          inputMode="decimal"
+                          className="w-20 h-8"
+                        />
+                        <span className="text-muted">%</span>
+                        {guardando === f.agenteId && <span className="text-[11px] text-muted">guardando…</span>}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{money(f.comisionRecibida)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums font-medium">{money(f.aPagar)}</td>
