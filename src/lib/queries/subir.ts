@@ -273,6 +273,36 @@ export async function actualizarPeriodoReporte(id: string, periodo: string | nul
 // primero se borran las líneas y excepciones de este reporte antes de re-extraer desde cero.
 // Solo sirve para tipos que insertan en lineas_comision/lineas_venta; actualizacion_abb y
 // bono_contingencia tocan otras tablas (polizas, bonos) y necesitarían su propia limpieza.
+// Reglas de match que significan "lo decidió una persona", no el motor.
+const REGLAS_MANUALES = new Set(["manual", "override_manual", "alta_manual", "cuenta_casa", "no_es_de_este_mes"]);
+
+export interface ImpactoReproceso {
+  totalLineas: number;
+  decisionesManuales: number;
+  seConservan: number;
+  sePierden: number;
+}
+
+// Qué se va a perder si se reprocesa. El aviso decía "esto borra las líneas y vuelve a leer el
+// archivo", que es cierto pero no dice lo que importa: que se va el trabajo manual. Contarlo antes
+// permite avisar con un número en vez de con una advertencia genérica que nadie lee.
+export async function calcularImpactoReproceso(reporteId: string): Promise<ImpactoReproceso> {
+  const { data, error } = await supabase
+    .from("lineas_comision")
+    .select("poliza_id, agente_id, regla_match")
+    .eq("reporte_id", reporteId);
+  if (error) throw error;
+  const lineas = data ?? [];
+  const manuales = lineas.filter((l) => REGLAS_MANUALES.has(l.regla_match ?? ""));
+  const seConservan = manuales.filter((l) => l.agente_id && l.poliza_id).length;
+  return {
+    totalLineas: lineas.length,
+    decisionesManuales: manuales.length,
+    seConservan,
+    sePierden: manuales.length - seConservan,
+  };
+}
+
 export async function reprocesarReporte(reporteId: string): Promise<void> {
   // Guarda contra dos reprocesos simultáneos. Pasó de verdad: cada corrida borra las líneas al
   // empezar y las inserta al terminar, así que si la segunda arranca mientras la primera sigue
@@ -295,9 +325,26 @@ export async function reprocesarReporte(reporteId: string): Promise<void> {
   }
 
   const [{ data: lineasComision }, { data: lineasVenta }] = await Promise.all([
-    supabase.from("lineas_comision").select("id").eq("reporte_id", reporteId),
+    supabase.from("lineas_comision").select("id, poliza_id, agente_id, oficina_id, regla_match").eq("reporte_id", reporteId),
     supabase.from("lineas_venta").select("id").eq("reporte_id", reporteId),
   ]);
+
+  // Antes de borrar, se guarda en el Book lo que se decidió a mano. Reprocesar vuelve a leer el
+  // archivo desde cero y las líneas nuevas no tienen forma de saber qué se había resuelto: en el
+  // caso real se perdieron 29 asignaciones de un statement de United. Escribiendo el agente en la
+  // póliza, el motor lo vuelve a encontrar solo en el paso de match por número de póliza, así que
+  // la decisión sobrevive. Las líneas sin póliza en el Book no se pueden salvar — no hay dónde
+  // anotarlo — y por eso el aviso al usuario tiene que decir cuántas son.
+  const manuales = (lineasComision ?? []).filter(
+    (l) => REGLAS_MANUALES.has(l.regla_match ?? "") && l.agente_id && l.poliza_id
+  );
+  for (const l of manuales) {
+    await supabase
+      .from("polizas")
+      .update({ agente_id: l.agente_id, oficina_id: l.oficina_id })
+      .eq("id", l.poliza_id as string);
+  }
+
   const idsComision = (lineasComision ?? []).map((l) => l.id);
   const idsVenta = (lineasVenta ?? []).map((l) => l.id);
   if (idsComision.length > 0) {

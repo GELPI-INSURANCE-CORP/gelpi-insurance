@@ -4,11 +4,16 @@ import type { Reporte } from "@/lib/queries/subir";
 // Los tres grupos que se muestran arriba del detalle de un statement. Deliberadamente son 3 y no
 // los 5 estados internos de una línea: lo que el usuario necesita decidir es "¿esto ya tiene
 // dueño?", "¿tengo que decidir algo?" o "¿esto no lo reconoce el sistema?".
-export type GrupoLinea = "aprobado" | "pendiente" | "sin_asignar";
+// "excluida" es aparte de los tres: son líneas que el statement muestra pero que NO son plata de
+// este mes — el caso real es United, que arriba de todo pone cuánto te pagó el mes pasado. Esa
+// línea no puede sumar ni restar: con ella contada, un statement de $13,611.70 se mostraba como
+// $9,111.38 y no cuadraba contra el depósito.
+export type GrupoLinea = "aprobado" | "pendiente" | "sin_asignar" | "excluida";
 
 const ESTADOS_APROBADOS = ["conciliado_auto", "conciliado_confirmado", "cuenta_casa"];
 
 export function grupoDeEstado(estado: string): GrupoLinea {
+  if (estado === "descartado") return "excluida";
   if (ESTADOS_APROBADOS.includes(estado)) return "aprobado";
   if (estado === "sin_identificar") return "sin_asignar";
   return "pendiente";
@@ -60,6 +65,8 @@ export interface StatementDetalle {
   countAprobado: number;
   countPendiente: number;
   countSinAsignar: number;
+  montoExcluido: number;
+  countExcluida: number;
   porAgente: ResumenAgenteStatement[];
 }
 
@@ -171,6 +178,8 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
     countAprobado: cuentaDe("aprobado"),
     countPendiente: cuentaDe("pendiente"),
     countSinAsignar: cuentaDe("sin_asignar"),
+    montoExcluido: sumaDe("excluida"),
+    countExcluida: cuentaDe("excluida"),
     porAgente: Array.from(porAgenteMap.values()).sort((a, b) => b.monto - a.monto),
   };
 }
@@ -196,30 +205,69 @@ export const CATEGORIAS_AJUSTE: { value: string; label: string; ayuda: string }[
   { value: "ajuste_aseguradora", label: "Ajuste de la aseguradora", ayuda: "Correcciones o devoluciones que hace el carrier" },
   { value: "cargo_administrativo", label: "Cargo administrativo", ayuda: "Cuotas, fees o cargos de la cuenta de la agencia" },
   { value: "otro", label: "Otro", ayuda: "Cualquier otra cosa que no sea comisión de un agente" },
+  // Distinta de las de arriba: las otras son plata que se movió este mes y suma en el total como
+  // gasto de la agencia. Esta NO es plata de este mes — el statement solo la menciona.
+  { value: "referencia", label: "Pago de un mes anterior (referencia)", ayuda: "Aparece en el statement pero no es plata de este mes: no suma ni resta" },
 ];
+
+// Las categorías que sacan la línea del statement en vez de cobrarla a la agencia.
+const CATEGORIAS_EXCLUYENTES = ["referencia"];
 
 // Marca una línea como gasto/ajuste de la agencia: deja de buscar agente y pasa a la cuenta de la
 // casa, conservando su monto en el statement. La categoría se guarda en la línea, aparte de la
 // nota, para que un reporte futuro pueda sumarlas por concepto.
 export async function marcarLineaComoAjuste(params: {
-  excepcionId: string;
+  excepcionId: string | null;
   lineaId: string;
   categoria: string;
   nota: string;
 }): Promise<void> {
   const etiqueta = CATEGORIAS_AJUSTE.find((c) => c.value === params.categoria)?.label ?? params.categoria;
   const nota = params.nota.trim();
+  const motivo = nota ? `${etiqueta} — ${nota}` : etiqueta;
+  const excluye = CATEGORIAS_EXCLUYENTES.includes(params.categoria);
 
-  const { error: errRpc } = await supabase.rpc("resolver_excepcion", {
-    p_excepcion_id: params.excepcionId,
-    p_accion: "cuenta_casa",
-    p_agente_id: null,
-    p_oficina_id: null,
-    p_poliza_id: null,
-    p_motivo: nota ? `${etiqueta} — ${nota}` : etiqueta,
-    p_cliente: null,
-  });
-  if (errRpc) throw errRpc;
+  if (excluye) {
+    // No es plata de este mes, así que no puede ir a la cuenta de la casa: eso la sumaría al
+    // total igual. Se descarta la línea — sigue en el statement, visible y con su monto, pero
+    // fuera de todas las cuentas.
+    const { error } = await supabase
+      .from("lineas_comision")
+      .update({ estado: "descartado", regla_match: "no_es_de_este_mes", agente_id: null, oficina_id: null })
+      .eq("id", params.lineaId);
+    if (error) throw error;
+    if (params.excepcionId) {
+      await supabase
+        .from("excepciones")
+        .update({ estado: "resuelta", accion: "excluida_no_es_de_este_mes", nota: motivo, resuelta_en: new Date().toISOString() })
+        .eq("id", params.excepcionId);
+    }
+  } else if (params.excepcionId) {
+    const { error: errRpc } = await supabase.rpc("resolver_excepcion", {
+      p_excepcion_id: params.excepcionId,
+      p_accion: "cuenta_casa",
+      p_agente_id: null,
+      p_oficina_id: null,
+      p_poliza_id: null,
+      p_motivo: motivo,
+      p_cliente: null,
+    });
+    if (errRpc) throw errRpc;
+  } else {
+    // Línea sin excepción abierta (por ejemplo una cancelación que quedó "en espera", que el
+    // motor deja en ese estado sin abrir excepción). resolver_excepcion no sirve acá.
+    const { data: casa } = await supabase.from("agentes").select("id, oficina_id").eq("es_casa", true).maybeSingle();
+    const { error } = await supabase
+      .from("lineas_comision")
+      .update({
+        estado: "cuenta_casa",
+        regla_match: "cuenta_casa",
+        agente_id: casa?.id ?? null,
+        oficina_id: casa?.oficina_id ?? null,
+      })
+      .eq("id", params.lineaId);
+    if (error) throw error;
+  }
 
   // La categoría va en campos_extra de la línea, no solo en la nota de la excepción: la línea es lo
   // que sobrevive y lo que se suma en los reportes. Se lee y se reescribe el objeto entero para no
@@ -247,7 +295,12 @@ export async function reasignarLinea(params: {
   motivo: string;
 }): Promise<void> {
   const motivo = params.motivo.trim();
-  if (!motivo) throw new Error("El motivo es obligatorio para cambiar el agente de una línea ya conciliada.");
+  // El motivo se exige solo cuando se le saca la linea a un agente que ya la tenia: ahi hay que
+  // poder explicar por que la plata cambio de dueno. Asignar una que no tenia dueno no es corregir
+  // a nadie, y pedir un motivo ahi solo agrega friccion.
+  if (!motivo && params.agenteAnterior) {
+    throw new Error("Poné el motivo: esta línea ya estaba asignada a " + params.agenteAnterior + ".");
+  }
 
   const { data: agente, error: errAg } = await supabase
     .from("agentes")
