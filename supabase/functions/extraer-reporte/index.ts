@@ -269,7 +269,7 @@ function parseCsv(text: string): Record<string, string>[] {
 function parseXlsx(bytes: Uint8Array): Record<string, unknown>[] {
   // cellDates: las celdas de fecha llegan como Date en vez de serial, y coerceDate las entiende.
   const wb = XLSX.read(bytes, { type: "array", cellDates: true });
-  const allRows: Record<string, unknown>[] = [];
+  const porHoja: { nombre: string; headers: string[]; filas: Record<string, unknown>[] }[] = [];
   const MIN_CELDAS_ENCABEZADO = 4;
   const MIN_CELDAS_FILA = 3;
   for (const sheetName of wb.SheetNames) {
@@ -297,15 +297,33 @@ function parseXlsx(bytes: Uint8Array): Record<string, unknown>[] {
       const s = String(h ?? "").trim();
       return s || `col_${i}`;
     });
+    const filas: Record<string, unknown>[] = [];
     for (let i = idxEncabezado + 1; i < matriz.length; i++) {
       const fila = matriz[i];
       if (contarNoVacias(fila) < MIN_CELDAS_FILA) continue; // fila vacía, separador o subtítulo de sección
       const obj: Record<string, unknown> = {};
       headers.forEach((h, idx) => { obj[h] = fila[idx] ?? ""; });
-      allRows.push(obj);
+      filas.push(obj);
     }
+    porHoja.push({ nombre: sheetName, headers, filas });
   }
-  return allRows;
+
+  // Muchos statements traen una hoja de resumen junto a la de detalle. El de Progressive tiene
+  // "Detailed" (178 transacciones) y "Summary" (14 filas: AGENT TOTAL, AUTO, BOAT…). Juntarlas
+  // mete 14 filas basura con columnas que no significan nada, que terminan como lineas de
+  // comision en cero. Se toma la hoja con mas datos como la buena, y de las otras solo se suman
+  // las que tengan EXACTAMENTE los mismos encabezados — ese es el caso legitimo de un libro
+  // partido en varias hojas (enero, febrero...), y deja afuera los resumenes, que por definicion
+  // tienen otras columnas.
+  if (porHoja.length === 0) return [];
+  porHoja.sort((a, b) => b.filas.length - a.filas.length);
+  const principal = porHoja[0];
+  const firma = (h: string[]) => h.join("|").toLowerCase();
+  const out = [...principal.filas];
+  for (const hoja of porHoja.slice(1)) {
+    if (firma(hoja.headers) === firma(principal.headers)) out.push(...hoja.filas);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -1084,6 +1102,20 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // Hay aseguradoras que guardan la tasa como fracción: Progressive pone 0.1 donde son 10% y
+      // 0.09 donde son 9%. Guardarla tal cual hace que la pantalla diga "0.1%". No alcanza con
+      // "si es menor que 1, multiplicá": una comisión real del 0.5% existe. Se comprueba contra
+      // los números de la propia fila — si monto/prima da ese mismo valor, la fracción es la
+      // lectura correcta y recién ahí se convierte.
+      const tasaNormalizada = (f: Record<string, unknown>): number | null => {
+        const tasa = coerceNumber(f.tasa);
+        const prima = coerceNumber(f.prima);
+        const monto = coerceNumber(f.monto);
+        if (tasa === null || tasa <= 0 || tasa >= 1) return tasa;
+        if (!prima || prima === 0 || monto === null) return tasa;
+        return Math.abs(Math.abs(monto / prima) - tasa) < 0.005 ? tasa * 100 : tasa;
+      };
+
       const batch = filasFinal.map((f) => ({
         reporte_id: reporteId,
         fila: f.fila ?? null,
@@ -1093,7 +1125,7 @@ Deno.serve(async (req: Request) => {
         tipo_transaccion: coerceTipoTransaccion(f.tipo_transaccion),
         ramo: coerceRamo(f.ramo),
         prima: coerceNumber(f.prima),
-        tasa: coerceNumber(f.tasa),
+        tasa: tasaNormalizada(f),
         monto: coerceNumber(f.monto) ?? 0,
         fecha_vigencia: coerceDate(f.fecha_vigencia),
         fecha_statement: coerceDate(f.fecha_statement) ?? coerceDate(reporte.periodo),
