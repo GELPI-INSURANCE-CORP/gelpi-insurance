@@ -688,7 +688,6 @@ function StatementContent() {
                   onConfirmar={confirmarLinea}
                   onAsignar={asignarLinea}
                   onCorregir={abrirCorreccion}
-                  onMarcarAjuste={(l) => abrirAjuste([l])}
                 />
               ))}
             </tbody>
@@ -890,7 +889,6 @@ function FilaLinea({
   onConfirmar,
   onAsignar,
   onCorregir,
-  onMarcarAjuste,
 }: {
   l: LineaStatement;
   selected: boolean;
@@ -902,7 +900,6 @@ function FilaLinea({
   onConfirmar: (l: LineaStatement) => void;
   onAsignar: (l: LineaStatement, agenteId: string) => void;
   onCorregir: (l: LineaStatement) => void;
-  onMarcarAjuste: (l: LineaStatement) => void;
 }) {
   const estado = ESTADOS_LINEA[l.estadoLinea] ?? { label: l.estadoLinea, tone: "neutral" as const };
   return (
@@ -962,18 +959,6 @@ function FilaLinea({
             />
             <Button size="sm" variant="secondary" disabled={enCurso || !valorAsignar} onClick={() => onAsignar(l, valorAsignar)}>
               Asignar
-            </Button>
-            {/* Hay líneas que no son comisión de nadie: ajustes que la aseguradora le cobra a la
-                agencia ("Unsold Adjustment"), cargos, devoluciones. Sin esta salida quedaban
-                trabando el Finalizar para siempre, porque no hay agente a quien asignárselas. */}
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={enCurso}
-              onClick={() => onMarcarAjuste(l)}
-              title="No es comisión de ningún agente: va a la cuenta de la agencia"
-            >
-              No es de nadie
             </Button>
           </div>
         ) : (
