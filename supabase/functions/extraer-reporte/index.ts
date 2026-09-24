@@ -836,52 +836,73 @@ Deno.serve(async (req: Request) => {
       }
 
       const totalPaginas = paginasBytes.length;
-      const resultadosPorPagina = await Promise.all(
-        paginasBytes.map((paginaBytes, i) => {
-          const b64 = base64FromBytes(paginaBytes);
-          const dataUrl = `data:${mediaType};base64,${b64}`;
-          const sufijoPagina = totalPaginas > 1 ? ` (página ${i + 1} de ${totalPaginas})` : "";
-          const instructionText =
-            `Archivo: ${reporte.nombre_archivo}${sufijoPagina} (tipo declarado: ${reporte.tipo}). ` +
-            `Extraé TODAS las filas/registros que encuentres en ${totalPaginas > 1 ? "esta página" : "el documento"}, ` +
-            `completando el array "filas" por completo — no resumas ni muestrees, aunque tenga muchas filas repetitivas. ` +
-            `Si acá aparece un total de transacciones en el resumen/pie de página, reportalo en total_filas_documento. ` +
-            `Completá también tipo_detectado, aseguradora_detectada, periodo, mapeo_columnas, columnas_sin_mapeo, confianza_promedio y resumen.`;
-          const block = esPdf
-            ? { type: "input_file", filename: reporte.nombre_archivo || "reporte.pdf", file_data: dataUrl }
-            : { type: "input_image", image_url: dataUrl };
+      const extraerPagina = (paginaBytes: Uint8Array, i: number) => {
+        const b64 = base64FromBytes(paginaBytes);
+        const dataUrl = `data:${mediaType};base64,${b64}`;
+        const sufijoPagina = totalPaginas > 1 ? ` (página ${i + 1} de ${totalPaginas})` : "";
+        const instructionText =
+          `Archivo: ${reporte.nombre_archivo}${sufijoPagina} (tipo declarado: ${reporte.tipo}). ` +
+          `Extraé TODAS las filas/registros que encuentres en ${totalPaginas > 1 ? "esta página" : "el documento"}, ` +
+          `completando el array "filas" por completo — no resumas ni muestrees, aunque tenga muchas filas repetitivas. ` +
+          `Si acá aparece un total de transacciones en el resumen/pie de página, reportalo en total_filas_documento. ` +
+          `Completá también tipo_detectado, aseguradora_detectada, periodo, mapeo_columnas, columnas_sin_mapeo, confianza_promedio y resumen.`;
+        const block = esPdf
+          ? { type: "input_file", filename: reporte.nombre_archivo || "reporte.pdf", file_data: dataUrl }
+          : { type: "input_image", image_url: dataUrl };
 
-          return callOpenAI({
-            apiKey: OPENAI_API_KEY,
-            model: OPENAI_MODEL,
-            esVenta: esVentaEsperada,
-            // Techo real de salida de gpt-4o-mini (Responses API); con 8192 un statement con
-            // ~100+ filas ya truncaba el array "filas" a mitad de camino.
-            maxTokens: 16384,
-            content: [{ type: "input_text", text: instructionText }, block],
-          });
-        }),
-      );
+        return callOpenAI({
+          apiKey: OPENAI_API_KEY,
+          model: OPENAI_MODEL,
+          esVenta: esVentaEsperada,
+          // Techo real de salida de gpt-4o-mini (Responses API); con 8192 un statement con
+          // ~100+ filas ya truncaba el array "filas" a mitad de camino.
+          maxTokens: 16384,
+          content: [{ type: "input_text", text: instructionText }, block],
+        });
+      };
 
-      if (resultadosPorPagina.length === 1) {
-        extraccion = resultadosPorPagina[0];
-      } else {
+      const combinar = (paginas: ExtraccionResultado[]): ExtraccionResultado => {
+        if (paginas.length === 1) return paginas[0];
         // Combinar las filas de todas las páginas en un solo resultado. El resto de los
         // metadatos (tipo, aseguradora, período, mapeo) se toman de la primera página porque
         // son los mismos en todo el documento. total_filas_documento normalmente solo viene en
         // la página que trae el resumen final (no necesariamente la primera).
         const filasCombinadas: Record<string, unknown>[] = [];
-        for (const r of resultadosPorPagina) {
+        for (const r of paginas) {
           for (const f of (r.filas ?? []) as Record<string, unknown>[]) {
             filasCombinadas.push({ ...f, fila: filasCombinadas.length + 1 });
           }
         }
-        const totalReportado = resultadosPorPagina.map((r) => r.total_filas_documento).find((n) => n != null) ?? null;
-        extraccion = {
-          ...resultadosPorPagina[0],
-          filas: filasCombinadas,
-          total_filas_documento: totalReportado,
-        } as ExtraccionResultado;
+        const totalReportado = paginas.map((r) => r.total_filas_documento).find((n) => n != null) ?? null;
+        return { ...paginas[0], filas: filasCombinadas, total_filas_documento: totalReportado } as ExtraccionResultado;
+      };
+
+      let porPagina = await Promise.all(paginasBytes.map(extraerPagina));
+      extraccion = combinar(porPagina);
+
+      // Segunda pasada cuando el documento dice tener más filas de las que se extrajeron. El
+      // modelo no es determinístico: una página que en un intento se corta, en otro suele salir
+      // completa. Se reintenta todo el documento una sola vez y, página por página, se conserva
+      // el intento que trajo MÁS filas (nunca menos que lo que ya teníamos).
+      const esperadasDoc = extraccion.total_filas_documento;
+      const filasPrimeraPasada = (extraccion.filas ?? []).length;
+      if (totalPaginas > 1 && esperadasDoc != null && esperadasDoc > 0 && filasPrimeraPasada < esperadasDoc) {
+        try {
+          const segunda = await Promise.all(paginasBytes.map(extraerPagina));
+          const mejores = porPagina.map((p, i) => {
+            const a = (p.filas ?? []).length;
+            const b = (segunda[i]?.filas ?? []).length;
+            return b > a ? segunda[i] : p;
+          });
+          const combinadoMejor = combinar(mejores);
+          if ((combinadoMejor.filas ?? []).length > filasPrimeraPasada) {
+            porPagina = mejores;
+            extraccion = combinadoMejor;
+          }
+        } catch (segundaErr) {
+          // Si la segunda pasada falla (rate limit, timeout), nos quedamos con la primera.
+          console.error("Segunda pasada de extracción falló, se usa la primera:", segundaErr);
+        }
       }
     }
 
@@ -940,12 +961,23 @@ Deno.serve(async (req: Request) => {
     // como incomplete), sino que el modelo deja de transcribir antes de terminar. Cuando el
     // documento reporta su propio total de transacciones, lo comparamos y preferimos fallar
     // con un mensaje claro antes que guardar un statement a medias como si estuviera completo.
+    // Dos umbrales a propósito: por debajo del 75% falta tanto que guardar sería peor que no
+    // hacer nada (el caso real fue 7 de 219). Entre 75% y 95% puede ser una diferencia de
+    // criterio sobre qué cuenta como "transacción" en el resumen del documento, y bloquear todo
+    // por eso deja al usuario sin ver un centavo de su statement: se guarda, pero con un aviso
+    // visible en el resumen para que sepa que puede faltar algo.
     if (usarFilasDelModelo && extraccion.total_filas_documento != null && extraccion.total_filas_documento > 0) {
       const esperadas = extraccion.total_filas_documento;
-      if (filasFinal.length < esperadas * 0.9) {
+      const extraidas = filasFinal.length;
+      if (extraidas < esperadas * 0.75) {
         throw new ReporteError(
-          `La IA extrajo solo ${filasFinal.length} de ${esperadas} filas que el documento dice tener — probablemente se salteó filas de un documento largo. No se guardó nada para evitar un statement incompleto. Reintentá la extracción.`,
+          `La IA extrajo solo ${extraidas} de ${esperadas} filas que el documento dice tener — probablemente se salteó filas de un documento largo. No se guardó nada para evitar un statement incompleto. Reintentá la extracción.`,
         );
+      }
+      if (extraidas < esperadas * 0.95) {
+        metaUpdate.resumen_ia =
+          `⚠ Revisar: se extrajeron ${extraidas} de las ${esperadas} filas que el documento dice tener. ` +
+          `Puede faltar alguna transacción. ${metaUpdate.resumen_ia ?? ""}`.trim();
       }
     }
 
