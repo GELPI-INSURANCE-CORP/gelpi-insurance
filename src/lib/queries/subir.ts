@@ -274,6 +274,26 @@ export async function actualizarPeriodoReporte(id: string, periodo: string | nul
 // Solo sirve para tipos que insertan en lineas_comision/lineas_venta; actualizacion_abb y
 // bono_contingencia tocan otras tablas (polizas, bonos) y necesitarían su propia limpieza.
 export async function reprocesarReporte(reporteId: string): Promise<void> {
+  // Guarda contra dos reprocesos simultáneos. Pasó de verdad: cada corrida borra las líneas al
+  // empezar y las inserta al terminar, así que si la segunda arranca mientras la primera sigue
+  // extrayendo (tarda minutos), la segunda borra cuando todavía no hay nada y al final las dos
+  // insertan — el statement queda cargado dos veces y la mitad se marca como duplicado.
+  const { data: actual, error: errActual } = await supabase
+    .from("reportes")
+    .select("estado, updated_at")
+    .eq("id", reporteId)
+    .single();
+  if (errActual) throw errActual;
+  if (actual && (actual.estado === "extrayendo" || actual.estado === "subido")) {
+    const desde = new Date(actual.updated_at).getTime();
+    const minutos = (Date.now() - desde) / 60000;
+    if (minutos < 10) {
+      throw new Error(
+        `Este reporte ya se está procesando (empezó hace ${Math.max(1, Math.round(minutos))} min). Esperá a que termine antes de reprocesarlo de nuevo.`
+      );
+    }
+  }
+
   const [{ data: lineasComision }, { data: lineasVenta }] = await Promise.all([
     supabase.from("lineas_comision").select("id").eq("reporte_id", reporteId),
     supabase.from("lineas_venta").select("id").eq("reporte_id", reporteId),
