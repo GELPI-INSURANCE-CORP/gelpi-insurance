@@ -17,6 +17,7 @@ import {
   Kpi,
   Loading,
   Modal,
+  Pagination,
   Select,
   TextArea,
   TextInput,
@@ -36,6 +37,15 @@ import {
 import { listAgentes, resolverExcepcion, type AgenteSimple } from "@/lib/queries/conciliacion";
 import { actualizarPeriodoReporte, reprocesarReporte, type Reporte } from "@/lib/queries/subir";
 
+// "Todas" no es un número de filas, así que el estado se guarda como string y se resuelve más
+// abajo (ver pageSizeEfectivo) contra la cantidad real de líneas filtradas.
+const FILAS_POR_PAGINA_OPCIONES = [
+  { value: "100", label: "100" },
+  { value: "500", label: "500" },
+  { value: "1000", label: "1000" },
+  { value: "todas", label: "Todas" },
+];
+
 function StatementContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -50,6 +60,9 @@ function StatementContent() {
   const [busqueda, setBusqueda] = useState("");
   const [filtro, setFiltro] = useState<"todas" | GrupoLinea>("todas");
   const [agenteFiltro, setAgenteFiltro] = useState("");
+
+  const [filasPorPagina, setFilasPorPagina] = useState("100");
+  const [pagina, setPagina] = useState(1);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<Record<string, string>>({});
@@ -126,6 +139,7 @@ function StatementContent() {
       countAprobado: cuenta("aprobado"),
       countPendiente: cuenta("pendiente"),
       countSinAsignar: cuenta("sin_asignar"),
+      countExcluida: cuenta("excluida"),
     };
   }, [lineasDelAgente]);
 
@@ -134,7 +148,35 @@ function StatementContent() {
     [lineasDelAgente, filtro]
   );
 
-  const seleccionables = useMemo(() => lineasFiltradas.filter((l) => l.excepcionId), [lineasFiltradas]);
+  // Al tocar la búsqueda, un filtro o cuántas filas se ven por página, se vuelve a la página 1.
+  // Si no, alguien filtra a 3 resultados estando en la página 2 y se encuentra con una tabla
+  // vacía, pensando que no quedó nada.
+  useEffect(() => {
+    setPagina(1);
+  }, [busqueda, filtro, agenteFiltro, filasPorPagina]);
+
+  const pageSizeEfectivo = filasPorPagina === "todas" ? Math.max(lineasFiltradas.length, 1) : Number(filasPorPagina);
+  const totalPaginas = Math.max(1, Math.ceil(lineasFiltradas.length / pageSizeEfectivo));
+  // Si los datos cambian (por ejemplo se resuelve una excepción) y la página en la que estábamos
+  // ya no existe más, se recorta a la última válida en vez de mostrar una tabla vacía.
+  const paginaActual = Math.max(1, Math.min(pagina, totalPaginas));
+
+  const lineasPaginadas = useMemo(() => {
+    const inicio = (paginaActual - 1) * pageSizeEfectivo;
+    return lineasFiltradas.slice(inicio, inicio + pageSizeEfectivo);
+  }, [lineasFiltradas, paginaActual, pageSizeEfectivo]);
+
+  // El check del encabezado marca o quita lo seleccionable de ESTA página. Con la tabla paginada,
+  // "seleccionar todo" ya no puede significar a la vez "todo lo que se ve" y "todo lo filtrado":
+  // se eligió lo primero, que es lo que el ojo ve al tocar el check, y se ofrece por separado
+  // extender la selección a todo lo filtrado (aviso arriba de la tabla, junto a la paginación).
+  const seleccionablesPagina = useMemo(() => lineasPaginadas.filter((l) => l.excepcionId), [lineasPaginadas]);
+  const seleccionablesFiltradas = useMemo(() => lineasFiltradas.filter((l) => l.excepcionId), [lineasFiltradas]);
+  const paginaCompletaSeleccionada =
+    seleccionablesPagina.length > 0 && seleccionablesPagina.every((l) => selectedIds.has(l.id));
+  const todoElFiltroSeleccionado =
+    seleccionablesFiltradas.length > 0 && seleccionablesFiltradas.every((l) => selectedIds.has(l.id));
+  const haySeleccionablesFueraDeLaPagina = seleccionablesFiltradas.length > seleccionablesPagina.length;
 
   // Solo los agentes que aparecen en este statement: ofrecer los 12 de la agencia cuando apenas 9
   // tienen líneas hace que elegir uno y no ver nada parezca un error de la pantalla.
@@ -170,10 +212,31 @@ function StatementContent() {
     });
   }
 
-  function toggleSelectAll() {
-    setSelectedIds((prev) =>
-      prev.size === seleccionables.length && seleccionables.length > 0 ? new Set() : new Set(seleccionables.map((l) => l.id))
-    );
+  function toggleSelectAllPagina() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (paginaCompletaSeleccionada) {
+        for (const l of seleccionablesPagina) next.delete(l.id);
+      } else {
+        for (const l of seleccionablesPagina) next.add(l.id);
+      }
+      return next;
+    });
+  }
+
+  // Suma a la selección todo lo que cumple el filtro, no solo lo de esta página. Es un paso
+  // aparte y a pedido (el aviso que aparece cuando ya está todo marcado en esta página) para que
+  // nadie termine actuando sobre 219 líneas pensando que eran las 20 que tenía a la vista.
+  function seleccionarTodoElFiltro() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const l of seleccionablesFiltradas) next.add(l.id);
+      return next;
+    });
+  }
+
+  function deseleccionarTodo() {
+    setSelectedIds(new Set());
   }
 
   async function confirmarLinea(l: LineaStatement) {
@@ -413,6 +476,24 @@ function StatementContent() {
 
   const { reporte } = data;
 
+  // Selector de "filas por página" + controles de paginación (Anterior/Siguiente, número de
+  // página y el texto "Mostrando X–Y de Z"). Se arma una sola vez y se ubica arriba y abajo de la
+  // tabla, para no obligar a subir cuando se quiere cambiar de página estando al final.
+  const barraPaginacion = (
+    <>
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2 text-xs text-muted">
+        <span>Filas por página:</span>
+        <Select
+          value={filasPorPagina}
+          onChange={setFilasPorPagina}
+          options={FILAS_POR_PAGINA_OPCIONES}
+          className="w-24"
+        />
+      </div>
+      <Pagination page={paginaActual} pageSize={pageSizeEfectivo} total={lineasFiltradas.length} onChange={setPagina} />
+    </>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -424,10 +505,13 @@ function StatementContent() {
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-foreground truncate">Detalle del statement</h1>
-            <p className="text-xs text-muted truncate">{reporte.nombre_archivo}</p>
-          </div>
+          {/* El título "Detalle del statement" ya lo pone la barra superior (TITLES en
+              Topbar.tsx) para toda esta sección — repetirlo acá era la misma frase dos veces
+              antes de llegar a la primera línea de la tabla. Lo único que cambia de un statement
+              a otro es el archivo, así que es lo único que queda en esta fila. */}
+          <p className="min-w-0 truncate text-sm font-medium text-foreground" title={reporte.nombre_archivo}>
+            {reporte.nombre_archivo}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {reporte.estado === "cerrado" ? (
@@ -490,6 +574,7 @@ function StatementContent() {
           sub={`${totales.countAprobado} línea${totales.countAprobado === 1 ? "" : "s"} · ya tienen agente`}
           tone="ok"
           destacado
+          compact
         />
         <Kpi
           label="Pendiente"
@@ -497,6 +582,7 @@ function StatementContent() {
           sub={`${totales.countPendiente} línea${totales.countPendiente === 1 ? "" : "s"} · necesitan una decisión`}
           tone="warn"
           destacado
+          compact
         />
         <Kpi
           label="Sin asignar"
@@ -504,6 +590,7 @@ function StatementContent() {
           sub={`${totales.countSinAsignar} línea${totales.countSinAsignar === 1 ? "" : "s"} · el sistema no las reconoció`}
           tone="bad"
           destacado
+          compact
         />
       </div>
 
@@ -534,10 +621,17 @@ function StatementContent() {
               aseguradora pagó en total. Sirve para cuadrar contra el cheque que llegó. */}
           <div className="flex items-center gap-1.5">
             <span className="text-muted">Total del statement:</span>
+            {/* Las líneas excluidas quedan fuera: son las que el statement menciona pero que no son
+                plata de este mes — el caso real es United, que arriba de todo pone cuánto pagó el
+                mes pasado. Contándola, un statement de $13,611.70 se mostraba como $9,111.38 y no
+                cuadraba contra el depósito. */}
             <span className="font-semibold tabular-nums text-foreground">
-              {money(data.lineas.reduce((s, l) => s + l.monto, 0))}
+              {money(data.lineas.filter((l) => l.grupo !== "excluida").reduce((s, l) => s + l.monto, 0))}
             </span>
-            <span className="text-muted">· {data.lineas.length} líneas</span>
+            <span className="text-muted">
+              · {data.lineas.filter((l) => l.grupo !== "excluida").length} líneas
+              {data.countExcluida > 0 && ` · ${data.countExcluida} fuera del statement`}
+            </span>
           </div>
         </div>
         {/* El resumen de la IA es un párrafo largo que describe el archivo. Es útil una vez, cuando
@@ -616,6 +710,13 @@ function StatementContent() {
           <Chip active={filtro === "sin_asignar"} onClick={() => setFiltro("sin_asignar")}>
             Sin asignar ({totales.countSinAsignar})
           </Chip>
+          {/* El chip de excluidas solo aparece si hay alguna: es un caso poco frecuente y un chip
+              en cero al lado de los otros tres hace pensar que falta hacer algo con él. */}
+          {totales.countExcluida > 0 && (
+            <Chip active={filtro === "excluida"} onClick={() => setFiltro("excluida")}>
+              Fuera del statement ({totales.countExcluida})
+            </Chip>
+          )}
           <div className="flex-1" />
           <span className="text-xs text-muted">Filtrar por agente:</span>
           <Select
@@ -651,6 +752,33 @@ function StatementContent() {
           </div>
         )}
 
+        {paginaCompletaSeleccionada && haySeleccionablesFueraDeLaPagina && !todoElFiltroSeleccionado && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background/60 px-4 py-2.5 text-xs text-muted">
+            <span>
+              Seleccionaste las {seleccionablesPagina.length} línea{seleccionablesPagina.length === 1 ? "" : "s"} de esta
+              página.
+            </span>
+            <button type="button" className="font-medium text-brand hover:underline" onClick={seleccionarTodoElFiltro}>
+              Seleccionar las {seleccionablesFiltradas.length} que cumplen el filtro
+            </button>
+          </div>
+        )}
+        {todoElFiltroSeleccionado && haySeleccionablesFueraDeLaPagina && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background/60 px-4 py-2.5 text-xs text-muted">
+            <span>
+              Están seleccionadas las {seleccionablesFiltradas.length} líneas que cumplen el filtro, no solo las de esta
+              página.
+            </span>
+            <button type="button" className="font-medium text-brand hover:underline" onClick={deseleccionarTodo}>
+              Deseleccionar todas
+            </button>
+          </div>
+        )}
+
+        {/* Paginación arriba de la tabla además de abajo: con 100+ filas, obligar a subir para
+            cambiar de página o de cuántas filas ver sería muy incómodo. */}
+        {barraPaginacion}
+
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1280px] text-[13px]">
             <thead>
@@ -658,8 +786,14 @@ function StatementContent() {
                 <th className="px-4 py-2.5 w-9">
                   <input
                     type="checkbox"
-                    checked={seleccionables.length > 0 && selectedIds.size === seleccionables.length}
-                    onChange={toggleSelectAll}
+                    checked={paginaCompletaSeleccionada}
+                    ref={(el) => {
+                      if (el) {
+                        el.indeterminate = !paginaCompletaSeleccionada && seleccionablesPagina.some((l) => selectedIds.has(l.id));
+                      }
+                    }}
+                    onChange={toggleSelectAllPagina}
+                    title="Selecciona o quita todas las líneas de esta página"
                   />
                 </th>
                 <th className="px-4 py-2.5 font-medium">Fila</th>
@@ -675,7 +809,7 @@ function StatementContent() {
               </tr>
             </thead>
             <tbody>
-              {lineasFiltradas.map((l) => (
+              {lineasPaginadas.map((l) => (
                 <FilaLinea
                   key={l.id}
                   l={l}
@@ -697,6 +831,8 @@ function StatementContent() {
             <EmptyState title="Sin líneas" subtitle="No hay líneas que coincidan con estos filtros." />
           )}
         </div>
+
+        {barraPaginacion}
       </Card>
 
       <Modal
