@@ -24,7 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </button>
             </div>
             <div className="h-[calc(100%-3rem)]">
-              <SidebarContent onNavigate={() => setMobileOpen(false)} />
+              <SidebarContent expandida onNavigate={() => setMobileOpen(false)} />
             </div>
           </div>
           <div className="flex-1 bg-black/30" onClick={() => setMobileOpen(false)} />

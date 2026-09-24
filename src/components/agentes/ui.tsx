@@ -39,11 +39,14 @@ export function Kpi({
   value,
   sub,
   tone = "muted",
+  destacado = false,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: "ok" | "warn" | "bad" | "brand" | "muted";
+  /** Resalta la tarjeta con fondo y borde del color del tono (además del texto), para KPIs que deben distinguirse de un vistazo. */
+  destacado?: boolean;
 }) {
   const toneClass: Record<string, string> = {
     ok: "text-ok-fg",
@@ -52,8 +55,20 @@ export function Kpi({
     brand: "text-brand",
     muted: "text-muted",
   };
+  const destacadoClass: Record<string, string> = {
+    ok: "bg-ok-bg border-ok-fg/30",
+    warn: "bg-warn-bg border-warn-fg/30",
+    bad: "bg-bad-bg border-bad-fg/30",
+    brand: "bg-brand-tint border-brand/30",
+    muted: "bg-surface border-border",
+  };
   return (
-    <div className="bg-surface border border-border rounded-xl p-5 flex flex-col gap-1 min-w-0">
+    <div
+      className={clsx(
+        "rounded-xl border p-5 flex flex-col gap-1 min-w-0",
+        destacado ? destacadoClass[tone] : "bg-surface border-border"
+      )}
+    >
       <div className="text-[13px] text-muted truncate">{label}</div>
       <div className="text-[26px] font-semibold text-foreground tracking-tight truncate">{value}</div>
       {sub && <div className={clsx("text-xs font-medium mt-1", toneClass[tone])}>{sub}</div>}
