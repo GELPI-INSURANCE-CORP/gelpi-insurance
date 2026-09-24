@@ -36,10 +36,12 @@ export const ESTADOS_LINEA: Record<string, { label: string; tone: "ok" | "warn" 
   pendiente: { label: "Pendiente", tone: "neutral" },
   conciliado_auto: { label: "Conciliado automático", tone: "ok" },
   conciliado_confirmado: { label: "Conciliado (confirmado)", tone: "ok" },
-  mismatch: { label: "Mismatch", tone: "warn" },
+  mismatch: { label: "Revisar el agente", tone: "warn" },
   sin_identificar: { label: "Sin identificar", tone: "bad" },
-  en_espera: { label: "En espera", tone: "info" },
+  // "En espera" no decía de qué. Son cancelaciones o chargebacks cuya línea original el sistema no
+  // encontró en ningún statement anterior: no hay nada que esperar, hay que decidir de quién es.
+  en_espera: { label: "Cancelación sin original", tone: "warn" },
   duplicado_sospechoso: { label: "Duplicado sospechoso", tone: "neutral" },
-  descartado: { label: "Descartado", tone: "neutral" },
+  descartado: { label: "Fuera del statement", tone: "neutral" },
   cuenta_casa: { label: "Cuenta de la casa", tone: "brand" },
 };
