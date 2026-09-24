@@ -50,7 +50,7 @@ export default function OficinasPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-lg font-semibold text-foreground">Oficinas</h1>
+        <h1 className="text-lg font-semibold text-foreground">Office</h1>
         <div className="flex items-center gap-2">
           <Link href="/comisiones/agentes">
             <Button size="sm" variant="secondary">

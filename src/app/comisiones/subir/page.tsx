@@ -1,8 +1,9 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, CheckCircle2, X, Inbox } from "lucide-react";
+import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, CheckCircle2, X, Inbox, GitCompare, Wallet } from "lucide-react";
 import clsx from "clsx";
 import { Badge, Card, CardHead, EmptyState, Input, Select, type Tone } from "@/components/ui";
 import { fechaHora, TIPOS_REPORTE } from "@/lib/format";
@@ -311,6 +312,34 @@ export default function SubirPage() {
 
   return (
     <div className="flex flex-col gap-7">
+      {/* Conciliación y Liquidación salieron del menú lateral porque son pasos DE un statement, no
+          secciones aparte. Se entra desde acá, que es donde el usuario ya está cuando las necesita:
+          primero sube el statement, después resuelve lo que quedó sin identificar, y al final mira
+          cuánto le toca a cada agente. El subtítulo dice para qué sirve cada una, porque los
+          nombres solos no se lo dicen a alguien que no armó el sistema. */}
+      <div className="flex flex-wrap gap-3">
+        <Link
+          href="/comisiones/conciliacion/"
+          className="flex flex-1 min-w-[240px] items-center gap-3 rounded-2xl border border-border bg-surface px-5 py-4 transition-colors hover:bg-brand-tint/50"
+        >
+          <GitCompare className="h-5 w-5 flex-shrink-0 text-brand" />
+          <span className="flex flex-col">
+            <span className="text-[14px] font-semibold text-foreground">Conciliación</span>
+            <span className="text-xs text-muted">Resolvé las líneas que el sistema no pudo identificar</span>
+          </span>
+        </Link>
+        <Link
+          href="/comisiones/liquidacion/"
+          className="flex flex-1 min-w-[240px] items-center gap-3 rounded-2xl border border-border bg-surface px-5 py-4 transition-colors hover:bg-brand-tint/50"
+        >
+          <Wallet className="h-5 w-5 flex-shrink-0 text-brand" />
+          <span className="flex flex-col">
+            <span className="text-[14px] font-semibold text-foreground">Liquidación</span>
+            <span className="text-xs text-muted">Cuánto le toca a cada agente este mes</span>
+          </span>
+        </Link>
+      </div>
+
       {pageError && (
         <div className="flex items-center gap-2 rounded-lg border border-bad-fg/30 bg-bad-bg px-4 py-3 text-[13px] text-bad-fg">
           <AlertTriangle size={16} className="flex-shrink-0" />

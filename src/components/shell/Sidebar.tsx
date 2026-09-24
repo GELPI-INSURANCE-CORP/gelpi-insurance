@@ -6,24 +6,26 @@ import {
   PieChart,
   LayoutDashboard,
   Upload,
-  GitCompare,
   BookOpen,
   Building2,
   Gift,
   Settings,
-  Wallet,
 } from "lucide-react";
 import clsx from "clsx";
 
+// Conciliación y Liquidación salieron del menú: son pasos DE un statement, no secciones aparte, y
+// tener ocho entradas hacía que el usuario no supiera por dónde empezar. Se entra a las dos desde
+// Comisiones. Las rutas siguen existiendo tal cual — hay enlaces a ellas repartidos por otras
+// pantallas (Resumen, Oficinas, la ficha del agente) y sacarlas dejaría esos enlaces en un 404.
 const SUBTABS = [
-  { href: "/comisiones/resumen", label: "Resumen", icon: LayoutDashboard },
-  { href: "/comisiones/subir", label: "Comisiones", icon: Upload },
-  { href: "/comisiones/conciliacion", label: "Conciliación", icon: GitCompare },
-  { href: "/comisiones/liquidacion", label: "Liquidación", icon: Wallet },
-  { href: "/comisiones/clientes", label: "Clientes (Book)", icon: BookOpen },
-  { href: "/comisiones/oficinas", label: "Oficinas", icon: Building2 },
-  { href: "/comisiones/bonos", label: "Bonos", icon: Gift },
-  { href: "/comisiones/configuracion", label: "Configuración", icon: Settings },
+  { href: "/comisiones/resumen", label: "Dashboard", icon: LayoutDashboard, tambien: [] as string[] },
+  // Estando en Conciliación o Liquidación se ilumina Comisiones: es de donde se entra, así el menú
+  // no queda sin ningún item marcado y el usuario no pierde de vista dónde está parado.
+  { href: "/comisiones/subir", label: "Comisiones", icon: Upload, tambien: ["/comisiones/conciliacion", "/comisiones/liquidacion", "/comisiones/statement"] },
+  { href: "/comisiones/clientes", label: "Book of Business", icon: BookOpen, tambien: [] as string[] },
+  { href: "/comisiones/oficinas", label: "Office", icon: Building2, tambien: [] as string[] },
+  { href: "/comisiones/bonos", label: "Bonos", icon: Gift, tambien: [] as string[] },
+  { href: "/comisiones/configuracion", label: "Configuración", icon: Settings, tambien: [] as string[] },
 ];
 
 // `expandida` fuerza el estado abierto (icono + texto) sin depender del hover. El menú de celular
@@ -75,7 +77,7 @@ export function SidebarContent({ onNavigate, expandida = false }: { onNavigate?:
           )}
         >
           {SUBTABS.map((t) => {
-            const active = pathname?.startsWith(t.href);
+            const active = pathname?.startsWith(t.href) || t.tambien.some((p) => pathname?.startsWith(p));
             const Icon = t.icon;
             return (
               <Link
