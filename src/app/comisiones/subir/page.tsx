@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, CheckCircle2, X, Inbox, GitCompare, Wallet } from "lucide-react";
+import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, CheckCircle2, X, Inbox, GitCompare, Wallet, ChevronDown } from "lucide-react";
 import clsx from "clsx";
 import { Badge, Card, CardHead, EmptyState, Input, Select, type Tone } from "@/components/ui";
 import { fechaHora, TIPOS_REPORTE } from "@/lib/format";
@@ -41,7 +41,7 @@ const ESTADOS_REPORTE: Record<string, string> = {
   extrayendo: "Extrayendo",
   extraido: "Extraído",
   matcheado: "Matcheado",
-  cerrado: "Cerrado",
+  cerrado: "Finalizado",
   error: "Error",
   bloqueado: "Bloqueado",
 };
@@ -69,7 +69,7 @@ function estadoReporteBadge(r: Reporte): { tone: Tone; label: string; icon?: Rea
         ? { tone: "warn", label: `Matcheado · ${pend} pend.`, icon: <AlertTriangle size={12} /> }
         : { tone: "ok", label: "Matcheado", icon: <CheckCircle2 size={12} /> };
     case "cerrado":
-      return { tone: "ok", label: "Cerrado", icon: <CheckCircle2 size={12} /> };
+      return { tone: "ok", label: "Finalizado", icon: <CheckCircle2 size={12} /> };
     case "error":
       return { tone: "bad", label: "Error", icon: <AlertTriangle size={12} /> };
     case "bloqueado":
@@ -351,7 +351,9 @@ export default function SubirPage() {
       )}
 
       {/* ZONAS DE CARGA */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+      {/* La de aseguradora se usa todos los meses; la interna casi nunca. Por eso el reparto 2:1
+          en vez de columnas iguales — sigue ahí, pero no compite en tamaño con la que sí importa. */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-[2fr_1fr]">
         {/* 1. Reporte de aseguradora */}
         <DropZone
           active={dragKey === "aseguradora"}
@@ -448,7 +450,7 @@ export default function SubirPage() {
           <ZoneHeader title="Reporte de ventas interno" />
           <ZoneFooter
             zone="venta"
-            hint="Arrastrá Excel o CSV del sistema interno de Jose"
+            hint="Arrastrá el Excel o CSV de ventas"
             msg={zoneMsg.venta}
             tipo="venta_interna"
             aseguradoraId={null}
@@ -458,28 +460,30 @@ export default function SubirPage() {
         </DropZone>
       </div>
 
-      {/* CATÁLOGO */}
-      <Card className="flex flex-col gap-3 overflow-hidden rounded-2xl! px-6 py-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <FileText size={16} className="text-brand" />
-            <span className="text-sm font-semibold text-foreground">Reportes que acepta el sistema</span>
+      {/* CATÁLOGO: es documentación, no una herramienta — si un archivo no sirve, la zona de carga
+          lo avisa al soltarlo. Va plegado para no ocupar lugar en la vista principal. */}
+      <details className="group/detalle">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted hover:text-foreground">
+          <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="underline decoration-dotted underline-offset-2">¿Qué archivos puedo subir?</span>
+          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open/detalle:rotate-180" />
+        </summary>
+        <div className="mt-2 flex flex-col gap-2 border-l-2 border-border pl-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-0.5 text-xs text-muted">Por aseguradora:</span>
+            <Badge tone="info">Statement de comisiones</Badge>
+            <Badge tone="info">Reporte de producción / nuevo negocio</Badge>
+            <Badge tone="info">Book of business del carrier</Badge>
+            <Badge tone="info">Cancelaciones y pendientes de cancelación</Badge>
+            <Badge tone="info">Renovaciones</Badge>
+            <Badge tone="info">Chargebacks y ajustes</Badge>
+            <Badge tone="info">Resumen anual (1099)</Badge>
+            <span className="ml-2 mr-0.5 text-xs text-muted">Internos:</span>
+            <Badge tone="neutral">Reporte de ventas</Badge>
           </div>
           <span className="text-xs text-muted">Formatos: PDF · Excel · CSV — la IA lee cualquiera</span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-0.5 text-xs text-muted">Por aseguradora:</span>
-          <Badge tone="info">Statement de comisiones</Badge>
-          <Badge tone="info">Reporte de producción / nuevo negocio</Badge>
-          <Badge tone="info">Book of business del carrier</Badge>
-          <Badge tone="info">Cancelaciones y pendientes de cancelación</Badge>
-          <Badge tone="info">Renovaciones</Badge>
-          <Badge tone="info">Chargebacks y ajustes</Badge>
-          <Badge tone="info">Resumen anual (1099)</Badge>
-          <span className="ml-2 mr-0.5 text-xs text-muted">Internos:</span>
-          <Badge tone="neutral">Reporte de ventas</Badge>
-        </div>
-      </Card>
+      </details>
 
       {/* TABLA DE ARCHIVOS */}
       <Card className="flex flex-col overflow-hidden rounded-2xl!">
@@ -525,13 +529,13 @@ export default function SubirPage() {
             <table className="w-full border-collapse text-[13px]">
               <thead>
                 <tr className="bg-background">
-                  {["Archivo", "Tipo", "Aseguradora", "Subido por", "Fecha", "Filas", "OK", "En excepción", "Estado del archivo"].map(
+                  {["Archivo", "Tipo", "Aseguradora", "Fecha", "Filas", "OK", "En excepción", "Estado del archivo"].map(
                     (h, i) => (
                       <th
                         key={h}
                         className={clsx(
                           "whitespace-nowrap border-b border-border px-5 py-3 text-left font-medium text-muted",
-                          i >= 5 && i <= 7 && "text-right"
+                          i >= 4 && i <= 6 && "text-right"
                         )}
                       >
                         {h}
@@ -545,7 +549,7 @@ export default function SubirPage() {
                   <Fragment key={grupo.clave}>
                     <tr className="bg-background">
                       <td
-                        colSpan={9}
+                        colSpan={8}
                         className="border-t border-border px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted"
                       >
                         {grupo.clave} · {grupo.reportes.length} archivo{grupo.reportes.length === 1 ? "" : "s"}
@@ -568,7 +572,6 @@ export default function SubirPage() {
                           <td className="px-5 py-2.5 font-medium text-foreground">{r.nombre_archivo}</td>
                           <td className="px-5 py-2.5 text-muted">{TIPOS_REPORTE[r.tipo] ?? r.tipo}</td>
                           <td className="px-5 py-2.5">{r.aseguradora?.nombre ?? "—"}</td>
-                          <td className="px-5 py-2.5 text-muted">{r.subido_por ? r.subido_por.slice(0, 8) : "—"}</td>
                           <td className="px-5 py-2.5 text-muted">{fechaHora(r.created_at)}</td>
                           <td className="px-5 py-2.5 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_lineas}</td>
                           <td className="px-5 py-2.5 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_ok}</td>
