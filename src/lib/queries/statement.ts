@@ -22,6 +22,8 @@ export interface LineaStatement {
   clienteBook: string | null;
   polizaBook: string | null;
   polizaId: string | null;
+  // Cuando la linea se marco como gasto de la agencia (MVR, fee, ajuste): la clave de la categoria
+  categoriaAjuste: string | null;
   tipoTransaccion: string;
   prima: number | null;
   tasa: number | null;
@@ -92,7 +94,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       .single(),
     fetchTodo<Record<string, unknown>>(
       "v_lineas_comision",
-      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, estado, score, agente_id, agente, oficina, cliente, poliza_abb, poliza_id",
+      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, estado, score, agente_id, agente, oficina, cliente, poliza_abb, poliza_id, campos_extra",
       reporteId
     ),
     fetchTodo<Record<string, unknown>>(
@@ -122,6 +124,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       clienteBook: (l.cliente as string) ?? null,
       polizaBook: (l.poliza_abb as string) ?? null,
       polizaId: (l.poliza_id as string) ?? null,
+      categoriaAjuste: ((l.campos_extra as Record<string, unknown>) ?? {}).categoria_ajuste as string ?? null,
       tipoTransaccion: (l.tipo_transaccion as string) ?? "otro",
       prima: (l.prima as number) ?? null,
       tasa: (l.tasa as number) ?? null,
