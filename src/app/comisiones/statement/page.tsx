@@ -139,6 +139,7 @@ function StatementContent() {
       countAprobado: cuenta("aprobado"),
       countPendiente: cuenta("pendiente"),
       countSinAsignar: cuenta("sin_asignar"),
+      countExcluida: cuenta("excluida"),
     };
   }, [lineasDelAgente]);
 
@@ -620,10 +621,17 @@ function StatementContent() {
               aseguradora pagó en total. Sirve para cuadrar contra el cheque que llegó. */}
           <div className="flex items-center gap-1.5">
             <span className="text-muted">Total del statement:</span>
+            {/* Las líneas excluidas quedan fuera: son las que el statement menciona pero que no son
+                plata de este mes — el caso real es United, que arriba de todo pone cuánto pagó el
+                mes pasado. Contándola, un statement de $13,611.70 se mostraba como $9,111.38 y no
+                cuadraba contra el depósito. */}
             <span className="font-semibold tabular-nums text-foreground">
-              {money(data.lineas.reduce((s, l) => s + l.monto, 0))}
+              {money(data.lineas.filter((l) => l.grupo !== "excluida").reduce((s, l) => s + l.monto, 0))}
             </span>
-            <span className="text-muted">· {data.lineas.length} líneas</span>
+            <span className="text-muted">
+              · {data.lineas.filter((l) => l.grupo !== "excluida").length} líneas
+              {data.countExcluida > 0 && ` · ${data.countExcluida} fuera del statement`}
+            </span>
           </div>
         </div>
         {/* El resumen de la IA es un párrafo largo que describe el archivo. Es útil una vez, cuando
@@ -702,6 +710,13 @@ function StatementContent() {
           <Chip active={filtro === "sin_asignar"} onClick={() => setFiltro("sin_asignar")}>
             Sin asignar ({totales.countSinAsignar})
           </Chip>
+          {/* El chip de excluidas solo aparece si hay alguna: es un caso poco frecuente y un chip
+              en cero al lado de los otros tres hace pensar que falta hacer algo con él. */}
+          {totales.countExcluida > 0 && (
+            <Chip active={filtro === "excluida"} onClick={() => setFiltro("excluida")}>
+              Fuera del statement ({totales.countExcluida})
+            </Chip>
+          )}
           <div className="flex-1" />
           <span className="text-xs text-muted">Filtrar por agente:</span>
           <Select
