@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Info, ArrowRight, Eye, X, Pencil, RotateCcw } from "lucide-react";
 import { SidePanel, Button, Badge, TextInput, Loading, type Tone } from "@/components/agentes/ui";
-import { money, pct, fechaHora, TIPOS_REPORTE, ESTADOS_LINEA } from "@/lib/format";
+import { money, pct, fechaHora, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
 import {
   actualizarPeriodoReporte,
   reprocesarReporte,
@@ -14,8 +14,6 @@ import {
   type Reporte,
 } from "@/lib/queries/subir";
 
-// Tipos cuya limpieza sabemos hacer bien en reprocesarReporte() (insertan en lineas_comision o
-// lineas_venta). actualizacion_abb y bono_contingencia tocan otras tablas y no se ofrecen acá.
 // El Active Business Book también se reprocesa: cuando el importador no reconoce un nombre de
 // agente o una aseguradora, uno los da de alta y necesita volver a correr el mismo archivo. Sin
 // esto hay que re-subirlo, y el archivo idéntico queda bloqueado por hash — o sea, no había salida.
@@ -91,7 +89,7 @@ export default function ReporteDrawer({
             )}
             <PeriodoEditor reporte={reporte} onActualizado={onPeriodoActualizado} />
             {TIPOS_REPROCESABLES.has(reporte.tipo) && (
-              <Button size="sm" variant="secondary" onClick={reprocesar} disabled={reprocesando} title="Borra las líneas ya extraídas y vuelve a leer el archivo desde cero">
+              <Button size="sm" variant="secondary" onClick={reprocesar} disabled={reprocesando} title="Vuelve a leer el archivo desde cero">
                 <RotateCcw className="w-3.5 h-3.5" />
                 {reprocesando ? "Reprocesando…" : "Reprocesar"}
               </Button>
@@ -358,7 +356,7 @@ function ComisionTabla({
                 <td className="px-3.5 py-2 font-medium text-foreground">Fila {l.fila ?? "—"}</td>
                 <td className="px-3.5 py-2">{l.numero_poliza_crudo ?? "—"}</td>
                 <td className="px-3.5 py-2">{l.nombre_asegurado_crudo ?? "—"}</td>
-                <td className="px-3.5 py-2">{l.tipo_transaccion}</td>
+                <td className="px-3.5 py-2">{TIPOS_TRANSACCION[l.tipo_transaccion] ?? l.tipo_transaccion}</td>
                 <td className="px-3.5 py-2 text-right tabular-nums">{l.prima ?? "—"}</td>
                 <td className="px-3.5 py-2 text-right tabular-nums">{l.tasa != null ? `${l.tasa}%` : "—"}</td>
                 <td className="px-3.5 py-2 text-right tabular-nums">{l.monto}</td>

@@ -200,3 +200,54 @@ export async function probarConexionIA(apiKey: string | null, model: string): Pr
   if (error) return { ok: false, error: error.message };
   return data as TestIAResult;
 }
+
+// ---------------------------------------------------------------------------
+// Nombres alternativos de aseguradora y fusión de duplicadas
+// ---------------------------------------------------------------------------
+// Una misma compañía llega escrita distinto según la fuente: el Book de QQ dice "Response Ins Co",
+// el statement dice "Responsive". Sin alias se crean dos aseguradoras, las pólizas quedan bajo una
+// y el statement busca contra la otra — no concilia nada y no hay pista de por qué.
+
+export interface AliasAseguradora {
+  id: string;
+  aseguradora_id: string;
+  texto: string;
+  created_at: string;
+}
+
+export async function listAliasAseguradora(): Promise<AliasAseguradora[]> {
+  const { data, error } = await supabase.from("aseguradora_alias").select("*").order("texto");
+  if (error) throw error;
+  return (data ?? []) as AliasAseguradora[];
+}
+
+export async function crearAliasAseguradora(aseguradoraId: string, texto: string): Promise<void> {
+  const { error } = await supabase.from("aseguradora_alias").insert({ aseguradora_id: aseguradoraId, texto: texto.trim() });
+  if (error) {
+    // El texto normalizado es unique en toda la tabla: un alias no puede apuntar a dos compañías,
+    // porque entonces no habría forma de decidir a cuál va un archivo que lo use.
+    if (error.code === "23505") throw new Error("Ese nombre ya está asignado a otra aseguradora.");
+    throw error;
+  }
+}
+
+export async function borrarAliasAseguradora(id: string): Promise<void> {
+  const { error } = await supabase.from("aseguradora_alias").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export interface ResultadoFusion {
+  ok: boolean;
+  nombre_origen: string;
+  polizas_movidas: number;
+  polizas_fusionadas: number;
+  reportes_movidos: number;
+}
+
+// Mueve todo lo que colgaba de `origenId` a `destinoId`, deja el nombre de la primera como alias
+// de la segunda y borra la primera. Es irreversible: la pantalla tiene que confirmarlo.
+export async function fusionarAseguradoras(origenId: string, destinoId: string): Promise<ResultadoFusion> {
+  const { data, error } = await supabase.rpc("fusionar_aseguradoras", { p_origen: origenId, p_destino: destinoId });
+  if (error) throw error;
+  return data as ResultadoFusion;
+}

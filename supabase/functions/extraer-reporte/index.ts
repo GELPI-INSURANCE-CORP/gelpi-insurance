@@ -1147,6 +1147,13 @@ async function procesarAbb(
   const agentesNorm = (agentes ?? []).map((a: any) => ({ ...a, n: normalizarTexto(a.nombre) }));
   const oficinasNorm = (oficinas ?? []).map((o: any) => ({ ...o, n: normalizarTexto(o.nombre) }));
   const aseguradorasNorm = (aseguradoras ?? []).map((a: any) => ({ ...a, n: normalizarTexto(a.nombre) }));
+  // Nombres alternativos de aseguradora: la misma compañía llega escrita distinto según la fuente
+  // ("Response Ins Co" en el Book, "Responsive" en el statement). Sin esto se crean duplicadas y
+  // las pólizas quedan bajo una mientras el statement busca contra la otra.
+  const { data: aliasAseg } = await admin.from("aseguradora_alias").select("aseguradora_id, texto");
+  const aliasAseguradoraPorTexto = new Map<string, string>(
+    (aliasAseg ?? []).map((a: any) => [normalizarTexto(a.texto), a.aseguradora_id as string]),
+  );
 
   function resolverAgente(nombre: string | null | undefined) {
     if (!nombre) return { agenteId: null as string | null, oficinaId: null as string | null };
@@ -1166,6 +1173,10 @@ async function procesarAbb(
   function resolverAseguradora(nombre: string | null | undefined) {
     if (!nombre) return aseguradoraIdReporte;
     const n = normalizarTexto(nombre);
+    // Los alias primero y por igualdad exacta: son nombres que alguien mapeó a mano a una
+    // aseguradora concreta, así que valen más que cualquier parecido que podamos adivinar.
+    const alias = aliasAseguradoraPorTexto.get(n);
+    if (alias) return alias;
     const exact = aseguradorasNorm.find((a) => a.n === n) ?? aseguradorasNorm.find((a) => a.n.includes(n) || n.includes(a.n));
     return exact ? exact.id : aseguradoraIdReporte;
   }

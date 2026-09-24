@@ -21,7 +21,7 @@ import {
   TextArea,
   TextInput,
 } from "@/components/agentes/ui";
-import { money, fechaHora, TIPOS_REPORTE, ESTADOS_LINEA } from "@/lib/format";
+import { money, fechaHora, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
 import {
   getStatementDetalle,
   finalizarStatement,
@@ -65,6 +65,11 @@ function StatementContent() {
   const [correccionAgenteId, setCorreccionAgenteId] = useState("");
   const [correccionMotivo, setCorreccionMotivo] = useState("");
   const [corrigiendo, setCorrigiendo] = useState(false);
+
+  // Líneas que no son comisión de nadie: ajustes que la aseguradora le cobra a la agencia
+  const [lineaAjuste, setLineaAjuste] = useState<LineaStatement | null>(null);
+  const [motivoAjuste, setMotivoAjuste] = useState("");
+  const [marcandoAjuste, setMarcandoAjuste] = useState(false);
 
   const cargar = useCallback(() => {
     if (!reporteId) {
@@ -234,6 +239,31 @@ function StatementContent() {
     setSelectedIds(new Set());
     setError(fail > 0 ? `${ok} asignada(s), ${fail} fallaron.` : null);
     cargar();
+  }
+
+  function abrirAjuste(l: LineaStatement) {
+    setLineaAjuste(l);
+    // Se propone lo que el propio statement dice de esa fila: en el caso real venía como
+    // "Unsold Adjustment", que es exactamente la explicación que hay que dejar anotada.
+    setMotivoAjuste(l.cliente?.trim() || l.explicacion?.trim() || "");
+  }
+
+  async function guardarAjuste() {
+    if (!lineaAjuste?.excepcionId) return;
+    setMarcandoAjuste(true);
+    try {
+      await resolverExcepcion({
+        excepcionId: lineaAjuste.excepcionId,
+        accion: "cuenta_casa",
+        motivo: motivoAjuste.trim() || null,
+      });
+      setLineaAjuste(null);
+      cargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo marcar la línea como ajuste de la agencia.");
+    } finally {
+      setMarcandoAjuste(false);
+    }
   }
 
   function abrirCorreccion(l: LineaStatement) {
@@ -578,7 +608,7 @@ function StatementContent() {
                 <th className="px-4 py-2.5 font-medium">Cliente</th>
                 <th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 font-medium text-right">Prima</th>
-                <th className="px-4 py-2.5 font-medium text-right">Tasa</th>
+                <th className="px-4 py-2.5 font-medium text-right">%</th>
                 <th className="px-4 py-2.5 font-medium text-right">Comisión</th>
                 <th className="px-4 py-2.5 font-medium">Agente</th>
                 <th className="px-4 py-2.5 font-medium">Estado</th>
@@ -599,6 +629,7 @@ function StatementContent() {
                   onConfirmar={confirmarLinea}
                   onAsignar={asignarLinea}
                   onCorregir={abrirCorreccion}
+                  onMarcarAjuste={abrirAjuste}
                 />
               ))}
             </tbody>
@@ -609,6 +640,46 @@ function StatementContent() {
           )}
         </div>
       </Card>
+
+      <Modal
+        open={lineaAjuste !== null}
+        onClose={() => setLineaAjuste(null)}
+        title="Marcar como ajuste de la agencia"
+      >
+        {lineaAjuste && (
+          <div className="flex flex-col gap-3 text-[13px]">
+            <div className="rounded-lg bg-background px-3 py-2">
+              <div className="font-medium text-foreground">{lineaAjuste.cliente ?? "(sin cliente)"}</div>
+              <div className="text-muted">
+                {lineaAjuste.numeroPoliza ?? "sin número de póliza"} · {money(lineaAjuste.monto)}
+              </div>
+            </div>
+            <p className="text-muted">
+              Esta línea deja de buscar agente y pasa a la <strong>cuenta de la agencia</strong>. Es para los
+              ajustes que la aseguradora te cobra o te devuelve a vos, no a un agente. La línea{" "}
+              <strong>no se borra</strong>: queda en el statement, con su monto, y suma en el total como plata de
+              la casa.
+            </p>
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Nota (queda guardada con la línea)</span>
+              <TextArea
+                value={motivoAjuste}
+                onChange={(e) => setMotivoAjuste(e.target.value)}
+                rows={2}
+                placeholder="Ej: Unsold Adjustment"
+              />
+            </label>
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="secondary" onClick={() => setLineaAjuste(null)} disabled={marcandoAjuste}>
+                Cancelar
+              </Button>
+              <Button variant="primary" onClick={guardarAjuste} disabled={marcandoAjuste}>
+                {marcandoAjuste ? "Guardando…" : "Marcar como ajuste"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal
         open={lineaACorregir !== null}
@@ -734,6 +805,7 @@ function FilaLinea({
   onConfirmar,
   onAsignar,
   onCorregir,
+  onMarcarAjuste,
 }: {
   l: LineaStatement;
   selected: boolean;
@@ -745,6 +817,7 @@ function FilaLinea({
   onConfirmar: (l: LineaStatement) => void;
   onAsignar: (l: LineaStatement, agenteId: string) => void;
   onCorregir: (l: LineaStatement) => void;
+  onMarcarAjuste: (l: LineaStatement) => void;
 }) {
   const estado = ESTADOS_LINEA[l.estadoLinea] ?? { label: l.estadoLinea, tone: "neutral" as const };
   return (
@@ -769,7 +842,7 @@ function FilaLinea({
           )}
         </div>
       </td>
-      <td className="px-4 py-2.5 text-muted capitalize">{l.tipoTransaccion}</td>
+      <td className="px-4 py-2.5 text-muted">{TIPOS_TRANSACCION[l.tipoTransaccion] ?? l.tipoTransaccion}</td>
       <td className="px-4 py-2.5 text-right tabular-nums">{l.prima != null ? money(l.prima) : "—"}</td>
       <td className="px-4 py-2.5 text-right tabular-nums">{l.tasa != null ? `${l.tasa}%` : "—"}</td>
       <td className="px-4 py-2.5 text-right tabular-nums font-medium">{money(l.monto)}</td>
@@ -804,6 +877,18 @@ function FilaLinea({
             />
             <Button size="sm" variant="secondary" disabled={enCurso || !valorAsignar} onClick={() => onAsignar(l, valorAsignar)}>
               Asignar
+            </Button>
+            {/* Hay líneas que no son comisión de nadie: ajustes que la aseguradora le cobra a la
+                agencia ("Unsold Adjustment"), cargos, devoluciones. Sin esta salida quedaban
+                trabando el Finalizar para siempre, porque no hay agente a quien asignárselas. */}
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={enCurso}
+              onClick={() => onMarcarAjuste(l)}
+              title="No es comisión de ningún agente: va a la cuenta de la agencia"
+            >
+              No es de nadie
             </Button>
           </div>
         ) : (

@@ -14,6 +14,18 @@ export const RAMOS: Record<string, string> = {
   inquilinos: "Inquilinos", inundacion: "Inundación", umbrella: "Umbrella", vida: "Vida", otro: "Otro",
 };
 
+// El tipo de transacción se muestra en inglés porque así viene en los statements de las
+// aseguradoras y así lo lee el usuario todos los meses. Los valores guardados siguen en español
+// (los fija un check de la tabla): esto es solo la etiqueta.
+export const TIPOS_TRANSACCION: Record<string, string> = {
+  nueva: "New Business",
+  renovacion: "Renewal",
+  cancelacion: "Canceled",
+  endoso: "Endorsement",
+  ajuste: "Adjustment",
+  otro: "Other",
+};
+
 export const TIPOS_REPORTE: Record<string, string> = {
   comision_aseguradora: "Statement de comisiones", venta_interna: "Reporte de ventas (interno)", bono_contingencia: "Bono / contingencia",
   actualizacion_abb: "Active Business Book", produccion: "Producción / nuevo negocio", cancelaciones: "Cancelaciones y pendientes",
