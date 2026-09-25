@@ -17,12 +17,16 @@ import { Badge, Button, Card, CardHead, Chip, EmptyState } from "@/components/ui
 import type { Tone } from "@/components/ui/Badge";
 import { money } from "@/lib/format";
 import {
+  type AgenteRanking,
   type BookResumen,
   type ExcepcionRow,
+  type ProduccionMes,
   type ResumenKpis,
   getBookResumen,
   getExcepcionesPendientesCount,
   getExcepcionesTop,
+  getProduccionPorMes,
+  getRankingAgentes,
   getResumenKpis,
   rangoDelMes,
 } from "@/lib/queries/resumen";
@@ -32,6 +36,13 @@ const UMBRAL_ATRASADA_DIAS = 10;
 function primerDiaDelMes(offsetMeses: number): Date {
   const hoy = new Date();
   return new Date(hoy.getFullYear(), hoy.getMonth() - offsetMeses, 1);
+}
+
+// El mes corto para el eje del grafico. Se arma en UTC: la fecha viene como "2026-08-01" y
+// leida en la zona de Miami cae el 31 de julio a la noche, asi que agosto se rotularia Jul.
+function etiquetaMesCorto(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
+  return d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
 }
 
 function etiquetaMes(d: Date): string {
@@ -77,6 +88,8 @@ export default function ResumenPage() {
   const [excepciones, setExcepciones] = useState<ExcepcionRow[]>([]);
   const [totalPendientes, setTotalPendientes] = useState(0);
   const [book, setBook] = useState<BookResumen | null>(null);
+  const [produccion, setProduccion] = useState<ProduccionMes[]>([]);
+  const [ranking, setRanking] = useState<AgenteRanking[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,13 +107,29 @@ export default function ResumenPage() {
     setError(null);
     const { desde, hasta } = rangoDelMes(mes);
 
-    Promise.all([getResumenKpis(desde, hasta), getExcepcionesTop(5), getExcepcionesPendientesCount(), getBookResumen()])
-      .then(([k, ex, n, b]) => {
+    // La producción se mira por año entero y no por el mes elegido: el gráfico existe justamente
+    // para comparar un mes contra los otros, así que si se moviera con el filtro mostraría siempre
+    // una sola barra.
+    const anio = mes.getFullYear();
+    const desdeAnio = `${anio}-01-01`;
+    const hastaAnio = `${anio}-12-31`;
+
+    Promise.all([
+      getResumenKpis(desde, hasta),
+      getExcepcionesTop(5),
+      getExcepcionesPendientesCount(),
+      getBookResumen(),
+      getProduccionPorMes(desdeAnio, hastaAnio),
+      getRankingAgentes(desde, hasta, 10),
+    ])
+      .then(([k, ex, n, b, prod, rank]) => {
         if (!activo) return;
         setKpis(k);
         setExcepciones(ex);
         setTotalPendientes(n);
         setBook(b);
+        setProduccion(prod);
+        setRanking(rank);
       })
       .catch((err: unknown) => {
         if (!activo) return;
@@ -110,6 +139,8 @@ export default function ResumenPage() {
         setExcepciones([]);
         setTotalPendientes(0);
         setBook(null);
+        setProduccion([]);
+        setRanking([]);
       })
       .finally(() => {
         if (activo) setCargando(false);
@@ -134,6 +165,10 @@ export default function ResumenPage() {
 
   // Con menos de la mitad de las pólizas trayendo prima, el total no es un número chico: es un
   // número equivocado. Mejor no mostrarlo que mostrarlo como si estuviera completo.
+  const totalProduccion = produccion.reduce((s, p) => s + Number(p.polizas), 0);
+  const maxProduccion = produccion.reduce((m, p) => Math.max(m, Number(p.polizas)), 0);
+  const mesClave = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, "0")}`;
+
   const primaIncompleta =
     (book?.polizasActivas ?? 0) > 0 && (book?.activasConPrima ?? 0) < (book?.polizasActivas ?? 0) / 2;
 
@@ -240,6 +275,108 @@ export default function ResumenPage() {
                 {kpis?.total_disputa.n ?? 0} casos abiertos · Ver en Conciliación
               </div>
             </button>
+          </div>
+
+          {/* Producción y ranking: las dos preguntas que el dashboard no contestaba. Van antes que
+              las excepciones porque una es cómo viene el negocio y la otra es trabajo pendiente —
+              y el trabajo pendiente ya está resumido arriba en un número. */}
+          <div className="grid grid-cols-1 gap-6 items-start lg:grid-cols-2">
+            <Card>
+              <CardHead
+                title="Pólizas nuevas por mes"
+                action={
+                  <span className="text-[13px] text-muted">
+                    {totalProduccion.toLocaleString("en-US")} en {mes.getFullYear()}
+                  </span>
+                }
+              />
+              <div className="px-5 pb-5 pt-1">
+                {produccion.length === 0 ? (
+                  <p className="py-8 text-center text-[13px] text-muted">
+                    Todavía no hay pólizas con fecha de vigencia en {mes.getFullYear()}.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex h-[150px] items-end gap-1.5">
+                      {produccion.map((p) => {
+                        // La altura se mide contra el mejor mes del año, no contra un tope fijo:
+                        // así la diferencia entre 12 y 432 se ve, que es de lo que se trata.
+                        const alto = maxProduccion > 0 ? Math.max(3, (p.polizas / maxProduccion) * 120) : 3;
+                        const esMesElegido = p.mes.slice(0, 7) === mesClave;
+                        return (
+                          <div key={p.mes} className="flex flex-1 flex-col items-center gap-1">
+                            <span
+                              className={clsx(
+                                "text-[11px] tabular-nums",
+                                esMesElegido ? "font-semibold text-foreground" : "text-muted"
+                              )}
+                            >
+                              {p.polizas}
+                            </span>
+                            <div
+                              className={clsx(
+                                "w-full rounded-t",
+                                esMesElegido ? "bg-brand-dark" : "bg-brand"
+                              )}
+                              style={{ height: `${alto}px` }}
+                              title={`${etiquetaMesCorto(p.mes)}: ${p.polizas} pólizas · ${money(Number(p.prima))}`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-1.5 flex gap-1.5">
+                      {produccion.map((p) => (
+                        <span
+                          key={p.mes}
+                          className={clsx(
+                            "flex-1 text-center text-[11px]",
+                            p.mes.slice(0, 7) === mesClave ? "font-semibold text-foreground" : "text-muted"
+                          )}
+                        >
+                          {etiquetaMesCorto(p.mes)}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </Card>
+
+            <Card className="overflow-hidden">
+              <CardHead
+                title="Agentes que más produjeron"
+                subtitle="Por comisión conciliada del mes elegido"
+              />
+              {ranking.length === 0 ? (
+                <p className="px-5 py-8 text-center text-[13px] text-muted">
+                  Ningún agente tiene comisión conciliada en {etiquetaMes(mes)}.
+                </p>
+              ) : (
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="border-b border-border bg-background">
+                      <th className="px-5 py-2.5 text-left font-medium text-muted">Agente</th>
+                      <th className="px-5 py-2.5 text-left font-medium text-muted">Oficina</th>
+                      <th className="px-5 py-2.5 text-right font-medium text-muted">Líneas</th>
+                      <th className="px-5 py-2.5 text-right font-medium text-muted">Comisión</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ranking.map((a) => (
+                      <tr key={a.agente_id} className="border-b border-border last:border-b-0">
+                        <td className="px-5 py-3 font-medium text-foreground">{a.agente}</td>
+                        <td className="px-5 py-3 text-muted">{a.oficina ?? "—"}</td>
+                        <td className="px-5 py-3 text-right tabular-nums text-muted">{a.lineas}</td>
+                        <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">
+                          {money(Number(a.comision))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
           </div>
 
           {/* Excepciones + tabla por oficina */}
