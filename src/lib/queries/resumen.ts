@@ -60,6 +60,47 @@ export function rangoDelMes(d: Date = new Date()): { desde: string; hasta: strin
   return { desde, hasta };
 }
 
+export interface ProduccionMes {
+  mes: string;
+  polizas: number;
+  prima: number;
+}
+
+// Cuántas pólizas nuevas entraron cada mes. Se cuenta por fecha de vigencia — cuándo empezó a
+// cubrir — y no por cuándo se cargó el archivo: una póliza de agosto es de agosto aunque el Book se
+// haya subido en septiembre, y contarla por la carga haría que un mes sin subir figure sin ventas.
+export async function getProduccionPorMes(desde: string, hasta: string): Promise<ProduccionMes[]> {
+  const { data, error } = await supabase.rpc("polizas_por_mes", { p_desde: desde, p_hasta: hasta });
+  if (error) throw error;
+  return (data ?? []) as ProduccionMes[];
+}
+
+export interface AgenteRanking {
+  agente_id: string;
+  agente: string;
+  oficina: string | null;
+  lineas: number;
+  comision: number;
+}
+
+// Quién produjo y cuánto, ordenado por plata y no por cantidad de líneas: un agente con 159 líneas
+// chicas trajo menos que uno con 121 grandes, y lo que se reparte es plata. La cuenta de la casa
+// queda afuera del ranking — ahí van los MVR y los ajustes, así que su total es negativo y el
+// último puesto sería siempre el dueño en rojo.
+export async function getRankingAgentes(
+  desde: string,
+  hasta: string,
+  limite = 10
+): Promise<AgenteRanking[]> {
+  const { data, error } = await supabase.rpc("ranking_agentes", {
+    p_desde: desde,
+    p_hasta: hasta,
+    p_limite: limite,
+  });
+  if (error) throw error;
+  return (data ?? []) as AgenteRanking[];
+}
+
 export async function getResumenKpis(desde: string, hasta: string): Promise<ResumenKpis> {
   const { data, error } = await supabase.rpc("resumen_kpis", { p_desde: desde, p_hasta: hasta });
   if (error) throw error;
