@@ -236,6 +236,97 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 // ---------------------------------------------------------------------------
+// Capa de texto de un PDF
+// ---------------------------------------------------------------------------
+
+// Pedirle a la IA que "mire" un PDF y transcriba la tabla es la parte más frágil de todo el
+// proceso. Medido sobre el statement de United: el documento tiene 218 filas y suma $13,611.70;
+// la IA devolvía 188 y $11,859.02 — se perdían $1,752.68 — y cada reproceso devolvía un
+// subconjunto distinto, así que ni siquiera daba el mismo número dos veces.
+//
+// Pero ese PDF no es un escaneo: trae su propia capa de texto, exacta. Leyéndola y pasándole a la
+// IA el texto ya armado, deja de transcribir y solo tiene que mapear columnas, que es lo que sí
+// hace bien. Si el PDF no tiene capa de texto (un escaneo de verdad), esto devuelve páginas
+// vacías y el llamador vuelve a mandar el archivo como antes.
+//
+// Lo enredado es que el texto de un PDF viene suelto, sin renglones: cada pedacito trae su
+// coordenada y hay que reagruparlos. Y en un statement apaisado como el de United las páginas
+// vienen rotadas, así que dentro de un renglón lo que se mantiene constante es la X, no la Y —
+// agrupar por Y ahí devuelve las columnas mezcladas entre sí en vez de las filas.
+async function textoDePaginasPdf(bytes: Uint8Array): Promise<string[]> {
+  const { getDocumentProxy } = await import("unpdf");
+  // Copia: pdf.js se queda con el buffer y lo deja inutilizable, y el original todavía hace
+  // falta por si hay que caer al modo archivo.
+  const pdf = await getDocumentProxy(bytes.slice());
+  const paginas: string[] = [];
+
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n);
+    const contenido = await page.getTextContent();
+    // deno-lint-ignore no-explicit-any
+    const items = (contenido.items as any[]).filter((i) => typeof i.str === "string" && i.str.trim());
+    if (items.length === 0) {
+      paginas.push("");
+      continue;
+    }
+
+    // La matriz del texto dice si está rotado: en vertical el desplazamiento cae en b, no en a.
+    const rotado = items.filter((i) => Math.abs(i.transform[1]) > Math.abs(i.transform[0])).length >
+      items.length / 2;
+    // deno-lint-ignore no-explicit-any
+    const claveDe = (i: any) => Math.round(rotado ? i.transform[4] : i.transform[5]);
+    // deno-lint-ignore no-explicit-any
+    const ordenDe = (i: any) => (rotado ? -i.transform[5] : i.transform[4]);
+
+    let min = Infinity;
+    let max = -Infinity;
+    let anchoTotal = 0;
+    let charsTotal = 0;
+    for (const i of items) {
+      const o = ordenDe(i);
+      if (o < min) min = o;
+      if (o > max) max = o;
+      if (typeof i.width === "number" && i.width > 0) {
+        anchoTotal += i.width;
+        charsTotal += i.str.length;
+      }
+    }
+    // Las columnas se conservan con espacios en vez de juntar todo con un separador: así la tabla
+    // le llega a la IA alineada igual que en el papel, y las filas de continuación (un endoso que
+    // cuelga de la póliza de arriba) se ven arrancando a mitad de renglón. La escala se calibra
+    // sola con el ancho real de los caracteres de esta página, para que un carácter del PDF sea
+    // más o menos un carácter de texto en cualquier tamaño de letra.
+    const anchoChar = charsTotal > 0 && anchoTotal > 0 ? anchoTotal / charsTotal : 5;
+    const escala = Math.min(1 / anchoChar, 400 / Math.max(1, max - min));
+
+    // deno-lint-ignore no-explicit-any
+    const grupos = new Map<number, any[]>();
+    for (const i of items) {
+      const k = claveDe(i);
+      const g = grupos.get(k);
+      if (g) g.push(i);
+      else grupos.set(k, [i]);
+    }
+
+    const lineas: string[] = [];
+    for (const k of [...grupos.keys()].sort((a, b) => b - a)) {
+      const fila = grupos.get(k)!.sort((a, b) => ordenDe(a) - ordenDe(b));
+      let linea = "";
+      for (const i of fila) {
+        const col = Math.round((ordenDe(i) - min) * escala);
+        if (col > linea.length) linea += " ".repeat(col - linea.length);
+        linea += i.str;
+      }
+      const limpia = linea.replace(/\s+$/, "");
+      if (limpia.trim()) lineas.push(limpia);
+    }
+    paginas.push(lineas.join("\n"));
+  }
+
+  return paginas;
+}
+
+// ---------------------------------------------------------------------------
 // Parsers CSV / XLSX
 // ---------------------------------------------------------------------------
 
@@ -894,13 +985,59 @@ Deno.serve(async (req: Request) => {
       }
 
       const totalPaginas = paginasBytes.length;
+
+      // Capa de texto del PDF: si sale, la IA recibe la tabla ya transcrita y solo tiene que
+      // mapear columnas. Es la diferencia entre leer 188 filas de United y leer las 218.
+      let textoPaginas: string[] | null = null;
+      if (esPdf) {
+        try {
+          const t = await textoDePaginasPdf(bytes);
+          // Un escaneo devuelve la capa vacía o cuatro caracteres sueltos: ahí el texto no sirve
+          // y hay que mandarle el archivo a la IA igual que antes. Se tolera una página flaca
+          // (una carátula, un pie suelto) sin descartar todo el documento.
+          const utiles = t.filter((p) => p.trim().length > 80).length;
+          if (utiles > 0 && utiles >= t.length - 1) {
+            // Si pdf-lib no pudo partir el PDF, va todo el texto en un solo llamado.
+            textoPaginas = t.length === totalPaginas ? t : [t.join("\n\n")];
+          }
+        } catch (txtErr) {
+          console.error("No se pudo leer la capa de texto del PDF, se manda el archivo:", txtErr);
+        }
+      }
+
       const extraerPagina = (paginaBytes: Uint8Array, i: number) => {
+        const sufijoPagina = totalPaginas > 1 ? ` (página ${i + 1} de ${totalPaginas})` : "";
+        const dondeEsta = totalPaginas > 1 ? "esta página" : "el documento";
+        const texto = textoPaginas ? textoPaginas[i] ?? "" : null;
+
+        if (texto) {
+          return callOpenAI({
+            apiKey: OPENAI_API_KEY,
+            model: OPENAI_MODEL,
+            esVenta: esVentaEsperada,
+            maxTokens: 16384,
+            content: [{
+              type: "input_text",
+              text: `Archivo: ${reporte.nombre_archivo}${sufijoPagina} (tipo declarado: ${reporte.tipo}).\n` +
+                `Abajo va el texto de ${dondeEsta}, sacado de la capa de texto del propio PDF: un renglón por línea, ` +
+                `y las columnas alineadas con espacios en la misma posición que en el papel. Es el texto exacto, ` +
+                `no hay que adivinar ni transcribir nada — pasá TODAS las filas de datos al array "filas", una por ` +
+                `renglón, sin saltear ninguna ni resumir.\n` +
+                `Ojo con los renglones de continuación: arrancan a mitad de línea, sin número de póliza, y pertenecen ` +
+                `a la póliza del renglón de arriba — copiales ese número.\n` +
+                `Ignorá encabezados, pies de página y renglones de totales. Si en el documento aparece cuántas ` +
+                `transacciones tiene, reportalo en total_filas_documento.\n` +
+                `Completá también tipo_detectado, aseguradora_detectada, periodo, mapeo_columnas, columnas_sin_mapeo, ` +
+                `confianza_promedio y resumen.\n\n${texto}`,
+            }],
+          });
+        }
+
         const b64 = base64FromBytes(paginaBytes);
         const dataUrl = `data:${mediaType};base64,${b64}`;
-        const sufijoPagina = totalPaginas > 1 ? ` (página ${i + 1} de ${totalPaginas})` : "";
         const instructionText =
           `Archivo: ${reporte.nombre_archivo}${sufijoPagina} (tipo declarado: ${reporte.tipo}). ` +
-          `Extraé TODAS las filas/registros que encuentres en ${totalPaginas > 1 ? "esta página" : "el documento"}, ` +
+          `Extraé TODAS las filas/registros que encuentres en ${dondeEsta}, ` +
           `completando el array "filas" por completo — no resumas ni muestrees, aunque tenga muchas filas repetitivas. ` +
           `Si acá aparece un total de transacciones en el resumen/pie de página, reportalo en total_filas_documento. ` +
           `Completá también tipo_detectado, aseguradora_detectada, periodo, mapeo_columnas, columnas_sin_mapeo, confianza_promedio y resumen.`;

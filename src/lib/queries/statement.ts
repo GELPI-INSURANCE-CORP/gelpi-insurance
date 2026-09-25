@@ -38,6 +38,7 @@ export interface LineaStatement {
   grupo: GrupoLinea;
   agenteId: string | null;
   agente: string | null;
+  oficinaId: string | null;
   oficina: string | null;
   score: number | null;
   // Datos de la excepción abierta sobre esta línea (si hay)
@@ -101,7 +102,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       .single(),
     fetchTodo<Record<string, unknown>>(
       "v_lineas_comision",
-      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, estado, score, agente_id, agente, oficina, cliente, poliza_abb, poliza_id, campos_extra",
+      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, estado, score, agente_id, agente, oficina_id, oficina, cliente, poliza_abb, poliza_id, campos_extra",
       reporteId
     ),
     fetchTodo<Record<string, unknown>>(
@@ -141,6 +142,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       grupo: grupoDeEstado(estadoLinea),
       agenteId: (l.agente_id as string) ?? null,
       agente: (l.agente as string) ?? null,
+      oficinaId: (l.oficina_id as string) ?? null,
       oficina: (l.oficina as string) ?? null,
       score: (l.score as number) ?? null,
       excepcionId: (exc?.id as string) ?? null,

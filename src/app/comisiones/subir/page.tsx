@@ -1,20 +1,19 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, CheckCircle2, X, Inbox, GitCompare, Wallet, ChevronDown } from "lucide-react";
+import SubirReporteModal from "@/components/reportes/SubirReporteModal";
 import clsx from "clsx";
-import { Badge, Card, CardHead, EmptyState, Input, Select, type Tone } from "@/components/ui";
+import { Badge, Card, CardHead, EmptyState, Select, type Tone } from "@/components/ui";
 import { fechaHora, TIPOS_REPORTE } from "@/lib/format";
 import {
-  DuplicadoError,
   esReporteReintentable,
   getReporteLineas,
   listAseguradoras,
   listReportes,
   reintentarExtraccion,
-  uploadReporte,
   subscribeReporteUpdates,
   type Aseguradora,
   type BonoResumen,
@@ -23,18 +22,7 @@ import {
   type Reporte,
   type TipoReporte,
 } from "@/lib/queries/subir";
-import { crearAseguradora } from "@/lib/queries/configuracion";
 import ReporteDrawer from "@/components/reportes/ReporteDrawer";
-
-const SUBTIPOS_ASEGURADORA: TipoReporte[] = [
-  "comision_aseguradora",
-  "produccion",
-  "cancelaciones",
-  "renovaciones",
-  "chargebacks",
-  "resumen_anual",
-  "otro",
-];
 
 const ESTADOS_REPORTE: Record<string, string> = {
   subido: "Subido",
@@ -45,13 +33,6 @@ const ESTADOS_REPORTE: Record<string, string> = {
   error: "Error",
   bloqueado: "Bloqueado",
 };
-
-type ZoneKey = "aseguradora" | "venta";
-
-interface ZoneMsg {
-  tone: Tone;
-  text: string;
-}
 
 function estadoReporteBadge(r: Reporte): { tone: Tone; label: string; icon?: ReactNode } {
   const pend = r.total_excepciones ?? 0;
@@ -126,14 +107,7 @@ export default function SubirPage() {
   const [filtroAseguradora, setFiltroAseguradora] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
 
-  const [aseguradoraSel, setAseguradoraSel] = useState("");
-  const [altaAsegAbierta, setAltaAsegAbierta] = useState(false);
-  const [nuevaAsegNombre, setNuevaAsegNombre] = useState("");
-  const [creandoAseg, setCreandoAseg] = useState(false);
-  const [periodoInput, setPeriodoInput] = useState("");
-  const [subtipo, setSubtipo] = useState<TipoReporte>("comision_aseguradora");
-  const [dragKey, setDragKey] = useState<ZoneKey | null>(null);
-  const [zoneMsg, setZoneMsg] = useState<Partial<Record<ZoneKey, ZoneMsg>>>({});
+  const [modalAbierto, setModalAbierto] = useState(false);
 
   const [selectedReporte, setSelectedReporte] = useState<Reporte | null>(null);
   const [lineasComision, setLineasComision] = useState<LineaComision[]>([]);
@@ -143,7 +117,6 @@ export default function SubirPage() {
   // último reporte pedido para la vista previa: descarta respuestas fuera de orden (ver abrirVistaPrevia)
   const solicitudLineasRef = useRef<string | null>(null);
 
-  const zoneTimers = useRef<Partial<Record<ZoneKey, ReturnType<typeof setTimeout>>>>({});
 
   const refreshReportes = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -171,29 +144,6 @@ export default function SubirPage() {
       .catch((err) => setPageError(err instanceof Error ? err.message : "No se pudieron cargar las aseguradoras."));
   }, []);
 
-  // Alta de aseguradora sin salir de esta pantalla. Ya se podía hacer desde Configuración, pero
-  // enterrada en la pestaña "Plantillas por aseguradora": el momento en que hace falta es este,
-  // cuando llega un statement de una compañía nueva y no está en la lista.
-  async function crearAseguradoraInline() {
-    const nombre = nuevaAsegNombre.trim();
-    if (!nombre) return;
-    setCreandoAseg(true);
-    try {
-      await crearAseguradora(nombre, "");
-      const lista = await listAseguradoras();
-      setAseguradoras(lista);
-      // Queda elegida la recién creada, que es para lo que se la creó.
-      const creada = lista.find((a) => a.nombre.toLowerCase() === nombre.toLowerCase());
-      if (creada) setAseguradoraSel(creada.id);
-      setNuevaAsegNombre("");
-      setAltaAsegAbierta(false);
-    } catch (err) {
-      setPageError(err instanceof Error ? err.message : "No se pudo crear la aseguradora.");
-    } finally {
-      setCreandoAseg(false);
-    }
-  }
-
   useEffect(() => {
     refreshReportes();
   }, [refreshReportes]);
@@ -218,52 +168,6 @@ export default function SubirPage() {
       channel.unsubscribe();
     };
   }, [selectedReporte?.id]);
-
-  function setZoneMessage(zone: ZoneKey, msg: ZoneMsg | null, autoClearMs?: number) {
-    setZoneMsg((prev) => ({ ...prev, [zone]: msg ?? undefined }));
-    const prevTimer = zoneTimers.current[zone];
-    if (prevTimer) clearTimeout(prevTimer);
-    if (msg && autoClearMs) {
-      zoneTimers.current[zone] = setTimeout(() => {
-        setZoneMsg((prev) => ({ ...prev, [zone]: undefined }));
-      }, autoClearMs);
-    }
-  }
-
-  async function subirArchivo(zone: ZoneKey, file: File, tipo: TipoReporte, aseguradoraId: string | null, periodo: string | null) {
-    if (zone === "aseguradora" && !aseguradoraId) {
-      setZoneMessage(zone, { tone: "bad", text: "Elegí la aseguradora antes de subir el archivo." }, 5000);
-      return;
-    }
-    setZoneMessage(zone, { tone: "info", text: `Subiendo ${file.name}…` });
-    try {
-      await uploadReporte({ file, tipo, aseguradoraId, periodo });
-      setZoneMessage(zone, { tone: "ok", text: `${file.name} subido — extrayendo…` }, 5000);
-      if (zone === "aseguradora") setPeriodoInput("");
-      refreshReportes();
-    } catch (err) {
-      if (err instanceof DuplicadoError) {
-        setZoneMessage(zone, { tone: "bad", text: "Bloqueado — archivo idéntico ya subido." }, 8000);
-      } else {
-        setZoneMessage(
-          zone,
-          { tone: "bad", text: err instanceof Error ? err.message : "No se pudo subir el archivo." },
-          8000
-        );
-      }
-    }
-  }
-
-  function handleFiles(zone: ZoneKey, files: FileList | null, tipo: TipoReporte, aseguradoraId: string | null, periodo: string | null) {
-    if (!files || files.length === 0) return;
-    Array.from(files).forEach((f) => subirArchivo(zone, f, tipo, aseguradoraId, periodo));
-  }
-
-  function onDrop(e: DragEvent<HTMLDivElement>, zone: ZoneKey, tipo: TipoReporte, aseguradoraId: string | null, periodo: string | null) {
-    e.preventDefault();
-    setDragKey(null);
-    handleFiles(zone, e.dataTransfer.files, tipo, aseguradoraId, periodo);
-  }
 
   async function abrirVistaPrevia(reporte: Reporte) {
     solicitudLineasRef.current = reporte.id; // marca esta como la solicitud vigente (síncrono, no depende del render)
@@ -305,7 +209,6 @@ export default function SubirPage() {
   }
 
   const aseguradoraOptions = aseguradoras.map((a) => ({ value: a.id, label: a.nombre }));
-  const subtipoOptions = SUBTIPOS_ASEGURADORA.map((t) => ({ value: t, label: TIPOS_REPORTE[t] }));
   const tipoFiltroOptions = Object.entries(TIPOS_REPORTE).map(([value, label]) => ({ value, label }));
   const estadoFiltroOptions = Object.entries(ESTADOS_REPORTE).map(([value, label]) => ({ value, label }));
   const gruposReportes = agruparReportesPorPeriodo(reportes);
@@ -350,118 +253,30 @@ export default function SubirPage() {
         </div>
       )}
 
-      {/* ZONAS DE CARGA */}
-      {/* La de aseguradora se usa todos los meses; la interna casi nunca. Por eso el reparto 2:1
-          en vez de columnas iguales — sigue ahí, pero no compite en tamaño con la que sí importa. */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-[2fr_1fr]">
-        {/* 1. Reporte de aseguradora */}
-        <DropZone
-          active={dragKey === "aseguradora"}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragKey("aseguradora");
-          }}
-          onDragLeave={() => setDragKey(null)}
-          onDrop={(e) => onDrop(e, "aseguradora", subtipo, aseguradoraSel || null, periodoInput.trim() || null)}
+      {/* Antes había dos cajones grandes de arrastrar y soltar, uno al lado del otro, ocupando
+          media pantalla para algo que se usa una vez al mes por compañía. Ahora es un botón: el
+          formulario (tipo de reporte, compañía, período, archivo) vive en una ventana que se abre
+          encima. El de ventas interno dejó de tener cajón propio y pasó a ser un tipo más dentro
+          de la lista, con la explicación al lado de para qué sirve. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col">
+          <span className="text-[15px] font-semibold text-foreground">Statements y reportes</span>
+          <span className="text-xs text-muted">
+            Subí el estado de cuenta de cada compañía y el sistema reparte las comisiones
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setModalAbierto(true)}
+          className="flex h-10 items-center gap-2 rounded-xl bg-brand px-4 text-[13px] font-semibold text-white transition-colors hover:bg-brand-dark"
         >
-          <ZoneHeader title="Reporte de aseguradora (comisiones)" />
-          <Select
-            options={aseguradoraOptions}
-            placeholder="Aseguradora…"
-            value={aseguradoraSel}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => setAseguradoraSel(e.target.value)}
-            className="h-8 bg-surface text-xs"
-          />
-          {altaAsegAbierta ? (
-            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-              <input
-                value={nuevaAsegNombre}
-                onChange={(e) => setNuevaAsegNombre(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") crearAseguradoraInline();
-                  if (e.key === "Escape") setAltaAsegAbierta(false);
-                }}
-                placeholder="Nombre (ej: Responsive)"
-                autoFocus
-                className="h-8 flex-1 rounded-lg border border-border bg-surface px-2.5 text-xs text-foreground outline-none placeholder:text-muted"
-              />
-              <button
-                type="button"
-                onClick={crearAseguradoraInline}
-                disabled={creandoAseg || !nuevaAsegNombre.trim()}
-                className="h-8 rounded-lg bg-brand px-2.5 text-xs font-medium text-white disabled:opacity-50"
-              >
-                {creandoAseg ? "…" : "Crear"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setAltaAsegAbierta(false)}
-                className="h-8 rounded-lg border border-border px-2.5 text-xs text-muted"
-              >
-                Cancelar
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setAltaAsegAbierta(true);
-              }}
-              className="self-start text-[11px] text-brand underline"
-            >
-              ¿No está tu aseguradora? Agregala
-            </button>
-          )}
-          <Select
-            options={subtipoOptions}
-            value={subtipo}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => setSubtipo(e.target.value as TipoReporte)}
-            className="h-8 bg-surface text-xs"
-          />
-          <Input
-            icon={false}
-            value={periodoInput}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setPeriodoInput(e.target.value)}
-            placeholder='Período (ej: "Agosto 2026")'
-            className="h-8 bg-surface text-xs"
-          />
-          <ZoneFooter
-            zone="aseguradora"
-            hint="Arrastrá PDF, Excel o CSV"
-            msg={zoneMsg.aseguradora}
-            tipo={subtipo}
-            aseguradoraId={aseguradoraSel || null}
-            periodo={periodoInput.trim() || null}
-            onFiles={handleFiles}
-          />
-        </DropZone>
-
-        {/* 2. Reporte de ventas interno */}
-        <DropZone
-          active={dragKey === "venta"}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragKey("venta");
-          }}
-          onDragLeave={() => setDragKey(null)}
-          onDrop={(e) => onDrop(e, "venta", "venta_interna", null, null)}
-        >
-          <ZoneHeader title="Reporte de ventas interno" />
-          <ZoneFooter
-            zone="venta"
-            hint="Arrastrá el Excel o CSV de ventas"
-            msg={zoneMsg.venta}
-            tipo="venta_interna"
-            aseguradoraId={null}
-            periodo={null}
-            onFiles={handleFiles}
-          />
-        </DropZone>
+          <UploadCloud size={16} />
+          Subir reporte
+        </button>
       </div>
 
-      {/* CATÁLOGO: es documentación, no una herramienta — si un archivo no sirve, la zona de carga
-          lo avisa al soltarlo. Va plegado para no ocupar lugar en la vista principal. */}
+      {/* CATÁLOGO: es documentación, no una herramienta — si un archivo no sirve, la ventana de
+          subida lo avisa al elegirlo. Va plegado para no ocupar lugar en la vista principal. */}
       <details className="group/detalle">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted hover:text-foreground">
           <FileText className="h-3.5 w-3.5 flex-shrink-0" />
@@ -620,6 +435,14 @@ export default function SubirPage() {
         )}
       </Card>
 
+      <SubirReporteModal
+        open={modalAbierto}
+        onClose={() => setModalAbierto(false)}
+        aseguradoras={aseguradoras}
+        onAseguradorasChange={setAseguradoras}
+        onSubido={refreshReportes}
+      />
+
       {selectedReporte && (
         <ReporteDrawer
           reporte={selectedReporte}
@@ -638,100 +461,3 @@ export default function SubirPage() {
   );
 }
 
-// =========================================================
-// Subcomponentes de la página
-// =========================================================
-
-function DropZone({
-  active,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  children,
-}: {
-  active: boolean;
-  onDragOver: (e: DragEvent<HTMLDivElement>) => void;
-  onDragLeave: () => void;
-  onDrop: (e: DragEvent<HTMLDivElement>) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-      className={clsx(
-        "flex flex-col gap-3 rounded-2xl border-[1.5px] border-dashed bg-brand-tint p-5 transition",
-        active ? "border-brand bg-brand-tint/80" : "border-brand-tint"
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
-function ZoneHeader({ title }: { title: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <UploadCloud size={18} className="flex-shrink-0 text-brand" />
-      <span className="text-[13px] font-semibold text-foreground">{title}</span>
-    </div>
-  );
-}
-
-function ZoneFooter({
-  zone,
-  hint,
-  msg,
-  tipo,
-  aseguradoraId,
-  periodo,
-  onFiles,
-}: {
-  zone: ZoneKey;
-  hint: string | null;
-  msg: ZoneMsg | undefined;
-  tipo: TipoReporte;
-  aseguradoraId: string | null;
-  periodo: string | null;
-  onFiles: (zone: ZoneKey, files: FileList | null, tipo: TipoReporte, aseguradoraId: string | null, periodo: string | null) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  return (
-    <div className="flex flex-col gap-1.5">
-      {hint && <span className="text-xs text-muted">{hint}</span>}
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        className="self-start text-xs font-medium text-brand hover:text-brand-dark"
-      >
-        Explorar archivo…
-      </button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg"
-        multiple
-        className="hidden"
-        onChange={(e: ChangeEvent<HTMLInputElement>) => {
-          onFiles(zone, e.target.files, tipo, aseguradoraId, periodo);
-          e.target.value = "";
-        }}
-      />
-      {msg && (
-        <span
-          className={clsx(
-            "rounded-md px-2 py-1 text-xs font-medium",
-            msg.tone === "bad" && "bg-bad-bg text-bad-fg",
-            msg.tone === "ok" && "bg-ok-bg text-ok-fg",
-            msg.tone === "info" && "bg-info-bg text-info-fg",
-            msg.tone === "neutral" && "bg-neutral-bg text-neutral-fg",
-            msg.tone === "warn" && "bg-warn-bg text-warn-fg"
-          )}
-        >
-          {msg.text}
-        </span>
-      )}
-    </div>
-  );
-}
