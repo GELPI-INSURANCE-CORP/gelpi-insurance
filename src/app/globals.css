@@ -32,8 +32,10 @@
   --color-bad-bg: var(--bad-bg); --color-bad-fg: var(--bad-fg);
   --color-info-bg: var(--info-bg); --color-info-fg: var(--info-fg);
   --color-neutral-bg: var(--neutral-bg); --color-neutral-fg: var(--neutral-fg);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
+  /* Solo para titulos de pantalla. Un serif en toda la interfaz cansa la vista en tablas largas. */
+  --font-display: var(--font-instrument-serif);
 }
 
 body {

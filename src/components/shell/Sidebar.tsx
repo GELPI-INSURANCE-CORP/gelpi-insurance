@@ -5,27 +5,33 @@ import { usePathname } from "next/navigation";
 import {
   PieChart,
   LayoutDashboard,
-  Upload,
+  Wallet,
   BookOpen,
   Building2,
-  Gift,
+  Award,
   Settings,
 } from "lucide-react";
 import clsx from "clsx";
+import { useT } from "@/lib/i18n";
+import type { ClaveTexto } from "@/lib/i18n/textos";
 
 // Conciliación y Liquidación salieron del menú: son pasos DE un statement, no secciones aparte, y
 // tener ocho entradas hacía que el usuario no supiera por dónde empezar. Se entra a las dos desde
 // Comisiones. Las rutas siguen existiendo tal cual — hay enlaces a ellas repartidos por otras
 // pantallas (Resumen, Oficinas, la ficha del agente) y sacarlas dejaría esos enlaces en un 404.
 const SUBTABS = [
-  { href: "/comisiones/resumen", label: "Dashboard", icon: LayoutDashboard, tambien: [] as string[] },
-  // Estando en Conciliación o Liquidación se ilumina Comisiones: es de donde se entra, así el menú
+  { href: "/comisiones/resumen", clave: "nav.dashboard" as ClaveTexto, icon: LayoutDashboard, tambien: [] as string[] },
+  // Estando en Conciliación o Liquidación se ilumina Commissions: es de donde se entra, así el menú
   // no queda sin ningún item marcado y el usuario no pierde de vista dónde está parado.
-  { href: "/comisiones/subir", label: "Comisiones", icon: Upload, tambien: ["/comisiones/conciliacion", "/comisiones/liquidacion", "/comisiones/statement"] },
-  { href: "/comisiones/clientes", label: "Book of Business", icon: BookOpen, tambien: [] as string[] },
-  { href: "/comisiones/oficinas", label: "Office", icon: Building2, tambien: [] as string[] },
-  { href: "/comisiones/bonos", label: "Bonos", icon: Gift, tambien: [] as string[] },
-  { href: "/comisiones/configuracion", label: "Configuración", icon: Settings, tambien: [] as string[] },
+  //
+  // El ícono era una flecha de subir archivo: describía el acto de cargar un Excel, no de qué trata
+  // la sección. Lo que se hace ahí es plata — cuánto pagó cada compañía y cuánto le toca a cada
+  // agente — así que va una billetera. Lo mismo con Bonuses: un regalo no es un bono de producción.
+  { href: "/comisiones/subir", clave: "nav.commissions" as ClaveTexto, icon: Wallet, tambien: ["/comisiones/conciliacion", "/comisiones/liquidacion", "/comisiones/statement"] },
+  { href: "/comisiones/clientes", clave: "nav.book" as ClaveTexto, icon: BookOpen, tambien: [] as string[] },
+  { href: "/comisiones/oficinas", clave: "nav.offices" as ClaveTexto, icon: Building2, tambien: [] as string[] },
+  { href: "/comisiones/bonos", clave: "nav.bonuses" as ClaveTexto, icon: Award, tambien: [] as string[] },
+  { href: "/comisiones/configuracion", clave: "nav.settings" as ClaveTexto, icon: Settings, tambien: [] as string[] },
 ];
 
 // `expandida` fuerza el estado abierto (icono + texto) sin depender del hover. El menú de celular
@@ -34,6 +40,7 @@ const SUBTABS = [
 // etiqueta. En el riel de escritorio se deja en false, que es donde el hover sí manda.
 export function SidebarContent({ onNavigate, expandida = false }: { onNavigate?: () => void; expandida?: boolean }) {
   const pathname = usePathname();
+  const t = useT();
   // Las clases se escriben enteras a propósito: Tailwind lee el código fuente como texto y una
   // clase armada con template string (`group-hover:${x}`) no existe para él, así que se purga.
   return (
@@ -76,15 +83,17 @@ export function SidebarContent({ onNavigate, expandida = false }: { onNavigate?:
               : "border-transparent pl-0 group-hover:ml-5 group-hover:border-border group-hover:pl-3"
           )}
         >
-          {SUBTABS.map((t) => {
-            const active = pathname?.startsWith(t.href) || t.tambien.some((p) => pathname?.startsWith(p));
-            const Icon = t.icon;
+          {SUBTABS.map((item) => {
+            const active =
+              pathname?.startsWith(item.href) || item.tambien.some((p) => pathname?.startsWith(p));
+            const Icon = item.icon;
+            const etiqueta = t(item.clave);
             return (
               <Link
-                key={t.href}
-                href={t.href}
+                key={item.href}
+                href={item.href}
                 onClick={onNavigate}
-                title={t.label}
+                title={etiqueta}
                 className={clsx(
                   "relative flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-[13px]",
                   expandida ? "justify-start" : "justify-center group-hover:justify-start",
@@ -96,7 +105,7 @@ export function SidebarContent({ onNavigate, expandida = false }: { onNavigate?:
                 )}
                 <Icon size={16} className="flex-shrink-0" />
                 <span className={clsx("whitespace-nowrap", expandida ? "inline" : "hidden group-hover:inline")}>
-                  {t.label}
+                  {etiqueta}
                 </span>
               </Link>
             );

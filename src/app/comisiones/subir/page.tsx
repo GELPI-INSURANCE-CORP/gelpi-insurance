@@ -77,19 +77,22 @@ const TIPOS_PANTALLA_STATEMENT = new Set<TipoReporte>([
   "otro",
 ]);
 
-// Agrupa por período (o, si no se asignó uno, por el mes de subida) para que la tabla se lea
-// como una sola lista larga con encabezados, en vez de una fila plana por archivo. Los reportes
-// ya llegan ordenados por fecha descendente, así que recorrerlos una vez con un Map alcanza para
-// que los grupos salgan en orden correcto sin tener que parsear ni comparar fechas de nuevo.
+// El mes en palabras. Se arma con UTC a propósito: mes_statement viene como "2026-08-01" y si se
+// interpreta en la zona horaria de Miami, esa fecha cae el 31 de julio a las 8 de la noche y el
+// statement de agosto aparece etiquetado como julio.
 function mesLabel(iso: string): string {
-  const raw = new Date(iso).toLocaleDateString("es-US", { year: "numeric", month: "long" });
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
+  const raw = d.toLocaleDateString("es-US", { year: "numeric", month: "long", timeZone: "UTC" });
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
+// Agrupa por el mes del statement, no por el texto del período: ese texto lo escribe la IA
+// distinto cada vez ("Agosto 2026", "2026-08", "JULY 2026") y dos statements del mismo mes caían
+// en encabezados separados. mes_statement ya viene interpretado por la base.
 function agruparReportesPorPeriodo(lista: Reporte[]): { clave: string; reportes: Reporte[] }[] {
   const grupos = new Map<string, Reporte[]>();
   for (const r of lista) {
-    const clave = r.periodo?.trim() || mesLabel(r.created_at);
+    const clave = r.mes_statement ? mesLabel(r.mes_statement) : "Sin mes asignado";
     if (!grupos.has(clave)) grupos.set(clave, []);
     grupos.get(clave)!.push(r);
   }
@@ -123,6 +126,10 @@ export default function SubirPage() {
       if (!opts?.silent) setLoadingReportes(true);
       try {
         const rows = await listReportes({
+          // El Active Business Book no es un statement: es el padrón de pólizas de la agencia. Vive
+          // en Book of Business, que es donde se lo mira. Acá solo estorbaba — el usuario veía
+          // "Septiembre 2026 · 2 archivos" y los dos eran el Book.
+          familia: "statements",
           tipo: filtroTipo || undefined,
           aseguradoraId: filtroAseguradora || undefined,
           estado: filtroEstado || undefined,
@@ -303,7 +310,7 @@ export default function SubirPage() {
       {/* TABLA DE ARCHIVOS */}
       <Card className="flex flex-col overflow-hidden rounded-2xl!">
         <CardHead
-          title="Archivos subidos"
+          title="Statements recibidos"
           subtitle="“Te faltan” son las líneas de ese archivo que todavía esperan una decisión tuya, contadas en este momento. No tiene por qué coincidir con Conciliación: esa cola acumula también statements de meses anteriores."
           action={<Badge tone="neutral">{reportes.length} archivo{reportes.length === 1 ? "" : "s"}</Badge>}
         />
@@ -336,7 +343,7 @@ export default function SubirPage() {
         ) : reportes.length === 0 ? (
           <EmptyState
             icon={<Inbox size={22} />}
-            title="Todavía no hay archivos"
+            title="Todavía no hay statements"
             description="Subí un statement de aseguradora o un reporte de ventas usando las zonas de arriba."
           />
         ) : (
@@ -344,7 +351,11 @@ export default function SubirPage() {
             <table className="w-full border-collapse text-[13px]">
               <thead>
                 <tr className="bg-background">
-                  {["Archivo", "Tipo", "Aseguradora", "Fecha", "Filas", "Resueltas", "Te faltan", "Estado del archivo"].map(
+                  {/* El nombre del archivo salió de la tabla. "DetailedStatement20260924 (1).xlsx"
+                      no le dice nada a nadie, y peor: dos statements de meses distintos se llaman
+                      casi igual. Lo que identifica a un statement es de qué compañía es y de qué
+                      mes. El nombre del archivo sigue estando en el panel de detalle. */}
+                  {["Carrier", "Statement", "Subido", "Filas", "Resueltas", "Te faltan", "Estado"].map(
                     (h, i) => (
                       <th
                         key={h}
@@ -364,10 +375,10 @@ export default function SubirPage() {
                   <Fragment key={grupo.clave}>
                     <tr className="bg-background">
                       <td
-                        colSpan={8}
+                        colSpan={7}
                         className="border-t border-border px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted"
                       >
-                        {grupo.clave} · {grupo.reportes.length} archivo{grupo.reportes.length === 1 ? "" : "s"}
+                        {grupo.clave} · {grupo.reportes.length} statement{grupo.reportes.length === 1 ? "" : "s"}
                       </td>
                     </tr>
                     {grupo.reportes.map((r) => {
@@ -388,10 +399,29 @@ export default function SubirPage() {
                             selected && "bg-brand-tint"
                           )}
                         >
-                          <td className="px-5 py-2.5 font-medium text-foreground">{r.nombre_archivo}</td>
-                          <td className="px-5 py-2.5 text-muted">{TIPOS_REPORTE[r.tipo] ?? r.tipo}</td>
-                          <td className="px-5 py-2.5">{r.aseguradora?.nombre ?? "—"}</td>
-                          <td className="px-5 py-2.5 text-muted">{fechaHora(r.created_at)}</td>
+                          {/* La compañía es lo primero que se busca con el ojo al barrer la lista,
+                              así que va primera y en negrita. Debajo, el tipo de papel, que casi
+                              siempre dice "Statement de comisiones" y por eso no merece una columna
+                              propia — solo importa cuando NO es eso. */}
+                          <td className="px-5 py-2.5">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground">{r.aseguradora?.nombre ?? "Sin compañía"}</span>
+                              {r.tipo !== "comision_aseguradora" && (
+                                <span className="text-[11px] text-muted">{TIPOS_REPORTE[r.tipo] ?? r.tipo}</span>
+                              )}
+                            </div>
+                          </td>
+                          {/* De qué mes es el statement. Cuando la IA no pudo leerle el período al
+                              archivo se dice, en vez de inventar un mes: sin eso, el statement se
+                              suma al mes equivocado y el total del dashboard deja de cuadrar. */}
+                          <td className="px-5 py-2.5">
+                            {r.mes_statement ? (
+                              <span className="text-foreground">{mesLabel(r.mes_statement)}</span>
+                            ) : (
+                              <span className="text-warn-fg">Sin mes</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-2.5 text-muted" title={r.nombre_archivo}>{fechaHora(r.created_at)}</td>
                           {/* Los contadores salen de v_reportes, que los cuenta en el momento. Los
                               guardados en la fila envejecen: un statement resuelto seguía diciendo
                               "38 OK · 14 excepciones" cuando ya eran 52 OK y nada pendiente. */}
