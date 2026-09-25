@@ -1,9 +1,52 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, SUPABASE_ANON, SUPABASE_URL } from "@/lib/supabase";
 import type { Session, User } from "@supabase/supabase-js";
 
 export async function signIn(email: string, password: string) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
+  return data;
+}
+
+// =========================================================
+// Login en dos pasos: contraseña + código al correo
+// =========================================================
+
+// Paso 1. La contraseña NO se verifica acá sino en la Edge Function, y a propósito: si el
+// navegador llamara a signInWithPassword, en ese mismo instante ya tendría una sesión válida para
+// leer toda la base, y el código quedaría de adorno — se saltea abriendo la consola. La función
+// verifica la contraseña del lado del servidor, descarta la sesión que eso crea y solo manda el
+// código. Al navegador no le llega ningún token hasta el paso 2.
+export async function pedirCodigo(email: string, password: string): Promise<void> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/login-codigo`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SUPABASE_ANON,
+      Authorization: `Bearer ${SUPABASE_ANON}`,
+    },
+    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+  });
+
+  let cuerpo: { ok?: boolean; error?: string } = {};
+  try {
+    cuerpo = await res.json();
+  } catch {
+    throw new Error("No se pudo contactar al servidor. Revisá tu conexión.");
+  }
+  if (!res.ok || !cuerpo.ok) throw new Error(cuerpo.error ?? "No se pudo iniciar sesión.");
+}
+
+// Paso 2. Recién acá nace la sesión, y solo si el usuario probó que además tiene el correo.
+export async function verificarCodigo(email: string, codigo: string) {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email: email.trim().toLowerCase(),
+    token: codigo.replace(/\D/g, ""),
+    type: "email",
+  });
+  if (error) {
+    // El mensaje de Supabase para un código vencido o equivocado es el mismo y en inglés.
+    throw new Error("El código no es correcto o ya venció. Pedí uno nuevo.");
+  }
   return data;
 }
 
