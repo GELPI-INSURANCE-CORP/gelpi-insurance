@@ -10,7 +10,13 @@
 -- resultado en la vista para que la pantalla agrupe y ordene por una fecha de verdad, en vez de
 -- reimplementar el mismo intérprete en JavaScript y arriesgar que los dos difieran.
 
-create or replace view v_reportes as
+-- Se borra antes de recrear: 'create or replace view' solo deja AGREGAR columnas al final,
+-- nunca meter una en el medio. Como mes_statement va entre las que ya estaban, Postgres lo lee
+-- como un intento de renombrar lineas_reales y falla con 42P16. Nada depende de esta vista, asi
+-- que borrarla y rehacerla es seguro.
+drop view if exists v_reportes;
+
+create view v_reportes as
 select r.*,
        -- El mes al que pertenece el statement. Los reportes de Book y de ventas internas no tienen
        -- período de statement y quedan en null, que es lo correcto: no son de ningún mes.
