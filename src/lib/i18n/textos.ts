@@ -79,6 +79,12 @@ const en = {
   "common.reprocess": "Reprocess",
   "common.noCarrier": "No carrier",
   "common.language": "Language",
+
+  // Los dos atajos que viven arriba de la lista de statements
+  "reconciliation.title": "Reconciliation",
+  "reconciliation.hint": "Resolve the lines the system could not identify",
+  "payout.title": "Agent payout",
+  "payout.hint": "What each agent earned this month",
 } as const;
 
 export type ClaveTexto = keyof typeof en;
@@ -136,6 +142,11 @@ const es: Partial<Record<ClaveTexto, string>> = {
   "common.reprocess": "Reprocesar",
   "common.noCarrier": "Sin compañía",
   "common.language": "Idioma",
+
+  "reconciliation.title": "Conciliación",
+  "reconciliation.hint": "Resolvé las líneas que el sistema no pudo identificar",
+  "payout.title": "Pago a agentes",
+  "payout.hint": "Cuánto le toca a cada agente este mes",
 };
 
 export const DICCIONARIOS: Record<Idioma, Partial<Record<ClaveTexto, string>>> = { en, es };

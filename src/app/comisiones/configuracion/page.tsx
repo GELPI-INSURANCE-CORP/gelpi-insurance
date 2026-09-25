@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Trash2, ShieldAlert, CheckCircle2, Eye, EyeOff, Sparkles } from "lucide-react";
 import { Card, CardHead, Input, TextInput, TextArea, Button, Badge, Banner, Loading, EmptyState, Field, Modal, Tabs, Select } from "@/components/agentes/ui";
 import { fechaHora } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
+import { IDIOMAS } from "@/lib/i18n/textos";
 import { AliasAseguradoraEditor } from "@/components/configuracion/AliasAseguradoraEditor";
 import { FusionarAseguradoraModal } from "@/components/configuracion/FusionarAseguradoraModal";
 import {
@@ -39,6 +41,7 @@ import {
 } from "@/lib/queries/configuracion";
 
 const TABS = [
+  { key: "idioma", label: "Language" },
   { key: "admin", label: "Ficha del administrador" },
   { key: "alias", label: "Alias de la agencia" },
   { key: "umbrales", label: "Umbrales de match" },
@@ -46,6 +49,29 @@ const TABS = [
   { key: "plantillas", label: "Plantillas por aseguradora" },
   { key: "oficinas", label: "Oficinas y permisos" },
 ];
+
+// El idioma es lo primero de Settings a propósito: si alguien entra acá porque no entiende la
+// pantalla, tiene que encontrarlo sin leer nada más. Por eso el rótulo dice "Language" y no
+// "Idioma" — quien lo busca es justamente el que no está leyendo en el idioma que ve.
+function SeccionIdioma() {
+  const { idioma, cambiarIdioma, t } = useI18n();
+  return (
+    <div className="flex max-w-md flex-col gap-3">
+      <Field label={t("common.language")}>
+        <Select
+          value={idioma}
+          onChange={(v: string) => cambiarIdioma(v === "es" ? "es" : "en")}
+          options={IDIOMAS.map((i) => ({ value: i.value, label: i.label }))}
+        />
+      </Field>
+      <p className="text-xs leading-relaxed text-muted">
+        The choice is saved on this device, so each person in the agency can use the system in the
+        language they prefer. · La elección se guarda en este dispositivo, así cada persona de la
+        agencia usa el sistema en el idioma que prefiera.
+      </p>
+    </div>
+  );
+}
 
 function ConfiguracionContent() {
   const router = useRouter();
@@ -63,6 +89,7 @@ function ConfiguracionContent() {
       <Card className="overflow-hidden">
         <Tabs tabs={TABS} active={active} onChange={cambiarTab} />
         <div className="p-4">
+          {active === "idioma" && <SeccionIdioma />}
           {active === "admin" && <SeccionAdmin />}
           {active === "alias" && <SeccionAlias />}
           {active === "umbrales" && <SeccionUmbrales />}
