@@ -139,6 +139,11 @@ export default function ResumenPage() {
     [totalOficinas, primaPorOficina]
   );
 
+  // Con menos de la mitad de las pólizas trayendo prima, el total no es un número chico: es un
+  // número equivocado. Mejor no mostrarlo que mostrarlo como si estuviera completo.
+  const primaIncompleta =
+    (book?.polizasActivas ?? 0) > 0 && (book?.activasConPrima ?? 0) < (book?.polizasActivas ?? 0) / 2;
+
   return (
     <div className="flex flex-col gap-6">
       {/* Saludo + selector de período */}
@@ -190,11 +195,19 @@ export default function ResumenPage() {
         <>
           {/* KPI del Book de negocio — lo primero que se ve */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {/* El total de prima se sumaba sobre todas las activas sin decir que casi ninguna
+                traía prima cargada: 50 de 2.331. Un número así parece completo y no lo es, y con
+                él se toman decisiones. Ahora dice sobre cuántas está hecho, y avisa cuando la
+                mayoría falta. */}
             <KpiCard
               label="Premium total (pólizas activas)"
-              value={money(book?.premiumActivo ?? 0)}
-              sub={`${book?.polizasActivas ?? 0} pólizas activas`}
-              subTone="brand"
+              value={primaIncompleta ? "—" : money(book?.premiumActivo ?? 0)}
+              sub={
+                primaIncompleta
+                  ? `Solo ${book?.activasConPrima ?? 0} de ${book?.polizasActivas ?? 0} pólizas traen prima: volvé a subir el Book para completarlo`
+                  : `sobre ${book?.activasConPrima ?? 0} de ${book?.polizasActivas ?? 0} pólizas activas`
+              }
+              subTone={primaIncompleta ? "bad" : "brand"}
             />
             <KpiCard
               label="Pólizas activas"
@@ -321,7 +334,11 @@ export default function ResumenPage() {
                         {totalOficinas.map((o) => (
                           <tr key={o.oficina_id} className="border-t border-border">
                             <td className="px-5 py-3 font-medium text-foreground">{o.oficina}</td>
-                            <td className="px-5 py-3 text-right tabular-nums text-foreground">{money(primaPorOficina.get(o.oficina_id) ?? 0)}</td>
+                            {/* Misma razón que el KPI de arriba: si el Book casi no trae primas,
+                                el número por oficina tampoco significa nada. */}
+                            <td className="px-5 py-3 text-right tabular-nums text-foreground">
+                              {primaIncompleta ? "—" : money(primaPorOficina.get(o.oficina_id) ?? 0)}
+                            </td>
                             <td className="px-5 py-3 text-right tabular-nums text-foreground">{money(o.comision)}</td>
                             <td className="px-5 py-3 text-right tabular-nums text-foreground">{o.excepciones}</td>
                             <td className="px-5 py-3 text-muted">

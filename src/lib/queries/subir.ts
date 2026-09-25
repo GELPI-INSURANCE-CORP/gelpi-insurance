@@ -40,6 +40,14 @@ export interface Reporte {
   total_lineas: number;
   total_ok: number;
   total_excepciones: number;
+  // Los tres de arriba se escriben al leer el archivo y no se vuelven a tocar, así que envejecen
+  // apenas el usuario resuelve algo: un statement terminado seguía diciendo "38 OK · 14
+  // excepciones" cuando ya eran 52 OK y 0 pendientes. Estos tres los calcula la vista v_reportes
+  // en el momento de leerlos, así que no pueden quedar viejos. Son los que hay que mostrar.
+  lineas_reales: number;
+  ok_reales: number;
+  pendientes_reales: number;
+  fuera_reales: number;
   confianza_promedio: number | null;
   mapeo_columnas: Record<string, string> | null;
   columnas_detectadas: string[] | null;
@@ -378,9 +386,9 @@ export interface FiltrosReportes {
 
 function construirQueryReportes(filtros: FiltrosReportes) {
   let q = supabase
-    .from("reportes")
+    .from("v_reportes")
     .select(
-      "id, tipo, aseguradora_id, nombre_archivo, storage_path, mime, hash_archivo, subido_por, periodo, estado, total_lineas, total_ok, total_excepciones, confianza_promedio, mapeo_columnas, columnas_detectadas, resumen_ia, error, created_at, updated_at, aseguradora:aseguradoras(nombre)"
+      "id, tipo, aseguradora_id, nombre_archivo, storage_path, mime, hash_archivo, subido_por, periodo, estado, total_lineas, total_ok, total_excepciones, lineas_reales, ok_reales, pendientes_reales, fuera_reales, confianza_promedio, mapeo_columnas, columnas_detectadas, resumen_ia, error, created_at, updated_at, aseguradora:aseguradoras(nombre)"
     )
     .order("created_at", { ascending: false })
     .order("id", { ascending: true });

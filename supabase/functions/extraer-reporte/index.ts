@@ -556,6 +556,26 @@ const CAMPOS_VENTA = [
   "numero_poliza", "aseguradora_nombre_crudo", "ramo", "fecha_venta", "fecha_vigencia", "prima",
 ] as const;
 
+// El modelo devuelve el mapeo como texto libre y a veces inventa un nombre descriptivo en vez del
+// campo exacto. Pasó con el Book: mapeó la columna "Current Premium" a `prima_actual`, que no
+// existe, así que la prima se tiraba a campos_extra y 2.281 de las 2.331 pólizas quedaron sin
+// prima — con el dashboard mostrando un "premium total" armado con 50 pólizas. Traducir los
+// alias obvios recupera el dato en vez de perderlo.
+//
+// Deliberadamente NO está "prima_anualizada": el Book trae las dos columnas y la que vale para una
+// póliza vigente es la actual. Si las dos apuntaran a `prima`, ganaría la última del archivo.
+const ALIAS_CAMPOS: Record<string, string> = {
+  prima_actual: "prima",
+  prima_vigente: "prima",
+  premium: "prima",
+  monto_comision: "monto",
+  tasa_comision: "tasa",
+  porcentaje_comision: "tasa",
+  numero_de_poliza: "numero_poliza",
+  poliza: "numero_poliza",
+  asegurado: "nombre_asegurado",
+};
+
 // OpenAI structured outputs (json_schema, strict:true) exige que TODO objeto tenga
 // additionalProperties:false y que TODAS sus properties estén en "required" (los campos
 // "opcionales" se modelan como nullable). Además no soporta objetos de forma libre
@@ -623,7 +643,11 @@ function buildJsonSchema(esVenta: boolean): Record<string, unknown> {
       periodo: { type: ["string", "null"], description: "Ej: 2026-08 o 'Agosto 2026'" },
       mapeo_columnas: {
         type: "string",
-        description: "JSON codificado (objeto plano) columna_origen -> campo_destino. Usar '{}' si no aplica.",
+        description:
+          "JSON codificado (objeto plano) columna_origen -> campo_destino. El campo_destino tiene que ser EXACTAMENTE " +
+          `uno de estos: ${(esVenta ? CAMPOS_VENTA : CAMPOS_COMISION).join(", ")}. ` +
+          "No inventes nombres ni les agregues adjetivos: una columna que no encaje exactamente en uno de esos " +
+          "campos va en columnas_sin_mapeo, no en el mapeo. Usar '{}' si no aplica.",
       },
       columnas_sin_mapeo: { type: "array", items: { type: "string" } },
       confianza_promedio: { type: ["number", "null"] },
@@ -1236,7 +1260,8 @@ Deno.serve(async (req: Request) => {
       return filasCrudas.map((raw, idx) => {
         const out: Record<string, unknown> = { fila: idx + 1, campos_extra: {} as Record<string, unknown> };
         for (const [colOrigen, valor] of Object.entries(raw)) {
-          const campoDestino = mapeo[colOrigen];
+          const crudo = mapeo[colOrigen];
+          const campoDestino = crudo ? ALIAS_CAMPOS[crudo] ?? crudo : crudo;
           if (campoDestino && (CAMPOS_COMISION as readonly string[]).concat(CAMPOS_VENTA).includes(campoDestino)) {
             out[campoDestino] = valor;
           } else {

@@ -35,7 +35,7 @@ const ESTADOS_REPORTE: Record<string, string> = {
 };
 
 function estadoReporteBadge(r: Reporte): { tone: Tone; label: string; icon?: ReactNode } {
-  const pend = r.total_excepciones ?? 0;
+  const pend = r.pendientes_reales ?? r.total_excepciones ?? 0;
   switch (r.estado) {
     case "subido":
       return { tone: "neutral", label: "Subido" };
@@ -304,7 +304,7 @@ export default function SubirPage() {
       <Card className="flex flex-col overflow-hidden rounded-2xl!">
         <CardHead
           title="Archivos subidos"
-          subtitle="La suma de “en excepción” de este lote no coincide necesariamente con los casos abiertos en Conciliación: esa cola acumula también statements de meses anteriores sin resolver."
+          subtitle="“Te faltan” son las líneas de ese archivo que todavía esperan una decisión tuya, contadas en este momento. No tiene por qué coincidir con Conciliación: esa cola acumula también statements de meses anteriores."
           action={<Badge tone="neutral">{reportes.length} archivo{reportes.length === 1 ? "" : "s"}</Badge>}
         />
         <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-5 py-3">
@@ -344,7 +344,7 @@ export default function SubirPage() {
             <table className="w-full border-collapse text-[13px]">
               <thead>
                 <tr className="bg-background">
-                  {["Archivo", "Tipo", "Aseguradora", "Fecha", "Filas", "OK", "En excepción", "Estado del archivo"].map(
+                  {["Archivo", "Tipo", "Aseguradora", "Fecha", "Filas", "Resueltas", "Te faltan", "Estado del archivo"].map(
                     (h, i) => (
                       <th
                         key={h}
@@ -373,6 +373,10 @@ export default function SubirPage() {
                     {grupo.reportes.map((r) => {
                       const badge = estadoReporteBadge(r);
                       const clickable = isPreviewable(r.estado);
+                      // Mientras se está leyendo el archivo los contadores no significan nada.
+                      const leyendo = r.estado === "subido" || r.estado === "extrayendo";
+                      const sinCuadrar =
+                        r.lineas_reales - r.ok_reales - r.pendientes_reales - r.fuera_reales;
                       const selected = selectedReporte?.id === r.id;
                       return (
                         <tr
@@ -388,18 +392,23 @@ export default function SubirPage() {
                           <td className="px-5 py-2.5 text-muted">{TIPOS_REPORTE[r.tipo] ?? r.tipo}</td>
                           <td className="px-5 py-2.5">{r.aseguradora?.nombre ?? "—"}</td>
                           <td className="px-5 py-2.5 text-muted">{fechaHora(r.created_at)}</td>
-                          <td className="px-5 py-2.5 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_lineas}</td>
-                          <td className="px-5 py-2.5 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_ok}</td>
-                          <td className="px-5 py-2.5 text-right tabular-nums">{r.estado === "subido" || r.estado === "extrayendo" ? "—" : r.total_excepciones}</td>
+                          {/* Los contadores salen de v_reportes, que los cuenta en el momento. Los
+                              guardados en la fila envejecen: un statement resuelto seguía diciendo
+                              "38 OK · 14 excepciones" cuando ya eran 52 OK y nada pendiente. */}
+                          <td className="px-5 py-2.5 text-right tabular-nums">{leyendo ? "—" : r.lineas_reales}</td>
+                          <td className="px-5 py-2.5 text-right tabular-nums">{leyendo ? "—" : r.ok_reales}</td>
+                          <td className="px-5 py-2.5 text-right tabular-nums">{leyendo ? "—" : r.pendientes_reales}</td>
                           <td className="px-5 py-2.5">
                             <div className="flex flex-col items-start gap-1">
                               <Badge tone={badge.tone} icon={badge.icon}>
                                 {badge.label}
                               </Badge>
-                              {r.total_lineas > 0 && r.total_lineas - r.total_ok - r.total_excepciones > 0 && (
+                              {/* El aviso de "sin cuadrar" desaparece solo: con los contadores
+                                  calculados, OK + pendientes + fuera del statement siempre suma el
+                                  total. Queda igual como red de seguridad por si algún día no. */}
+                              {sinCuadrar > 0 && (
                                 <span className="text-xs font-medium text-bad-fg">
-                                  ⚠ {r.total_lineas - r.total_ok - r.total_excepciones} fila
-                                  {r.total_lineas - r.total_ok - r.total_excepciones === 1 ? "" : "s"} sin cuadrar (ni OK ni en excepción)
+                                  ⚠ {sinCuadrar} fila{sinCuadrar === 1 ? "" : "s"} sin cuadrar (ni OK ni pendiente)
                                 </span>
                               )}
                               {esReporteReintentable(r) && (
