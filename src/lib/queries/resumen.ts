@@ -96,6 +96,9 @@ export interface BookResumen {
   polizasActivas: number;
   premiumCancelado: number;
   polizasCanceladas: number;
+  // Cuántas de las activas traen prima cargada. Un total de prima sumado sobre 50 de 2.331
+  // pólizas parece un dato y no lo es: hay que poder decir sobre cuántas está hecho.
+  activasConPrima: number;
 }
 
 // Datos del Active Business Book en sí (no de comisiones): cuánta prima hay vigente y
@@ -108,6 +111,7 @@ export async function getBookResumen(): Promise<BookResumen> {
   let polizasActivas = 0;
   let premiumCancelado = 0;
   let polizasCanceladas = 0;
+  let activasConPrima = 0;
   const pageSize = 1000;
   let from = 0;
   for (;;) {
@@ -124,6 +128,7 @@ export async function getBookResumen(): Promise<BookResumen> {
       if (p.estado === "activa") {
         premiumActivo += prima;
         polizasActivas += 1;
+        if (p.prima != null) activasConPrima += 1;
         if (p.oficina_id) primaPorOficina.set(p.oficina_id, (primaPorOficina.get(p.oficina_id) ?? 0) + prima);
       } else if (p.estado === "cancelada") {
         premiumCancelado += prima;
@@ -133,5 +138,5 @@ export async function getBookResumen(): Promise<BookResumen> {
     if (page.length < pageSize) break;
     from += pageSize;
   }
-  return { primaPorOficina, premiumActivo, polizasActivas, premiumCancelado, polizasCanceladas };
+  return { primaPorOficina, premiumActivo, polizasActivas, premiumCancelado, polizasCanceladas, activasConPrima };
 }
