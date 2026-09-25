@@ -175,6 +175,14 @@ const TIPO_TRANSACCION_CODES: Record<string, TipoTransaccion> = {
   ADJ: "ajuste", ADJUSTMENT: "ajuste", AJUSTE: "ajuste",
 };
 
+// La fila de referencia del período anterior. Se reconoce SOLO por el nombre que el prompt le pide
+// a la IA que le ponga ("Pago período anterior (referencia)"), y no por "no tiene número de póliza"
+// — porque los cargos de MVR tampoco lo tienen y esos SÍ son plata de este mes que hay que restar.
+function esReferenciaPeriodoAnterior(f: Record<string, unknown>): boolean {
+  const nombre = String(f.nombre_asegurado ?? "");
+  return /per[ií]odo\s+anterior|previous\s+period|prior\s+period/i.test(nombre);
+}
+
 function coerceTipoTransaccion(v: unknown): TipoTransaccion {
   if (!v) return "otro";
   const s = String(v).trim().toUpperCase();
@@ -500,7 +508,7 @@ Reglas:
 - Montos como número; los chargebacks/cancelaciones son montos NEGATIVOS.
 - tipo_transaccion: traducí códigos de aseguradora (NB/NBS/NEW->nueva, RWL/REN->renovacion, END/ENDT/XLC->endoso, CAN/CNL/CXL/CB->cancelacion, ADJ->ajuste) o dejá "otro".
 - monto cuando hay VARIAS columnas de comisión (ej. Progressive trae "Gross Comm" y "Net Due Agent", o "Agency Due"): elegí SIEMPRE la NETA, la que la aseguradora realmente deposita después de sus descuentos, porque es la que tiene que cuadrar contra el cheque. En la mayoría de las filas las dos coinciden; donde difieren, la neta es la correcta. Caso real: la fila "MVR FEE" de Progressive tiene Gross Comm = 0 y Net Due Agent = -1534, que es el cargo que la aseguradora le descuenta a la agencia — tomando la bruta ese descuento desaparecía y el total no cuadraba con el depósito.
-- Algunas aseguradoras (ej. United Automobile) incluyen en el statement una fila de referencia con el total ya pagado en el período anterior, sin póliza real asociada (número de póliza en ceros como "00000000000", o vacío). Esa fila no es una transacción nueva de este período: clasificala como tipo_transaccion="ajuste" y poné en nombre_asegurado algo descriptivo como "Pago período anterior (referencia)" en vez de dejarlo vacío. No inventes un número de póliza.
+- Algunas aseguradoras (ej. United Automobile) incluyen en el statement una fila de referencia con el total ya pagado en el período anterior, sin póliza real asociada (número de póliza en ceros como "00000000000", o vacío). Esa fila no es una transacción nueva de este período: clasificala como tipo_transaccion="ajuste" y poné en nombre_asegurado EXACTAMENTE "Pago período anterior (referencia)" — ese texto es la señal que usa el sistema para dejarla fuera del total, porque no es plata de este período. No inventes un número de póliza. OJO: esto NO aplica a cargos como "MVR FEE" o fees administrativos, que sí son plata que la aseguradora descuenta este mes y tienen que sumar.
 - numero_poliza: incluí SIEMPRE el prefijo de letras del número de póliza. Si la referencia viene como "01 UAD -610794900", el número de póliza es "UAD-610794900" (el "01" inicial es un código de línea, no parte de la póliza); nunca devuelvas solo "-610794900".
 - CRÍTICO al extraer filas de un PDF/imagen con una tabla larga: transcribí TODAS las filas de TODAS las páginas, una por una, sin resumir, sin muestrear ni saltear ninguna aunque haya decenas o cientos. No es aceptable devolver solo una parte de la tabla. Si el documento trae en algún resumen/pie de página cuántas transacciones tiene en total (ej. "Transactions processed: 219"), reportá ese número en total_filas_documento — se usa para verificar que no falte ninguna fila.
 - Cualquier columna que no tenga un campo destino claro, listala en columnas_sin_mapeo y, si te piden las filas completas, guardá su valor en campos_extra.
@@ -1145,8 +1153,18 @@ Deno.serve(async (req: Request) => {
         monto: coerceNumber(f.monto) ?? 0,
         fecha_vigencia: coerceDate(f.fecha_vigencia),
         fecha_statement: coerceDate(f.fecha_statement) ?? coerceDate(reporte.periodo),
-        campos_extra: f.campos_extra ?? {},
+        campos_extra: esReferenciaPeriodoAnterior(f)
+          ? { ...((f.campos_extra as Record<string, unknown>) ?? {}), categoria_ajuste: "referencia" }
+          : f.campos_extra ?? {},
         confianza: f.confianza ?? extraccion.confianza_promedio ?? null,
+        // United pone arriba del statement cuánto pagó el mes ANTERIOR. No es plata de este mes,
+        // pero se sumaba al total: un statement de $13,611.70 se mostraba como $9,111.38.
+        // Marcarla a mano no alcanzaba, porque reprocesar borra las líneas y la marca se perdía —
+        // el usuario la marcó tres veces y volvió tres veces. Entra ya descartada, y como
+        // procesar_matching solo toca las 'pendiente', el motor ni la mira: sobrevive al reproceso.
+        ...(esReferenciaPeriodoAnterior(f)
+          ? { estado: "descartado", regla_match: "no_es_de_este_mes" }
+          : {}),
       }));
 
       for (const b of chunk(batch, 500)) {
