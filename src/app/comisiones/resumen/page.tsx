@@ -16,6 +16,8 @@ import clsx from "clsx";
 import { Badge, Button, Card, CardHead, Chip, EmptyState } from "@/components/ui";
 import type { Tone } from "@/components/ui/Badge";
 import { money } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
+import type { ClaveTexto, Idioma } from "@/lib/i18n/textos";
 import {
   type AgenteRanking,
   type BookResumen,
@@ -38,48 +40,53 @@ function primerDiaDelMes(offsetMeses: number): Date {
   return new Date(hoy.getFullYear(), hoy.getMonth() - offsetMeses, 1);
 }
 
+// Firma de la funcion de traduccion, para pasarla como parametro a los helpers de aca abajo: son
+// funciones de modulo (no componentes ni hooks) y no pueden llamar a useI18n() por su cuenta.
+type TFunc = (clave: ClaveTexto, vars?: Record<string, string | number>) => string;
+
 // El mes corto para el eje del grafico. Se arma en UTC: la fecha viene como "2026-08-01" y
 // leida en la zona de Miami cae el 31 de julio a la noche, asi que agosto se rotularia Jul.
-function etiquetaMesCorto(iso: string): string {
+function etiquetaMesCorto(iso: string, idioma: Idioma): string {
   const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
-  return d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+  return d.toLocaleDateString(idioma === "es" ? "es-US" : "en-US", { month: "short", timeZone: "UTC" });
 }
 
-function etiquetaMes(d: Date): string {
-  const s = d.toLocaleDateString("es-US", { month: "long", year: "numeric" });
+function etiquetaMes(d: Date, idioma: Idioma): string {
+  const s = d.toLocaleDateString(idioma === "es" ? "es-US" : "en-US", { month: "long", year: "numeric" });
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function etiquetaTipoExcepcion(tipo: ExcepcionRow["tipo"]): { texto: string; tone: Tone; icon: React.ReactNode } {
+function etiquetaTipoExcepcion(tipo: ExcepcionRow["tipo"], t: TFunc): { texto: string; tone: Tone; icon: React.ReactNode } {
   switch (tipo) {
     case "mismatch":
-      return { texto: "Mismatch", tone: "warn", icon: <AlertCircle size={12} /> };
+      return { texto: t("dash.excTypeMismatch"), tone: "warn", icon: <AlertCircle size={12} /> };
     case "sin_identificar":
-      return { texto: "Sin identificar", tone: "bad", icon: <AlertTriangle size={12} /> };
+      return { texto: t("dash.unidentified"), tone: "bad", icon: <AlertTriangle size={12} /> };
     case "duplicado":
-      return { texto: "Duplicado sospechoso", tone: "silver", icon: <Copy size={12} /> };
+      return { texto: t("dash.excTypeDuplicate"), tone: "silver", icon: <Copy size={12} /> };
     case "conflicto_venta":
-      return { texto: "Conflicto de venta", tone: "info", icon: <ShieldAlert size={12} /> };
+      return { texto: t("dash.excTypeSaleConflict"), tone: "info", icon: <ShieldAlert size={12} /> };
     default:
       return { texto: tipo, tone: "neutral", icon: undefined };
   }
 }
 
-function nombreExcepcion(e: ExcepcionRow): string {
-  const quien = e.nombre_asegurado_crudo || e.numero_poliza_crudo || e.productor_crudo || "Sin datos";
+function nombreExcepcion(e: ExcepcionRow, t: TFunc): string {
+  const quien = e.nombre_asegurado_crudo || e.numero_poliza_crudo || e.productor_crudo || t("dash.noData");
   return e.aseguradora ? `${e.aseguradora} · ${quien}` : quien;
 }
 
-function sugerenciaTexto(e: ExcepcionRow): string | null {
+function sugerenciaTexto(e: ExcepcionRow, t: TFunc): string | null {
   if (!e.agente_sugerido) return null;
   const partes = [e.agente_sugerido, e.oficina_sugerida].filter(Boolean).join(", ");
   const score = e.score != null ? ` (${Math.round(e.score)}%)` : "";
   const explicacion = e.explicacion ? ` — ${e.explicacion}` : "";
-  return `Sugerencia: ${partes}${score}${explicacion}`;
+  return t("dash.suggestion", { detalle: `${partes}${score}${explicacion}` });
 }
 
 export default function ResumenPage() {
   const router = useRouter();
+  const { t, idioma } = useI18n();
   const [mes, setMes] = useState<Date>(() => primerDiaDelMes(0));
   const [menuAbierto, setMenuAbierto] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -134,7 +141,7 @@ export default function ResumenPage() {
       .catch((err: unknown) => {
         if (!activo) return;
         console.error(err);
-        setError(err instanceof Error ? err.message : "No se pudo cargar el resumen.");
+        setError(err instanceof Error ? err.message : t("dash.loadError"));
         setKpis(null);
         setExcepciones([]);
         setTotalPendientes(0);
@@ -182,7 +189,7 @@ export default function ResumenPage() {
         <div className="relative" ref={menuRef}>
           <Chip icon={<ChevronDown size={14} />} onClick={() => setMenuAbierto((v) => !v)}>
             <Calendar size={14} />
-            {etiquetaMes(mes)}
+            {etiquetaMes(mes, idioma)}
           </Chip>
           {menuAbierto && (
             <div className="absolute right-0 top-10 z-20 max-h-72 w-52 overflow-y-auto rounded-lg border border-border bg-surface py-1 shadow-lg">
@@ -201,7 +208,7 @@ export default function ResumenPage() {
                       : "text-foreground"
                   )}
                 >
-                  {etiquetaMes(d)}
+                  {etiquetaMes(d, idioma)}
                 </button>
               ))}
             </div>
@@ -211,7 +218,7 @@ export default function ResumenPage() {
 
       {error && (
         <Card className="border-bad-fg bg-bad-bg px-5 py-4 text-[13px] text-bad-fg">
-          No se pudo cargar el resumen: {error}
+          {t("dash.loadErrorWithDetail", { detalle: error })}
         </Card>
       )}
 
@@ -228,51 +235,51 @@ export default function ResumenPage() {
                 él se toman decisiones. Ahora dice sobre cuántas está hecho, y avisa cuando la
                 mayoría falta. */}
             <KpiCard
-              label="Premium total (pólizas activas)"
+              label={t("dash.bookPremium")}
               value={primaIncompleta ? "—" : money(book?.premiumActivo ?? 0)}
               sub={
                 primaIncompleta
-                  ? `Solo ${book?.activasConPrima ?? 0} de ${book?.polizasActivas ?? 0} pólizas traen prima: volvé a subir el Book para completarlo`
-                  : `sobre ${book?.activasConPrima ?? 0} de ${book?.polizasActivas ?? 0} pólizas activas`
+                  ? t("dash.premiumIncomplete", { con: book?.activasConPrima ?? 0, total: book?.polizasActivas ?? 0 })
+                  : t("dash.premiumOverActive", { con: book?.activasConPrima ?? 0, total: book?.polizasActivas ?? 0 })
               }
               subTone={primaIncompleta ? "bad" : "brand"}
             />
             <KpiCard
-              label="Pólizas activas"
+              label={t("dash.activePolicies")}
               value={String(book?.polizasActivas ?? 0)}
-              sub="en el Active Business Book"
+              sub={t("dash.inActiveBook")}
               subTone="ok"
             />
             <KpiCard
-              label="Pólizas canceladas"
+              label={t("dash.canceledPolicies")}
               value={String(book?.polizasCanceladas ?? 0)}
-              sub={`${money(book?.premiumCancelado ?? 0)} en premium cancelado`}
+              sub={t("dash.canceledPremium", { monto: money(book?.premiumCancelado ?? 0) })}
               subTone="muted"
             />
           </div>
 
           {/* KPI de conciliación de comisiones — secundario */}
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Conciliación de comisiones</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">{t("dash.commissionReconciliation")}</div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
             <KpiComisionesConciliadas monto={kpis?.conciliado ?? 0} mes={mes} numOficinas={totalOficinas.length} />
-            <KpiCard label="Sin identificar" value={money(kpis?.sin_identificar.monto ?? 0)} sub={`${kpis?.sin_identificar.n ?? 0} líneas`} subTone="warn" />
-            <KpiCard label="Mismatch pendiente" value={money(kpis?.mismatch.monto ?? 0)} sub={`${kpis?.mismatch.n ?? 0} líneas`} subTone="warn" />
-            <KpiCard label="Duplicados sospechosos" value={money(kpis?.duplicados.monto ?? 0)} sub={`${kpis?.duplicados.n ?? 0} casos`} subTone="muted" />
-            <KpiCard label="Conflictos de venta" value={String(kpis?.conflictos ?? 0)} sub="casos abiertos" subTone="muted" />
+            <KpiCard label={t("dash.unidentified")} value={money(kpis?.sin_identificar.monto ?? 0)} sub={t("dash.linesCount", { n: kpis?.sin_identificar.n ?? 0 })} subTone="warn" />
+            <KpiCard label={t("dash.pendingMismatch")} value={money(kpis?.mismatch.monto ?? 0)} sub={t("dash.linesCount", { n: kpis?.mismatch.n ?? 0 })} subTone="warn" />
+            <KpiCard label={t("dash.suspectedDuplicates")} value={money(kpis?.duplicados.monto ?? 0)} sub={t("dash.casesCount", { n: kpis?.duplicados.n ?? 0 })} subTone="muted" />
+            <KpiCard label={t("dash.saleConflicts")} value={String(kpis?.conflictos ?? 0)} sub={t("dash.openCases")} subTone="muted" />
             <button
               type="button"
               onClick={() => router.push("/comisiones/conciliacion")}
               className="flex flex-col gap-1 rounded-xl border border-bad-fg bg-bad-bg p-5 text-left transition hover:shadow-sm"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[13px] text-bad-fg">Total en disputa</span>
+                <span className="text-[13px] text-bad-fg">{t("dash.totalInDispute")}</span>
                 <ArrowRight size={14} className="text-bad-fg" />
               </div>
               <div className="text-[28px] font-semibold tracking-tight text-bad-fg">
                 {money(kpis?.total_disputa.monto ?? 0)}
               </div>
               <div className="mt-2 text-xs font-medium text-bad-fg">
-                {kpis?.total_disputa.n ?? 0} casos abiertos · Ver en Conciliación
+                {t("dash.disputeCasesDetail", { n: kpis?.total_disputa.n ?? 0, conciliacion: t("nav.reconciliation") })}
               </div>
             </button>
           </div>
@@ -283,17 +290,17 @@ export default function ResumenPage() {
           <div className="grid grid-cols-1 gap-6 items-start lg:grid-cols-2">
             <Card>
               <CardHead
-                title="Pólizas nuevas por mes"
+                title={t("dash.newPolicies")}
                 action={
                   <span className="text-[13px] text-muted">
-                    {totalProduccion.toLocaleString("en-US")} en {mes.getFullYear()}
+                    {t("dash.policiesIn", { n: totalProduccion.toLocaleString("en-US"), anio: mes.getFullYear() })}
                   </span>
                 }
               />
               <div className="px-5 pb-5 pt-1">
                 {produccion.length === 0 ? (
                   <p className="py-8 text-center text-[13px] text-muted">
-                    Todavía no hay pólizas con fecha de vigencia en {mes.getFullYear()}.
+                    {t("dash.noPoliciesInYear", { anio: mes.getFullYear() })}
                   </p>
                 ) : (
                   <>
@@ -319,7 +326,7 @@ export default function ResumenPage() {
                                 esMesElegido ? "bg-brand-dark" : "bg-brand"
                               )}
                               style={{ height: `${alto}px` }}
-                              title={`${etiquetaMesCorto(p.mes)}: ${p.polizas} pólizas · ${money(Number(p.prima))}`}
+                              title={t("dash.monthPoliciesPremium", { mes: etiquetaMesCorto(p.mes, idioma), n: p.polizas, monto: money(Number(p.prima)) })}
                             />
                           </div>
                         );
@@ -334,7 +341,7 @@ export default function ResumenPage() {
                             p.mes.slice(0, 7) === mesClave ? "font-semibold text-foreground" : "text-muted"
                           )}
                         >
-                          {etiquetaMesCorto(p.mes)}
+                          {etiquetaMesCorto(p.mes, idioma)}
                         </span>
                       ))}
                     </div>
@@ -345,21 +352,21 @@ export default function ResumenPage() {
 
             <Card className="overflow-hidden">
               <CardHead
-                title="Agentes que más produjeron"
-                subtitle="Por comisión conciliada del mes elegido"
+                title={t("dash.topAgents")}
+                subtitle={t("dash.byReconciledCommission")}
               />
               {ranking.length === 0 ? (
                 <p className="px-5 py-8 text-center text-[13px] text-muted">
-                  Ningún agente tiene comisión conciliada en {etiquetaMes(mes)}.
+                  {t("dash.noAgentCommission", { mes: etiquetaMes(mes, idioma) })}
                 </p>
               ) : (
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="border-b border-border bg-background">
-                      <th className="px-5 py-2.5 text-left font-medium text-muted">Agente</th>
-                      <th className="px-5 py-2.5 text-left font-medium text-muted">Oficina</th>
-                      <th className="px-5 py-2.5 text-right font-medium text-muted">Líneas</th>
-                      <th className="px-5 py-2.5 text-right font-medium text-muted">Comisión</th>
+                      <th className="px-5 py-2.5 text-left font-medium text-muted">{t("col.agent")}</th>
+                      <th className="px-5 py-2.5 text-left font-medium text-muted">{t("col.office")}</th>
+                      <th className="px-5 py-2.5 text-right font-medium text-muted">{t("col.lines")}</th>
+                      <th className="px-5 py-2.5 text-right font-medium text-muted">{t("dash.commission")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -384,24 +391,24 @@ export default function ResumenPage() {
             <div className="lg:col-span-3">
               <Card>
                 <CardHead
-                  title="Excepciones que necesitan tu atención hoy"
-                  action={<Badge tone="bad">{totalPendientes} abiertas</Badge>}
+                  title={t("dash.exceptionsTitle")}
+                  action={<Badge tone="bad">{t("dash.openCount", { n: totalPendientes })}</Badge>}
                 />
                 <div className="px-5 pb-4 pt-2">
-                  <div className="mb-1 text-xs text-muted">Ordenadas por antigüedad y monto</div>
+                  <div className="mb-1 text-xs text-muted">{t("dash.sortedByAgeAmount")}</div>
 
                   {excepciones.length === 0 ? (
                     <EmptyState
-                      title="No hay excepciones pendientes"
-                      description="Todas las líneas del período están conciliadas o resueltas."
+                      title={t("dash.noExceptionsTitle")}
+                      description={t("dash.noExceptionsDescription")}
                     />
                   ) : (
                     <div className="flex flex-col">
                       {excepciones.map((e, i) => {
                         const badge = e.atrasada
-                          ? { texto: "Atrasada", tone: "bad" as Tone, icon: <AlertTriangle size={12} /> }
-                          : etiquetaTipoExcepcion(e.tipo);
-                        const sugerencia = sugerenciaTexto(e);
+                          ? { texto: t("dash.overdue"), tone: "bad" as Tone, icon: <AlertTriangle size={12} /> }
+                          : etiquetaTipoExcepcion(e.tipo, t);
+                        const sugerencia = sugerenciaTexto(e, t);
                         return (
                           <div
                             key={e.id}
@@ -413,14 +420,14 @@ export default function ResumenPage() {
                                   {badge.texto}
                                 </Badge>
                                 {e.atrasada && (
-                                  <span className="text-xs text-muted">{etiquetaTipoExcepcion(e.tipo).texto}</span>
+                                  <span className="text-xs text-muted">{etiquetaTipoExcepcion(e.tipo, t).texto}</span>
                                 )}
-                                <span className="truncate text-sm font-medium text-foreground">{nombreExcepcion(e)}</span>
+                                <span className="truncate text-sm font-medium text-foreground">{nombreExcepcion(e, t)}</span>
                               </div>
                               <div className="flex flex-shrink-0 items-center gap-4">
                                 <span className="text-sm font-medium text-foreground">{money(e.monto)}</span>
                                 <span className="w-14 text-right text-xs text-muted">
-                                  {e.antiguedad_dias} {e.antiguedad_dias === 1 ? "día" : "días"}
+                                  {t("dash.daysCount", { n: e.antiguedad_dias, s: e.antiguedad_dias === 1 ? "" : "s" })}
                                 </span>
                               </div>
                             </div>
@@ -434,7 +441,7 @@ export default function ResumenPage() {
                   {totalPendientes > 0 && (
                     <div className="flex justify-end pt-3.5">
                       <Button variant="secondary" size="sm" href="/comisiones/conciliacion">
-                        Ver las {totalPendientes} en Conciliación
+                        {t("dash.viewAllInReconciliation", { n: totalPendientes, conciliacion: t("nav.reconciliation") })}
                         <ArrowRight size={14} />
                       </Button>
                     </div>
@@ -446,25 +453,25 @@ export default function ResumenPage() {
             <div className="lg:col-span-2">
               <Card>
                 <CardHead
-                  title="Comisiones y excepciones por oficina"
+                  title={t("dash.commissionsExceptionsByOffice")}
                   action={
                     <Button variant="ghost" size="sm" href="/comisiones/agentes/">
-                      Ver agentes
+                      {t("dash.viewAgents")}
                     </Button>
                   }
                 />
                 {totalOficinas.length === 0 ? (
-                  <EmptyState title="Sin datos de oficinas" description="Todavía no hay comisiones conciliadas en este período." />
+                  <EmptyState title={t("dash.noOfficeDataTitle")} description={t("dash.noOfficeDataDescription")} />
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-[13px]">
                       <thead>
                         <tr className="bg-background">
-                          <th className="whitespace-nowrap px-5 py-2.5 text-left font-medium text-muted">Oficina</th>
-                          <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">Prima activa (Book)</th>
-                          <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">Comisión</th>
-                          <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">Excep.</th>
-                          <th className="whitespace-nowrap px-5 py-2.5 text-left font-medium text-muted">Antigüedad</th>
+                          <th className="whitespace-nowrap px-5 py-2.5 text-left font-medium text-muted">{t("col.office")}</th>
+                          <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">{t("dash.activePremiumBook")}</th>
+                          <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">{t("dash.commission")}</th>
+                          <th className="whitespace-nowrap px-5 py-2.5 text-right font-medium text-muted">{t("dash.excAbbrev")}</th>
+                          <th className="whitespace-nowrap px-5 py-2.5 text-left font-medium text-muted">{t("dash.age")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -479,13 +486,13 @@ export default function ResumenPage() {
                             <td className="px-5 py-3 text-right tabular-nums text-foreground">{money(o.comision)}</td>
                             <td className="px-5 py-3 text-right tabular-nums text-foreground">{o.excepciones}</td>
                             <td className="px-5 py-3 text-muted">
-                              <span className="mr-2">{o.antiguedad} {o.antiguedad === 1 ? "día" : "días"}</span>
-                              {o.antiguedad >= UMBRAL_ATRASADA_DIAS && o.excepciones > 0 && <Badge tone="bad">Atrasadas</Badge>}
+                              <span className="mr-2">{t("dash.daysCount", { n: o.antiguedad, s: o.antiguedad === 1 ? "" : "s" })}</span>
+                              {o.antiguedad >= UMBRAL_ATRASADA_DIAS && o.excepciones > 0 && <Badge tone="bad">{t("dash.overdueOffice")}</Badge>}
                             </td>
                           </tr>
                         ))}
                         <tr className="border-t border-border bg-background">
-                          <td className="px-5 py-3 font-medium text-foreground">{totalOficinas.length} oficinas</td>
+                          <td className="px-5 py-3 font-medium text-foreground">{t("dash.officeCount", { n: totalOficinas.length, s: totalOficinas.length === 1 ? "" : "s" })}</td>
                           <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">{money(sumaOficinas.prima)}</td>
                           <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">{money(sumaOficinas.comision)}</td>
                           <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">{sumaOficinas.excepciones}</td>
@@ -533,12 +540,14 @@ function KpiCard({
 }
 
 function KpiComisionesConciliadas({ monto, mes, numOficinas }: { monto: number; mes: Date; numOficinas: number }) {
-  const mesCorto = mes.toLocaleDateString("es-US", { month: "short", year: "numeric" });
+  const { t, idioma } = useI18n();
+  const mesCorto = mes.toLocaleDateString(idioma === "es" ? "es-US" : "en-US", { month: "short", year: "numeric" });
+  const mesCapitalizado = mesCorto.charAt(0).toUpperCase() + mesCorto.slice(1);
   return (
     <KpiCard
-      label="Comisiones conciliadas del período"
+      label={t("dash.reconciledCommissions")}
       value={money(monto)}
-      sub={`${mesCorto.charAt(0).toUpperCase() + mesCorto.slice(1)}, ${numOficinas} ${numOficinas === 1 ? "oficina" : "oficinas"}`}
+      sub={`${mesCapitalizado}, ${t("dash.officeCount", { n: numOficinas, s: numOficinas === 1 ? "" : "s" })}`}
       subTone="brand"
     />
   );
