@@ -52,6 +52,9 @@ export interface Reporte {
   // distinto cada vez ("Agosto 2026", "2026-08", "JULY 2026") y agrupar por ese texto ponía dos
   // statements del mismo mes en grupos separados. Null en Book y ventas internas: no son de un mes.
   mes_statement: string | null;
+  // Cuánta plata trae el statement, sin las líneas que quedaron fuera (el pago del mes anterior
+  // que United repite arriba del suyo no es plata de este mes). Es el dato que se viene a buscar.
+  monto_total: number;
   confianza_promedio: number | null;
   mapeo_columnas: Record<string, string> | null;
   columnas_detectadas: string[] | null;
@@ -401,7 +404,7 @@ function construirQueryReportes(filtros: FiltrosReportes) {
   let q = supabase
     .from("v_reportes")
     .select(
-      "id, tipo, aseguradora_id, nombre_archivo, storage_path, mime, hash_archivo, subido_por, periodo, estado, total_lineas, total_ok, total_excepciones, lineas_reales, ok_reales, pendientes_reales, fuera_reales, mes_statement, confianza_promedio, mapeo_columnas, columnas_detectadas, resumen_ia, error, created_at, updated_at, aseguradora:aseguradoras(nombre)"
+      "id, tipo, aseguradora_id, nombre_archivo, storage_path, mime, hash_archivo, subido_por, periodo, estado, total_lineas, total_ok, total_excepciones, lineas_reales, ok_reales, pendientes_reales, fuera_reales, mes_statement, monto_total, confianza_promedio, mapeo_columnas, columnas_detectadas, resumen_ia, error, created_at, updated_at, aseguradora:aseguradoras(nombre)"
     )
     .order("created_at", { ascending: false })
     .order("id", { ascending: true });
