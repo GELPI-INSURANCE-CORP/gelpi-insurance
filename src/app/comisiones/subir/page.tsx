@@ -298,16 +298,19 @@ export default function SubirPage() {
   const gruposReportes = agruparReportesPorPeriodo(reportesVisibles, idioma, t("statements.noMonth"));
 
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-4">
       {/* Conciliación y Liquidación salieron del menú lateral porque son pasos DE un statement, no
           secciones aparte. Se entra desde acá, que es donde el usuario ya está cuando las necesita:
           primero sube el statement, después resuelve lo que quedó sin identificar, y al final mira
           cuánto le toca a cada agente. El subtítulo dice para qué sirve cada una, porque los
           nombres solos no se lo dicen a alguien que no armó el sistema. */}
-      <div className="flex flex-wrap gap-3">
+      {/* Los tres arrancan algo, así que van juntos en una fila. Subir estaba solo abajo, en una
+          franja gris vacía que no hacía más que empujar la tabla fuera de la pantalla. Va tercero
+          y en azul: es el único de los tres que crea algo nuevo. */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <Link
           href="/comisiones/conciliacion/"
-          className="flex flex-1 min-w-[240px] items-center gap-3 rounded-2xl border border-border bg-surface px-5 py-4 transition-colors hover:bg-brand-tint/50"
+          className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-5 py-4 transition-colors hover:bg-brand-tint/50"
         >
           <GitCompare className="h-5 w-5 flex-shrink-0 text-brand" />
           <span className="flex flex-col">
@@ -317,7 +320,7 @@ export default function SubirPage() {
         </Link>
         <Link
           href="/comisiones/liquidacion/"
-          className="flex flex-1 min-w-[240px] items-center gap-3 rounded-2xl border border-border bg-surface px-5 py-4 transition-colors hover:bg-brand-tint/50"
+          className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-5 py-4 transition-colors hover:bg-brand-tint/50"
         >
           <Wallet className="h-5 w-5 flex-shrink-0 text-brand" />
           <span className="flex flex-col">
@@ -325,6 +328,17 @@ export default function SubirPage() {
             <span className="text-xs text-muted">{t("payout.hint")}</span>
           </span>
         </Link>
+        <button
+          type="button"
+          onClick={() => setModalAbierto(true)}
+          className="flex items-center gap-3 rounded-2xl bg-brand px-5 py-4 text-left transition-colors hover:bg-brand-dark"
+        >
+          <UploadCloud className="h-5 w-5 flex-shrink-0 text-white" />
+          <span className="flex flex-col">
+            <span className="text-[14px] font-semibold text-white">{t("statements.upload")}</span>
+            <span className="text-xs text-white/75">{t("statements.uploadHint")}</span>
+          </span>
+        </button>
       </div>
 
       {pageError && (
@@ -342,16 +356,7 @@ export default function SubirPage() {
           formulario (tipo de reporte, compañía, período, archivo) vive en una ventana que se abre
           encima. El de ventas interno dejó de tener cajón propio y pasó a ser un tipo más dentro
           de la lista, con la explicación al lado de para qué sirve. */}
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        <button
-          type="button"
-          onClick={() => setModalAbierto(true)}
-          className="flex h-10 items-center gap-2 rounded-xl bg-brand px-4 text-[13px] font-semibold text-white transition-colors hover:bg-brand-dark"
-        >
-          <UploadCloud size={16} />
-          {t("statements.upload")}
-        </button>
-      </div>
+
 
       {/* CATÁLOGO: es documentación, no una herramienta — si un archivo no sirve, la ventana de
           subida lo avisa al elegirlo. Va plegado para no ocupar lugar en la vista principal. */}
@@ -466,21 +471,25 @@ export default function SubirPage() {
                       no le dice nada a nadie, y peor: dos statements de meses distintos se llaman
                       casi igual. Lo que identifica a un statement es de qué compañía es y de qué
                       mes. El nombre del archivo sigue estando en el panel de detalle. */}
+                  {/* Cada columna dice de qué lado va en vez de que el código cuente posiciones.
+                      Con el conteo, agregar Amount corrió todo: los encabezados seguían marcando
+                      como numéricas las columnas 4 a 6 cuando ya eran la 2 a la 5, y los títulos
+                      quedaron alineados al revés que sus propios números. */}
                   {[
-                    t("col.carrier"),
-                    t("col.statement"),
-                    t("col.amount"),
-                    t("col.lines"),
-                    t("col.resolved"),
-                    t("col.missing"),
-                    t("col.status"),
+                    { texto: t("col.carrier"), numerica: false },
+                    { texto: t("col.statement"), numerica: false },
+                    { texto: t("col.amount"), numerica: true },
+                    { texto: t("col.lines"), numerica: true },
+                    { texto: t("col.resolved"), numerica: true },
+                    { texto: t("col.missing"), numerica: true },
+                    { texto: t("col.status"), numerica: false },
                   ].map(
-                    (h, i) => (
+                    ({ texto: h, numerica }) => (
                       <th
                         key={h}
                         className={clsx(
-                          "whitespace-nowrap border-b border-border px-5 py-3 text-left font-medium text-muted",
-                          i >= 4 && i <= 6 && "text-right"
+                          "whitespace-nowrap border-b border-border px-5 py-3 font-medium text-muted",
+                          numerica ? "text-right" : "text-left"
                         )}
                       >
                         {h}
