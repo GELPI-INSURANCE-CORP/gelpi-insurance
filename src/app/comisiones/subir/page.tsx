@@ -260,8 +260,23 @@ export default function SubirPage() {
   }
 
   const aseguradoraOptions = aseguradoras.map((a) => ({ value: a.id, label: a.nombre }));
-  const tipoFiltroOptions = Object.entries(TIPOS_REPORTE).map(([value, label]) => ({ value, label }));
-  const estadoFiltroOptions = Object.entries(ESTADOS_REPORTE).map(([value, label]) => ({ value, label }));
+  // Los filtros se arman con lo que de verdad hay cargado, no con el catálogo completo. El
+  // desplegable ofrecía diez tipos de reporte — producción, cancelaciones, renovaciones, resumen
+  // anual — cuando en la base solo existen statements de comisiones. Elegir uno de esos y no ver
+  // nada no enseña nada; además esa lista se desactualiza sola cada vez que se agrega un tipo.
+  const tipoFiltroOptions = useMemo(() => {
+    const vistos = new Set(reportes.map((r) => r.tipo));
+    return Array.from(vistos)
+      .map((t) => ({ value: t, label: TIPOS_REPORTE[t] ?? t }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [reportes]);
+
+  const estadoFiltroOptions = useMemo(() => {
+    const vistos = new Set(reportes.map((r) => r.estado));
+    return Array.from(vistos)
+      .map((e) => ({ value: e, label: ESTADOS_REPORTE[e] ?? e }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [reportes]);
   // Los meses que de verdad tienen statements. Ofrecer meses vacíos del calendario hace que el
   // usuario elija uno, no vea nada, y no sepa si es que no hay o si algo se rompió.
   const mesesOptions = useMemo(() => {
@@ -479,8 +494,6 @@ export default function SubirPage() {
                     { texto: t("col.carrier"), numerica: false },
                     { texto: t("col.statement"), numerica: false },
                     { texto: t("col.amount"), numerica: true },
-                    { texto: t("col.lines"), numerica: true },
-                    { texto: t("col.resolved"), numerica: true },
                     { texto: t("col.missing"), numerica: true },
                     { texto: t("col.status"), numerica: false },
                   ].map(
@@ -503,7 +516,7 @@ export default function SubirPage() {
                   <Fragment key={grupo.clave}>
                     <tr className="bg-background">
                       <td
-                        colSpan={7}
+                        colSpan={5}
                         className="border-t border-border px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted"
                       >
                         {grupo.clave} ·{" "}
@@ -567,9 +580,20 @@ export default function SubirPage() {
                           {/* Los contadores salen de v_reportes, que los cuenta en el momento. Los
                               guardados en la fila envejecen: un statement resuelto seguía diciendo
                               "38 OK · 14 excepciones" cuando ya eran 52 OK y nada pendiente. */}
-                          <td className="px-5 py-2.5 text-right tabular-nums">{leyendo ? "—" : r.lineas_reales}</td>
-                          <td className="px-5 py-2.5 text-right tabular-nums">{leyendo ? "—" : r.ok_reales}</td>
-                          <td className="px-5 py-2.5 text-right tabular-nums">{leyendo ? "—" : r.pendientes_reales}</td>
+                          {/* Cuántas líneas trae y cuántas ya están resueltas salieron de acá: son
+                              detalle de adentro del statement. Desde afuera lo único que hace falta
+                              decidir es si hay trabajo pendiente o no, y eso lo dice "Missing". */}
+                          <td className="px-5 py-2.5 text-right tabular-nums">
+                            {leyendo ? (
+                              "—"
+                            ) : (r.pendientes_reales ?? 0) > 0 ? (
+                              <span className="rounded-md bg-warn-bg px-2 py-0.5 font-medium text-warn-fg">
+                                {r.pendientes_reales}
+                              </span>
+                            ) : (
+                              <span className="text-muted">0</span>
+                            )}
+                          </td>
                           <td className="px-5 py-2.5">
                             <div className="flex flex-col items-start gap-1">
                               <Badge tone={badge.tone} icon={badge.icon}>

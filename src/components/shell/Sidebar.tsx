@@ -8,7 +8,6 @@ import {
   Wallet,
   BookOpen,
   Building2,
-  Award,
   Settings,
 } from "lucide-react";
 import clsx from "clsx";
@@ -30,9 +29,16 @@ const SUBTABS = [
   { href: "/comisiones/subir", clave: "nav.commissions" as ClaveTexto, icon: Wallet, tambien: ["/comisiones/conciliacion", "/comisiones/liquidacion", "/comisiones/statement"] },
   { href: "/comisiones/clientes", clave: "nav.book" as ClaveTexto, icon: BookOpen, tambien: [] as string[] },
   { href: "/comisiones/oficinas", clave: "nav.offices" as ClaveTexto, icon: Building2, tambien: [] as string[] },
-  { href: "/comisiones/bonos", clave: "nav.bonuses" as ClaveTexto, icon: Award, tambien: [] as string[] },
-  { href: "/comisiones/configuracion", clave: "nav.settings" as ClaveTexto, icon: Settings, tambien: [] as string[] },
 ];
+
+// Settings va separado y al pie. No es un lugar donde se trabaja: se entra una vez a configurar
+// algo y no se vuelve en semanas, así que mezclarlo con las secciones de todos los días le hacía
+// ganar un lugar que no le corresponde.
+//
+// Bonuses salió del menú: un bono no es una sección aparte, es un archivo más que manda la
+// compañía. Se sube desde Commissions eligiendo ese tipo de reporte, igual que un statement. La
+// ruta sigue viva para los enlaces que ya existen.
+const PIE = { href: "/comisiones/configuracion", clave: "nav.settings" as ClaveTexto, icon: Settings };
 
 // `expandida` fuerza el estado abierto (icono + texto) sin depender del hover. El menú de celular
 // monta este mismo componente dentro de un panel que no es `.group`, así que todas las clases
@@ -112,6 +118,33 @@ export function SidebarContent({ onNavigate, expandida = false }: { onNavigate?:
           })}
         </div>
       </nav>
+
+      {/* Settings al pie, justo arriba de la firma: se entra una vez a configurar algo y no se
+          vuelve en semanas. Arriba, entre las secciones de todos los días, ganaba un lugar que no
+          le corresponde. */}
+      <div className="mt-auto flex-shrink-0 px-3 pb-1">
+        <Link
+          href={PIE.href}
+          onClick={onNavigate}
+          title={t(PIE.clave)}
+          className={clsx(
+            "relative flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-[13px]",
+            expandida ? "justify-start" : "justify-center group-hover:justify-start",
+            pathname?.startsWith(PIE.href)
+              ? "bg-brand-tint font-medium text-brand-dark"
+              : "text-[#4b5563] hover:bg-background"
+          )}
+        >
+          {pathname?.startsWith(PIE.href) && (
+            <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-brand" />
+          )}
+          <PIE.icon size={16} className="flex-shrink-0" />
+          <span className={clsx("whitespace-nowrap", expandida ? "inline" : "hidden group-hover:inline")}>
+            {t(PIE.clave)}
+          </span>
+        </Link>
+      </div>
+
       <div className="flex-shrink-0 overflow-hidden border-t border-border px-5 py-4 text-[11px] whitespace-nowrap text-[#9a9ea6]">
         <span className={expandida ? "inline" : "hidden group-hover:inline"}>Gelpi Insurance © 2026</span>
       </div>

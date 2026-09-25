@@ -209,6 +209,31 @@ function StatementContent() {
     return Array.from(m, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
   }, [data, oficinaFiltro]);
 
+  // Por qué quedó pendiente cada línea. Afuera, en la lista de statements, alcanza con saber
+  // cuántas faltan; acá adentro lo que hace falta es saber de qué se trata cada grupo, porque cada
+  // motivo se resuelve distinto: una póliza desconocida se asigna, un duplicado se descarta.
+  const MOTIVOS: Record<string, string> = {
+    chargeback_sin_original: "Cancelación sin original",
+    chargeback_varios_nombres: "Cancelación · varios clientes posibles",
+    chargeback_por_nombre: "Cancelación · cliente sugerido",
+    chargeback_poliza_sin_agente: "La póliza no tiene agente en el Book",
+    sin_candidato: "Póliza desconocida",
+    duplicado_exacto: "Duplicado",
+    poliza_sin_agente: "La póliza no tiene agente en el Book",
+    fuzzy: "Coincidencia dudosa",
+  };
+
+  const porMotivo = useMemo(() => {
+    const m = new Map<string, { n: number; monto: number }>();
+    for (const l of lineasDelAgente) {
+      if (l.grupo === "aprobado" || l.grupo === "excluida") continue;
+      const clave = MOTIVOS[l.regla ?? ""] ?? "Sin identificar";
+      const actual = m.get(clave) ?? { n: 0, monto: 0 };
+      m.set(clave, { n: actual.n + 1, monto: actual.monto + l.monto });
+    }
+    return Array.from(m, ([motivo, v]) => ({ motivo, ...v })).sort((a, b) => b.n - a.n);
+  }, [lineasDelAgente]);
+
   const nombreAgenteFiltro = agentesDelStatement.find((a) => a.value === agenteFiltro)?.label ?? "";
   const nombreOficinaFiltro = oficinasDelStatement.find((o) => o.value === oficinaFiltro)?.label ?? "";
   const descripcionFiltro = [nombreOficinaFiltro, nombreAgenteFiltro].filter(Boolean).join(" · ");
@@ -735,6 +760,20 @@ function StatementContent() {
             </>
           }
         />
+
+        {/* El desglose de por qué falta cada línea. Antes había que abrir la tabla y leer estado por
+            estado para darse cuenta de que 18 de las 24 eran el mismo problema. */}
+        {porMotivo.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-b border-border bg-warn-bg/40 px-4 py-2.5">
+            <span className="text-xs font-medium text-warn-fg">Te falta resolver:</span>
+            {porMotivo.map((m) => (
+              <span key={m.motivo} className="text-xs text-foreground">
+                <strong className="tabular-nums">{m.n}</strong> {m.motivo}
+                <span className="ml-1.5 text-muted tabular-nums">{money(m.monto)}</span>
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2 p-3 border-b border-border">
           <Input value={busqueda} onChange={setBusqueda} placeholder="Buscar por cliente o póliza…" className="w-64" />
