@@ -36,6 +36,9 @@ export interface LineaStatement {
   fechaStatement: string | null;
   estadoLinea: string;
   grupo: GrupoLinea;
+  // Con qué regla la resolvió el motor, o por qué no pudo. El estado dice "pendiente"; esto dice
+  // de qué se trata, que es lo que decide cómo se resuelve.
+  regla: string | null;
   agenteId: string | null;
   agente: string | null;
   oficinaId: string | null;
@@ -102,7 +105,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       .single(),
     fetchTodo<Record<string, unknown>>(
       "v_lineas_comision",
-      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, estado, score, agente_id, agente, oficina_id, oficina, cliente, poliza_abb, poliza_id, campos_extra",
+      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, estado, regla_match, score, agente_id, agente, oficina_id, oficina, cliente, poliza_abb, poliza_id, campos_extra",
       reporteId
     ),
     fetchTodo<Record<string, unknown>>(
@@ -140,6 +143,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       fechaStatement: (l.fecha_statement as string) ?? null,
       estadoLinea,
       grupo: grupoDeEstado(estadoLinea),
+      regla: (l.regla_match as string) ?? null,
       agenteId: (l.agente_id as string) ?? null,
       agente: (l.agente as string) ?? null,
       oficinaId: (l.oficina_id as string) ?? null,
