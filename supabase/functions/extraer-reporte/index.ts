@@ -236,6 +236,108 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 // ---------------------------------------------------------------------------
+// Dejar el reporte vacío antes de volver a cargarlo
+// ---------------------------------------------------------------------------
+
+// Reglas cuyo agente lo puso una persona, no el motor. Tiene que coincidir con REGLAS_MANUALES de
+// src/lib/queries/subir.ts: son las decisiones que no se pueden perder al recargar.
+const REGLAS_MANUALES = new Set(["manual", "override_manual", "alta_manual", "cuenta_casa", "no_es_de_este_mes"]);
+
+// Extraer no agrega líneas: las reemplaza. Pero el borrado vivía solo en la pantalla que llama a
+// esta función, así que cualquier otra forma de dispararla — un reintento, un clic doble que
+// esquive el freno, o una llamada directa a la función — insertaba encima de lo que ya estaba y
+// dejaba el statement cargado dos veces. Pasó de verdad con United: 189 líneas viejas + 219
+// nuevas = 408, y la mitad marcada como duplicado sospechoso.
+//
+// Ahora limpia la propia función, que es la única que sabe con certeza que está por insertar. Va
+// pegado al insert y no al principio: si la extracción falla a mitad de camino, los datos viejos
+// siguen ahí en vez de quedar el reporte en cero.
+async function limpiarLineasPrevias(admin: SupabaseClient, reporteId: string): Promise<void> {
+  const { data: comision } = await admin
+    .from("lineas_comision")
+    .select("id, poliza_id, agente_id, oficina_id, regla_match")
+    .eq("reporte_id", reporteId);
+  const { data: venta } = await admin.from("lineas_venta").select("id").eq("reporte_id", reporteId);
+
+  const idsComision = (comision ?? []).map((l) => l.id as string);
+  const idsVenta = (venta ?? []).map((l) => l.id as string);
+  if (idsComision.length === 0 && idsVenta.length === 0) return;
+
+  // Antes de borrar, lo decidido a mano se guarda en el Book. Sin esto, borrar sería una forma
+  // nueva de perder el trabajo del usuario: las líneas nuevas salen del archivo y no tienen cómo
+  // saber qué se había resuelto. Con el agente escrito en la póliza, el motor lo vuelve a
+  // encontrar solo por número de póliza.
+  for (const l of comision ?? []) {
+    if (!REGLAS_MANUALES.has((l.regla_match as string) ?? "") || !l.agente_id || !l.poliza_id) continue;
+    await admin
+      .from("polizas")
+      .update({ agente_id: l.agente_id, oficina_id: l.oficina_id })
+      .eq("id", l.poliza_id as string);
+  }
+
+  // Las excepciones apuntan a las líneas, así que se van primero.
+  for (const ids of chunk(idsComision, 200)) {
+    await admin.from("excepciones").delete().in("linea_comision_id", ids);
+  }
+  for (const ids of chunk(idsVenta, 200)) {
+    await admin.from("excepciones").delete().in("linea_venta_id", ids);
+  }
+  await admin.from("lineas_comision").delete().eq("reporte_id", reporteId);
+  await admin.from("lineas_venta").delete().eq("reporte_id", reporteId);
+}
+
+// ---------------------------------------------------------------------------
+// Dejar el reporte vacío antes de volver a cargarlo
+// ---------------------------------------------------------------------------
+
+// Reglas cuyo agente lo puso una persona, no el motor. Tiene que coincidir con REGLAS_MANUALES de
+// src/lib/queries/subir.ts: son las decisiones que no se pueden perder al recargar.
+const REGLAS_MANUALES = new Set(["manual", "override_manual", "alta_manual", "cuenta_casa", "no_es_de_este_mes"]);
+
+// Extraer no agrega líneas: las reemplaza. Pero el borrado vivía solo en la pantalla que llama a
+// esta función, así que cualquier otra forma de dispararla — un reintento, un clic doble que
+// esquive el freno, o una llamada directa a la función — insertaba encima de lo que ya estaba y
+// dejaba el statement cargado dos veces. Pasó de verdad con United: 189 líneas viejas + 219
+// nuevas = 408, y la mitad marcada como duplicado sospechoso.
+//
+// Ahora limpia la propia función, que es la única que sabe con certeza que está por insertar. Va
+// pegado al insert y no al principio: si la extracción falla a mitad de camino, los datos viejos
+// siguen ahí en vez de quedar el reporte en cero.
+async function limpiarLineasPrevias(admin: SupabaseClient, reporteId: string): Promise<void> {
+  const { data: comision } = await admin
+    .from("lineas_comision")
+    .select("id, poliza_id, agente_id, oficina_id, regla_match")
+    .eq("reporte_id", reporteId);
+  const { data: venta } = await admin.from("lineas_venta").select("id").eq("reporte_id", reporteId);
+
+  const idsComision = (comision ?? []).map((l) => l.id as string);
+  const idsVenta = (venta ?? []).map((l) => l.id as string);
+  if (idsComision.length === 0 && idsVenta.length === 0) return;
+
+  // Antes de borrar, lo decidido a mano se guarda en el Book. Sin esto, borrar sería una forma
+  // nueva de perder el trabajo del usuario: las líneas nuevas salen del archivo y no tienen cómo
+  // saber qué se había resuelto. Con el agente escrito en la póliza, el motor lo vuelve a
+  // encontrar solo por número de póliza.
+  for (const l of comision ?? []) {
+    if (!REGLAS_MANUALES.has((l.regla_match as string) ?? "") || !l.agente_id || !l.poliza_id) continue;
+    await admin
+      .from("polizas")
+      .update({ agente_id: l.agente_id, oficina_id: l.oficina_id })
+      .eq("id", l.poliza_id as string);
+  }
+
+  // Las excepciones apuntan a las líneas, así que se van primero.
+  for (const ids of chunk(idsComision, 200)) {
+    await admin.from("excepciones").delete().in("linea_comision_id", ids);
+  }
+  for (const ids of chunk(idsVenta, 200)) {
+    await admin.from("excepciones").delete().in("linea_venta_id", ids);
+  }
+  await admin.from("lineas_comision").delete().eq("reporte_id", reporteId);
+  await admin.from("lineas_venta").delete().eq("reporte_id", reporteId);
+}
+
+// ---------------------------------------------------------------------------
 // Capa de texto de un PDF
 // ---------------------------------------------------------------------------
 
@@ -1198,6 +1300,8 @@ Deno.serve(async (req: Request) => {
         confianza: f.confianza ?? extraccion.confianza_promedio ?? null,
       }));
 
+      await limpiarLineasPrevias(admin, reporteId!);
+      await limpiarLineasPrevias(admin, reporteId!);
       for (const b of chunk(batch, 500)) {
         const { error: insErr } = await admin.from("lineas_venta").insert(b);
         if (insErr) throw new ReporteError(`Insertando lineas_venta: ${insErr.message}`);
@@ -1307,6 +1411,8 @@ Deno.serve(async (req: Request) => {
         regla_match: esReferenciaPeriodoAnterior(f) ? "no_es_de_este_mes" : null,
       }));
 
+      await limpiarLineasPrevias(admin, reporteId!);
+      await limpiarLineasPrevias(admin, reporteId!);
       for (const b of chunk(batch, 500)) {
         const { error: insErr } = await admin.from("lineas_comision").insert(b);
         if (insErr) throw new ReporteError(`Insertando lineas_comision: ${insErr.message}`);
