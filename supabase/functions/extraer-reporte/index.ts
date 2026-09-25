@@ -1162,9 +1162,12 @@ Deno.serve(async (req: Request) => {
         // Marcarla a mano no alcanzaba, porque reprocesar borra las líneas y la marca se perdía —
         // el usuario la marcó tres veces y volvió tres veces. Entra ya descartada, y como
         // procesar_matching solo toca las 'pendiente', el motor ni la mira: sobrevive al reproceso.
-        ...(esReferenciaPeriodoAnterior(f)
-          ? { estado: "descartado", regla_match: "no_es_de_este_mes" }
-          : {}),
+        // Las dos columnas van SIEMPRE, aunque sea en null. PostgREST arma el INSERT con la union
+        // de las claves de todo el lote: si una sola fila trae `estado` y las demas no, a esas les
+        // manda NULL en vez de dejar correr el default, y la columna es NOT NULL. El lote entero se
+        // cae. Paso tal cual con United: una sola fila de referencia tumbo las 189.
+        estado: esReferenciaPeriodoAnterior(f) ? "descartado" : "pendiente",
+        regla_match: esReferenciaPeriodoAnterior(f) ? "no_es_de_este_mes" : null,
       }));
 
       for (const b of chunk(batch, 500)) {
