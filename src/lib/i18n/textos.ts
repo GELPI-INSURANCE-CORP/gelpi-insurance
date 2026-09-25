@@ -48,6 +48,10 @@ const en = {
   "statements.allCarriers": "All carriers",
   "statements.allMonths": "All months",
   "statements.noMonth": "No month",
+  "statements.groupCount": "{n} statement{s}",
+  "statements.filterType": "Report type",
+  "statements.filterStatus": "Status",
+  "statements.whatFiles": "What can I upload?",
   "statements.empty": "No statements yet",
   "statements.emptyHint": "Upload a carrier statement and the system will split the commissions.",
 
@@ -114,6 +118,10 @@ const es: Partial<Record<ClaveTexto, string>> = {
   "statements.allCarriers": "Todas las compañías",
   "statements.allMonths": "Todos los meses",
   "statements.noMonth": "Sin mes",
+  "statements.groupCount": "{n} statement{s}",
+  "statements.filterType": "Tipo de archivo",
+  "statements.filterStatus": "Estado",
+  "statements.whatFiles": "¿Qué puedo subir?",
   "statements.empty": "Todavía no hay statements",
   "statements.emptyHint": "Subí el estado de cuenta de una compañía y el sistema reparte las comisiones.",
 

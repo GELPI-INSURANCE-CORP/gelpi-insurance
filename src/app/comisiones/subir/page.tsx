@@ -8,8 +8,8 @@ import SubirReporteModal from "@/components/reportes/SubirReporteModal";
 import clsx from "clsx";
 import { Badge, Card, CardHead, EmptyState, Select, type Tone } from "@/components/ui";
 import { fechaHora, money, TIPOS_REPORTE } from "@/lib/format";
-import { useT } from "@/lib/i18n";
-import type { ClaveTexto } from "@/lib/i18n/textos";
+import { useI18n } from "@/lib/i18n";
+import type { ClaveTexto, Idioma } from "@/lib/i18n/textos";
 import {
   esReporteReintentable,
   getReporteLineas,
@@ -86,19 +86,27 @@ const TIPOS_PANTALLA_STATEMENT = new Set<TipoReporte>([
 // El mes en palabras. Se arma con UTC a propósito: mes_statement viene como "2026-08-01" y si se
 // interpreta en la zona horaria de Miami, esa fecha cae el 31 de julio a las 8 de la noche y el
 // statement de agosto aparece etiquetado como julio.
-function mesLabel(iso: string): string {
+function mesLabel(iso: string, idioma: Idioma = "en"): string {
   const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
-  const raw = d.toLocaleDateString("es-US", { year: "numeric", month: "long", timeZone: "UTC" });
+  const raw = d.toLocaleDateString(idioma === "es" ? "es-US" : "en-US", {
+    year: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  });
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
 // Agrupa por el mes del statement, no por el texto del período: ese texto lo escribe la IA
 // distinto cada vez ("Agosto 2026", "2026-08", "JULY 2026") y dos statements del mismo mes caían
 // en encabezados separados. mes_statement ya viene interpretado por la base.
-function agruparReportesPorPeriodo(lista: Reporte[]): { clave: string; reportes: Reporte[] }[] {
+function agruparReportesPorPeriodo(
+  lista: Reporte[],
+  idioma: Idioma,
+  sinMes: string
+): { clave: string; reportes: Reporte[] }[] {
   const grupos = new Map<string, Reporte[]>();
   for (const r of lista) {
-    const clave = r.mes_statement ? mesLabel(r.mes_statement) : "Sin mes asignado";
+    const clave = r.mes_statement ? mesLabel(r.mes_statement, idioma) : sinMes;
     if (!grupos.has(clave)) grupos.set(clave, []);
     grupos.get(clave)!.push(r);
   }
@@ -107,7 +115,7 @@ function agruparReportesPorPeriodo(lista: Reporte[]): { clave: string; reportes:
 
 export default function SubirPage() {
   const router = useRouter();
-  const t = useT();
+  const { t, idioma } = useI18n();
   const [aseguradoras, setAseguradoras] = useState<Aseguradora[]>([]);
   const [reportes, setReportes] = useState<Reporte[]>([]);
   const [loadingReportes, setLoadingReportes] = useState(true);
@@ -193,7 +201,7 @@ export default function SubirPage() {
     const filas = reportesVisibles.map((r) =>
       [
         r.aseguradora?.nombre ?? "",
-        r.mes_statement ? mesLabel(r.mes_statement) : "",
+        r.mes_statement ? mesLabel(r.mes_statement, idioma) : "",
         Number(r.monto_total ?? 0).toFixed(2),
         r.lineas_reales ?? 0,
         r.ok_reales ?? 0,
@@ -259,12 +267,12 @@ export default function SubirPage() {
   const mesesOptions = useMemo(() => {
     const vistos = new Map<string, string>();
     for (const r of reportes) {
-      if (r.mes_statement) vistos.set(r.mes_statement.slice(0, 10), mesLabel(r.mes_statement));
+      if (r.mes_statement) vistos.set(r.mes_statement.slice(0, 10), mesLabel(r.mes_statement, idioma));
     }
     return Array.from(vistos, ([value, label]) => ({ value, label })).sort((a, b) =>
       b.value.localeCompare(a.value)
     );
-  }, [reportes]);
+  }, [reportes, idioma]);
 
   const reportesVisibles = useMemo(
     () => (filtroMes ? reportes.filter((r) => r.mes_statement?.slice(0, 10) === filtroMes) : reportes),
@@ -287,7 +295,7 @@ export default function SubirPage() {
     ? mesesOptions.find((m) => m.value === filtroMes)?.label ?? ""
     : t("statements.allMonths").toLowerCase();
 
-  const gruposReportes = agruparReportesPorPeriodo(reportesVisibles);
+  const gruposReportes = agruparReportesPorPeriodo(reportesVisibles, idioma, t("statements.noMonth"));
 
   return (
     <div className="flex flex-col gap-7">
@@ -350,7 +358,7 @@ export default function SubirPage() {
       <details className="group/detalle">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted hover:text-foreground">
           <FileText className="h-3.5 w-3.5 flex-shrink-0" />
-          <span className="underline decoration-dotted underline-offset-2">¿Qué archivos puedo subir?</span>
+          <span className="underline decoration-dotted underline-offset-2">{t("statements.whatFiles")}</span>
           <ChevronDown className="h-3.5 w-3.5 transition-transform group-open/detalle:rotate-180" />
         </summary>
         <div className="mt-2 flex flex-col gap-2 border-l-2 border-border pl-3">
@@ -408,21 +416,21 @@ export default function SubirPage() {
           />
           <Select
             options={tipoFiltroOptions}
-            placeholder="Tipo de archivo"
+            placeholder={t("statements.filterType")}
             value={filtroTipo}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setFiltroTipo(e.target.value)}
             className="w-44"
           />
           <Select
             options={aseguradoraOptions}
-            placeholder="Aseguradora"
+            placeholder={t("statements.allCarriers")}
             value={filtroAseguradora}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setFiltroAseguradora(e.target.value)}
             className="w-40"
           />
           <Select
             options={estadoFiltroOptions}
-            placeholder="Estado del archivo"
+            placeholder={t("statements.filterStatus")}
             value={filtroEstado}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setFiltroEstado(e.target.value)}
             className="w-44"
@@ -489,7 +497,11 @@ export default function SubirPage() {
                         colSpan={7}
                         className="border-t border-border px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted"
                       >
-                        {grupo.clave} · {grupo.reportes.length} statement{grupo.reportes.length === 1 ? "" : "s"}
+                        {grupo.clave} ·{" "}
+                        {t("statements.groupCount", {
+                          n: grupo.reportes.length,
+                          s: grupo.reportes.length === 1 ? "" : "s",
+                        })}
                       </td>
                     </tr>
                     {grupo.reportes.map((r) => {
@@ -527,7 +539,7 @@ export default function SubirPage() {
                               suma al mes equivocado y el total del dashboard deja de cuadrar. */}
                           <td className="px-5 py-2.5">
                             {r.mes_statement ? (
-                              <span className="text-foreground">{mesLabel(r.mes_statement)}</span>
+                              <span className="text-foreground">{mesLabel(r.mes_statement, idioma)}</span>
                             ) : (
                               <span className="text-warn-fg">Sin mes</span>
                             )}
