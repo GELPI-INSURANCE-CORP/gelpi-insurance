@@ -61,6 +61,7 @@ function StatementContent() {
   const [busqueda, setBusqueda] = useState("");
   const [filtro, setFiltro] = useState<"todas" | GrupoLinea>("todas");
   const [agenteFiltro, setAgenteFiltro] = useState("");
+  const [oficinaFiltro, setOficinaFiltro] = useState("");
 
   const [filasPorPagina, setFilasPorPagina] = useState("100");
   const [pagina, setPagina] = useState(1);
@@ -118,6 +119,9 @@ function StatementContent() {
   const lineasDelAgente = useMemo(() => {
     if (!data) return [];
     let out = data.lineas;
+    // La oficina va antes que el agente: elegir Miami Lakes y después una persona de ahí adentro
+    // es el camino natural. Al revés no tiene sentido, y por eso cambiar de oficina limpia el agente.
+    if (oficinaFiltro) out = out.filter((l) => l.oficinaId === oficinaFiltro);
     if (agenteFiltro) out = out.filter((l) => l.agenteId === agenteFiltro);
     const term = busqueda.trim().toLowerCase();
     if (term) {
@@ -128,7 +132,7 @@ function StatementContent() {
       });
     }
     return out;
-  }, [data, agenteFiltro, busqueda]);
+  }, [data, agenteFiltro, oficinaFiltro, busqueda]);
 
   const totales = useMemo(() => {
     const suma = (g: GrupoLinea) => lineasDelAgente.filter((l) => l.grupo === g).reduce((s, l) => s + l.monto, 0);
@@ -154,7 +158,7 @@ function StatementContent() {
   // vacía, pensando que no quedó nada.
   useEffect(() => {
     setPagina(1);
-  }, [busqueda, filtro, agenteFiltro, filasPorPagina]);
+  }, [busqueda, filtro, agenteFiltro, oficinaFiltro, filasPorPagina]);
 
   const pageSizeEfectivo = filasPorPagina === "todas" ? Math.max(lineasFiltradas.length, 1) : Number(filasPorPagina);
   const totalPaginas = Math.max(1, Math.ceil(lineasFiltradas.length / pageSizeEfectivo));
@@ -182,16 +186,32 @@ function StatementContent() {
     seleccionablesFiltradas.length > 0 && seleccionablesFiltradas.every((l) => selectedIds.has(l.id));
   const haySeleccionablesFueraDeLaPagina = seleccionablesFiltradas.length > seleccionablesPagina.length;
 
-  // Solo los agentes que aparecen en este statement: ofrecer los 12 de la agencia cuando apenas 9
-  // tienen líneas hace que elegir uno y no ver nada parezca un error de la pantalla.
-  const agentesDelStatement = useMemo(() => {
+  // Solo las oficinas que aparecen en este statement, por lo mismo que los agentes: una oficina
+  // que no cobró nada este mes no tiene por qué estar en la lista.
+  const oficinasDelStatement = useMemo(() => {
     if (!data) return [];
     const m = new Map<string, string>();
-    for (const l of data.lineas) if (l.agenteId) m.set(l.agenteId, l.agente ?? "(sin nombre)");
+    for (const l of data.lineas) if (l.oficinaId) m.set(l.oficinaId, l.oficina ?? "(sin nombre)");
     return Array.from(m, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
   }, [data]);
 
+  // Solo los agentes que aparecen en este statement: ofrecer los 12 de la agencia cuando apenas 9
+  // tienen líneas hace que elegir uno y no ver nada parezca un error de la pantalla. Con una
+  // oficina elegida, además, solo los de esa oficina.
+  const agentesDelStatement = useMemo(() => {
+    if (!data) return [];
+    const m = new Map<string, string>();
+    for (const l of data.lineas) {
+      if (!l.agenteId) continue;
+      if (oficinaFiltro && l.oficinaId !== oficinaFiltro) continue;
+      m.set(l.agenteId, l.agente ?? "(sin nombre)");
+    }
+    return Array.from(m, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [data, oficinaFiltro]);
+
   const nombreAgenteFiltro = agentesDelStatement.find((a) => a.value === agenteFiltro)?.label ?? "";
+  const nombreOficinaFiltro = oficinasDelStatement.find((o) => o.value === oficinaFiltro)?.label ?? "";
+  const descripcionFiltro = [nombreOficinaFiltro, nombreAgenteFiltro].filter(Boolean).join(" · ");
 
   const puedeConfirmarLote = useMemo(
     () => (data ? data.lineas.some((l) => selectedIds.has(l.id) && l.excepcionId && l.agenteSugeridoId) : false),
@@ -432,7 +452,7 @@ function StatementContent() {
 
   function exportarCsv() {
     if (!data) return;
-    const header = ["Fila", "Póliza", "Cliente", "Tipo", "Prima", "Tasa", "Comisión", "Agente", "Estado"];
+    const header = ["Fila", "Póliza", "Cliente", "Tipo", "Prima", "Tasa", "Comisión", "Agente", "Oficina", "Estado"];
     const filas = lineasFiltradas.map((l) =>
       [
         l.fila ?? "",
@@ -443,6 +463,7 @@ function StatementContent() {
         l.tasa ?? "",
         l.monto.toFixed(2),
         l.agente ?? "",
+        l.oficina ?? "",
         l.categoriaAjuste ? (CATEGORIAS_AJUSTE.find((c) => c.value === l.categoriaAjuste)?.label ?? l.categoriaAjuste) : (ESTADOS_LINEA[l.estadoLinea]?.label ?? l.estadoLinea),
       ]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`)
@@ -452,7 +473,12 @@ function StatementContent() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
-    const nombreBase = (data.reporte.periodo ?? data.reporte.nombre_archivo).replace(/[^A-Za-z0-9._-]+/g, "-");
+    // El nombre lleva la oficina o el agente filtrado: si el CSV es para mandárselo a Miami Lakes,
+    // el archivo tiene que decirlo solo, sin que haya que renombrarlo a mano.
+    const nombreBase = [data.reporte.periodo ?? data.reporte.nombre_archivo, descripcionFiltro]
+      .filter(Boolean)
+      .join("-")
+      .replace(/[^A-Za-z0-9._-]+/g, "-");
     a.download = `statement-${nombreBase}.csv`;
     a.click();
     URL.revokeObjectURL(url);
@@ -557,19 +583,27 @@ function StatementContent() {
         </Banner>
       )}
 
-      {/* Cuando hay un agente elegido los tres números de abajo dejan de ser los del statement, así
-          que se dice explícitamente: un total que cambia sin avisar por qué es un total en el que no
-          se puede confiar. */}
-      {agenteFiltro && (
+      {/* Cuando hay una oficina o un agente elegido, los tres números de abajo dejan de ser los del
+          statement, así que se dice explícitamente: un total que cambia sin avisar por qué es un
+          total en el que no se puede confiar. */}
+      {(agenteFiltro || oficinaFiltro) && (
         <Banner
           tone="info"
           action={
-            <button type="button" className="text-xs underline" onClick={() => setAgenteFiltro("")}>
+            <button
+              type="button"
+              className="text-xs underline"
+              onClick={() => {
+                setAgenteFiltro("");
+                setOficinaFiltro("");
+              }}
+            >
               Ver el statement completo
             </button>
           }
         >
-          Mostrando solo las líneas de <strong>{nombreAgenteFiltro}</strong>. Los tres totales son de este agente.
+          Mostrando solo las líneas de <strong>{descripcionFiltro}</strong>. Los tres totales, la tabla y
+          el CSV que bajes son de esa selección.
         </Banner>
       )}
 
@@ -724,7 +758,18 @@ function StatementContent() {
             </Chip>
           )}
           <div className="flex-1" />
-          <span className="text-xs text-muted">Filtrar por agente:</span>
+          <span className="text-xs text-muted">Filtrar por:</span>
+          {oficinasDelStatement.length > 1 && (
+            <Select
+              value={oficinaFiltro}
+              onChange={(v) => {
+                setOficinaFiltro(v);
+                setAgenteFiltro("");
+              }}
+              options={[{ value: "", label: "Todas las oficinas" }, ...oficinasDelStatement]}
+              className="w-52"
+            />
+          )}
           <Select
             value={agenteFiltro}
             onChange={setAgenteFiltro}
