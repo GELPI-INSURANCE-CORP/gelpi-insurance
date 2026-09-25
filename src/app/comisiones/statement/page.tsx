@@ -177,7 +177,7 @@ function StatementContent() {
   // extender la selección a todo lo filtrado (aviso arriba de la tabla, junto a la paginación).
   // Seleccionable = todo lo que falta resolver, tenga o no excepcion interna abierta. Las
   // cancelaciones sin original no tienen excepcion y son justamente las que hay que asignar.
-  const faltaResolver = (l: LineaStatement) => l.grupo !== "aprobado" && l.grupo !== "excluida";
+  const faltaResolver = faltaResolverLinea;
   const seleccionablesPagina = useMemo(() => lineasPaginadas.filter(faltaResolver), [lineasPaginadas]);
   const seleccionablesFiltradas = useMemo(() => lineasFiltradas.filter(faltaResolver), [lineasFiltradas]);
   const paginaCompletaSeleccionada =
@@ -1065,6 +1065,15 @@ function PeriodoInline({ reporte, onActualizado }: { reporte: Reporte; onActuali
   );
 }
 
+// Qué líneas se pueden seleccionar para trabajarlas en lote. Vive suelta y no adentro del
+// componente porque la usan los dos lados: el check del encabezado, que marca la página entera, y
+// el check de cada fila. Cuando cada uno tenía su propia regla se desincronizaron —
+// "Cancelación sin original" entraba en el "marcar todo" pero no mostraba su casilla, así que no
+// se podía elegir de a una.
+export function faltaResolverLinea(l: LineaStatement): boolean {
+  return l.grupo !== "aprobado" && l.grupo !== "excluida";
+}
+
 function FilaLinea({
   l,
   selected,
@@ -1096,7 +1105,13 @@ function FilaLinea({
   return (
     <tr className={clsx("border-t border-border", selected && "bg-brand-tint/40")}>
       <td className="px-4 py-2.5">
-        {l.excepcionId && <input type="checkbox" checked={selected} onChange={() => onToggleSelected(l.id)} />}
+        {/* Antes la casilla pedía que la línea tuviera una excepción abierta. Las cancelaciones sin
+            original no abren excepción — el motor las marca y sigue — así que se quedaban sin
+            casilla y no había forma de elegirlas de a una, aunque el "marcar todo" sí las incluía.
+            La condición es la misma que usa el encabezado: si te falta resolverla, la podés elegir. */}
+        {faltaResolverLinea(l) && (
+          <input type="checkbox" checked={selected} onChange={() => onToggleSelected(l.id)} />
+        )}
       </td>
       <td className="px-4 py-2.5 text-muted">{l.fila ?? "—"}</td>
       <td className="px-4 py-2.5">
