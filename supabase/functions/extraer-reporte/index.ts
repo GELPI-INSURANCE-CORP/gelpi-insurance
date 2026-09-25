@@ -114,6 +114,32 @@ function coerceNumber(v: unknown): number | null {
   return negative ? -Math.abs(n) : n;
 }
 
+// ---------------------------------------------------------------------------
+// Secciones dentro de un mismo archivo
+// ---------------------------------------------------------------------------
+// GEICO manda un solo archivo con dos bloques: "First Year Commission" (329 filas) y
+// "Renewal Year Commission" (158). El rótulo de cada bloque es una fila de UNA sola celda —
+// exactamente la clase de fila que los parsers descartan como separador. Y el statement no
+// trae ninguna columna de tipo de transacción: el rótulo ES el único lugar donde dice que
+// esas 158 filas son renovaciones. Descartándolo, entraban indistinguibles de las nuevas.
+//
+// Se guarda en una columna sintética que viaja con cada fila. El parser todavía no sabe si el
+// archivo es de comisiones o de ventas, así que acá solo se conserva; quien lo interpreta es
+// el armado del lote, más abajo.
+const COL_SECCION = "_seccion_del_reporte";
+
+function tituloDeSeccion(fila: unknown[] | undefined): string | null {
+  const vals = (fila ?? []).map((c) => String(c ?? "").trim()).filter((s) => s !== "");
+  if (vals.length !== 1) return null;
+  const s = vals[0];
+  // Un rótulo es texto corto. Un subtotal suelto en su propia fila también ocupa una sola
+  // celda, y ese no es una sección: por eso se exige que tenga letras y que no sea un número.
+  if (s.length < 4 || s.length > 80) return null;
+  if (!/[A-Za-z]{3}/.test(s)) return null;
+  if (coerceNumber(s) !== null) return null;
+  return s;
+}
+
 function coerceDate(v: unknown): string | null {
   if (!v) return null;
   // parseXlsx lee las hojas con cellDates, así que las celdas de fecha llegan como Date. Su
@@ -192,6 +218,23 @@ function coerceTipoTransaccion(v: unknown): TipoTransaccion {
   return TIPO_TRANSACCION_CODES[s] ?? "otro";
 }
 
+// Cuando el statement no trae columna de tipo de transacción, el rótulo de la sección es la
+// única fuente que hay. GEICO parte el archivo en "First Year Commission" y "Renewal Year
+// Commission" y no lo dice en ningún otro lado. Es solo un respaldo: si la fila trae su propio
+// tipo, ese manda siempre — la sección nunca pisa un dato explícito del archivo.
+function tipoDeTransaccion(f: Record<string, unknown>): TipoTransaccion {
+  const propio = coerceTipoTransaccion(f.tipo_transaccion);
+  if (propio !== "otro") return propio;
+  const extra = f.campos_extra as Record<string, unknown> | undefined;
+  const seccion = String(extra?.[COL_SECCION] ?? "").toLowerCase();
+  if (!seccion) return propio;
+  if (/renewal|renovaci/.test(seccion)) return "renovacion";
+  if (/first year|new business|nuevo negocio/.test(seccion)) return "nueva";
+  if (/cancel/.test(seccion)) return "cancelacion";
+  if (/endorse|endoso/.test(seccion)) return "endoso";
+  return propio;
+}
+
 const RAMOS: Ramo[] = ["auto", "hogar", "comercial", "motocicleta", "bote", "inquilinos", "inundacion", "umbrella", "vida", "otro"];
 function coerceRamo(v: unknown): Ramo {
   if (!v) return null;
@@ -233,57 +276,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// Dejar el reporte vacío antes de volver a cargarlo
-// ---------------------------------------------------------------------------
-
-// Reglas cuyo agente lo puso una persona, no el motor. Tiene que coincidir con REGLAS_MANUALES de
-// src/lib/queries/subir.ts: son las decisiones que no se pueden perder al recargar.
-const REGLAS_MANUALES = new Set(["manual", "override_manual", "alta_manual", "cuenta_casa", "no_es_de_este_mes"]);
-
-// Extraer no agrega líneas: las reemplaza. Pero el borrado vivía solo en la pantalla que llama a
-// esta función, así que cualquier otra forma de dispararla — un reintento, un clic doble que
-// esquive el freno, o una llamada directa a la función — insertaba encima de lo que ya estaba y
-// dejaba el statement cargado dos veces. Pasó de verdad con United: 189 líneas viejas + 219
-// nuevas = 408, y la mitad marcada como duplicado sospechoso.
-//
-// Ahora limpia la propia función, que es la única que sabe con certeza que está por insertar. Va
-// pegado al insert y no al principio: si la extracción falla a mitad de camino, los datos viejos
-// siguen ahí en vez de quedar el reporte en cero.
-async function limpiarLineasPrevias(admin: SupabaseClient, reporteId: string): Promise<void> {
-  const { data: comision } = await admin
-    .from("lineas_comision")
-    .select("id, poliza_id, agente_id, oficina_id, regla_match")
-    .eq("reporte_id", reporteId);
-  const { data: venta } = await admin.from("lineas_venta").select("id").eq("reporte_id", reporteId);
-
-  const idsComision = (comision ?? []).map((l) => l.id as string);
-  const idsVenta = (venta ?? []).map((l) => l.id as string);
-  if (idsComision.length === 0 && idsVenta.length === 0) return;
-
-  // Antes de borrar, lo decidido a mano se guarda en el Book. Sin esto, borrar sería una forma
-  // nueva de perder el trabajo del usuario: las líneas nuevas salen del archivo y no tienen cómo
-  // saber qué se había resuelto. Con el agente escrito en la póliza, el motor lo vuelve a
-  // encontrar solo por número de póliza.
-  for (const l of comision ?? []) {
-    if (!REGLAS_MANUALES.has((l.regla_match as string) ?? "") || !l.agente_id || !l.poliza_id) continue;
-    await admin
-      .from("polizas")
-      .update({ agente_id: l.agente_id, oficina_id: l.oficina_id })
-      .eq("id", l.poliza_id as string);
-  }
-
-  // Las excepciones apuntan a las líneas, así que se van primero.
-  for (const ids of chunk(idsComision, 200)) {
-    await admin.from("excepciones").delete().in("linea_comision_id", ids);
-  }
-  for (const ids of chunk(idsVenta, 200)) {
-    await admin.from("excepciones").delete().in("linea_venta_id", ids);
-  }
-  await admin.from("lineas_comision").delete().eq("reporte_id", reporteId);
-  await admin.from("lineas_venta").delete().eq("reporte_id", reporteId);
 }
 
 // ---------------------------------------------------------------------------
@@ -466,9 +458,17 @@ function parseCsv(text: string): Record<string, string>[] {
   if (idxEncabezado === -1) return [];
   const headers = rows[idxEncabezado].map((h) => h.trim());
   const out: Record<string, string>[] = [];
+  // Igual que parseXlsx: el rótulo de sección es una fila de una sola celda y hasta ahora se
+  // perdía. Se rastrea desde el principio porque el primero suele estar arriba del encabezado.
+  let seccion: string | null = null;
+  for (let i = 0; i < idxEncabezado; i++) seccion = tituloDeSeccion(rows[i]) ?? seccion;
+  const firmaEncabezado = rows[idxEncabezado].map((h) => h.trim()).join("|");
   for (let i = idxEncabezado + 1; i < rows.length; i++) {
     const r = rows[i];
-    if (contarNoVacias(r) < MIN_CELDAS_FILA) continue; // fila vacía, separador o subtítulo de sección
+    const rotulo = tituloDeSeccion(r);
+    if (rotulo) { seccion = rotulo; continue; }
+    if (contarNoVacias(r) < MIN_CELDAS_FILA) continue; // fila vacía o separador
+    if (r.map((h) => h.trim()).join("|") === firmaEncabezado) continue; // encabezado repetido por sección
     const obj: Record<string, string> = {};
     headers.forEach((h, idx) => { obj[h || `col_${idx}`] = (r[idx] ?? "").trim(); });
     // Fila con más columnas que encabezados (típicamente una coma sin escapar en un campo de
@@ -477,6 +477,7 @@ function parseCsv(text: string): Record<string, string>[] {
     for (let extraIdx = headers.length; extraIdx < r.length; extraIdx++) {
       obj[`_csv_col_extra_${extraIdx}`] = (r[extraIdx] ?? "").trim();
     }
+    if (seccion) obj[COL_SECCION] = seccion;
     out.push(obj);
   }
   return out;
@@ -514,11 +515,26 @@ function parseXlsx(bytes: Uint8Array): Record<string, unknown>[] {
       return s || `col_${i}`;
     });
     const filas: Record<string, unknown>[] = [];
+    // El rótulo de la PRIMERA sección está arriba del encabezado (GEICO: "First Year
+    // Commission" en la fila 7, encabezado en la 8), así que se lo busca desde el principio
+    // del archivo y no desde donde arrancan los datos.
+    let seccion: string | null = null;
+    for (let i = 0; i < idxEncabezado; i++) seccion = tituloDeSeccion(matriz[i]) ?? seccion;
+    const comoEncabezado = (fila: unknown[]) =>
+      fila.map((h, idx) => String(h ?? "").trim() || `col_${idx}`).join("|");
+    const firmaEncabezado = comoEncabezado(matriz[idxEncabezado]);
     for (let i = idxEncabezado + 1; i < matriz.length; i++) {
       const fila = matriz[i];
-      if (contarNoVacias(fila) < MIN_CELDAS_FILA) continue; // fila vacía, separador o subtítulo de sección
+      const rotulo = tituloDeSeccion(fila);
+      if (rotulo) { seccion = rotulo; continue; }
+      if (contarNoVacias(fila) < MIN_CELDAS_FILA) continue; // fila vacía o separador
+      // Cada sección vuelve a repetir el encabezado. Sin esto entraría como una fila de datos
+      // cuyos valores son los nombres de las columnas: una línea de comisión en cero por
+      // sección, con el texto "Policy #" donde debería ir un número de póliza.
+      if (comoEncabezado(fila) === firmaEncabezado) continue;
       const obj: Record<string, unknown> = {};
       headers.forEach((h, idx) => { obj[h] = fila[idx] ?? ""; });
+      if (seccion) obj[COL_SECCION] = seccion;
       filas.push(obj);
     }
     porHoja.push({ nombre: sheetName, headers, filas });
@@ -727,6 +743,7 @@ Reglas:
 - monto cuando hay VARIAS columnas de comisión (ej. Progressive trae "Gross Comm" y "Net Due Agent", o "Agency Due"): elegí SIEMPRE la NETA, la que la aseguradora realmente deposita después de sus descuentos, porque es la que tiene que cuadrar contra el cheque. En la mayoría de las filas las dos coinciden; donde difieren, la neta es la correcta. Caso real: la fila "MVR FEE" de Progressive tiene Gross Comm = 0 y Net Due Agent = -1534, que es el cargo que la aseguradora le descuenta a la agencia — tomando la bruta ese descuento desaparecía y el total no cuadraba con el depósito.
 - Algunas aseguradoras (ej. United Automobile) incluyen en el statement una fila de referencia con el total ya pagado en el período anterior, sin póliza real asociada (número de póliza en ceros como "00000000000", o vacío). Esa fila no es una transacción nueva de este período: clasificala como tipo_transaccion="ajuste" y poné en nombre_asegurado EXACTAMENTE "Pago período anterior (referencia)" — ese texto es la señal que usa el sistema para dejarla fuera del total, porque no es plata de este período. No inventes un número de póliza. OJO: esto NO aplica a cargos como "MVR FEE" o fees administrativos, que sí son plata que la aseguradora descuenta este mes y tienen que sumar.
 - numero_poliza: incluí SIEMPRE el prefijo de letras del número de póliza. Si la referencia viene como "01 UAD -610794900", el número de póliza es "UAD-610794900" (el "01" inicial es un código de línea, no parte de la póliza); nunca devuelvas solo "-610794900".
+- fecha_vigencia vs fecha_statement: fecha_vigencia es cuándo la PÓLIZA empieza a cubrir ("Policy Effective Date", "Eff Date", "Vigencia"); fecha_statement es cuándo la aseguradora PROCESÓ ese movimiento ("Transaction Date", "Processed Date", "Paid Date"). Si el archivo trae las dos, mapeá cada una a la suya y no las mezcles: el sistema usa la de transacción para distinguir dos comisiones iguales de la misma póliza pagadas en días distintos, que son legítimas, de un duplicado real.
 - CRÍTICO al extraer filas de un PDF/imagen con una tabla larga: transcribí TODAS las filas de TODAS las páginas, una por una, sin resumir, sin muestrear ni saltear ninguna aunque haya decenas o cientos. No es aceptable devolver solo una parte de la tabla. Si el documento trae en algún resumen/pie de página cuántas transacciones tiene en total (ej. "Transactions processed: 219"), reportá ese número en total_filas_documento — se usa para verificar que no falte ninguna fila.
 - Cualquier columna que no tenga un campo destino claro, listala en columnas_sin_mapeo y, si te piden las filas completas, guardá su valor en campos_extra.
 - Sé conservador con la confianza (0-100): bajala si el archivo es ambiguo o está mal escaneado.`;
@@ -1260,6 +1277,14 @@ Deno.serve(async (req: Request) => {
       return filasCrudas.map((raw, idx) => {
         const out: Record<string, unknown> = { fila: idx + 1, campos_extra: {} as Record<string, unknown> };
         for (const [colOrigen, valor] of Object.entries(raw)) {
+          // La sección no es una columna del archivo sino una marca que puso el parser. Se
+          // guarda siempre en campos_extra: si el modelo decidiera mapearla a tipo_transaccion
+          // llegaría el texto "Renewal Year Commission" donde va un código, y el dato real se
+          // perdería. Acá la lee tipoDeTransaccion(), que sabe qué hacer con ella.
+          if (colOrigen === COL_SECCION) {
+            (out.campos_extra as Record<string, unknown>)[colOrigen] = valor;
+            continue;
+          }
           const crudo = mapeo[colOrigen];
           const campoDestino = crudo ? ALIAS_CAMPOS[crudo] ?? crudo : crudo;
           if (campoDestino && (CAMPOS_COMISION as readonly string[]).concat(CAMPOS_VENTA).includes(campoDestino)) {
@@ -1412,7 +1437,7 @@ Deno.serve(async (req: Request) => {
         numero_poliza_crudo: f.numero_poliza ?? null,
         nombre_asegurado_crudo: f.nombre_asegurado ?? null,
         productor_crudo: f.productor ?? null,
-        tipo_transaccion: coerceTipoTransaccion(f.tipo_transaccion),
+        tipo_transaccion: tipoDeTransaccion(f),
         ramo: coerceRamo(f.ramo),
         prima: coerceNumber(f.prima),
         tasa: tasaNormalizada(f),
