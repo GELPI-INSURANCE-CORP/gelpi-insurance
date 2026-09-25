@@ -6,22 +6,25 @@ import { Bell, Menu, Search } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { displayName, initials, signOut } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
+import type { ClaveTexto } from "@/lib/i18n/textos";
 
-const TITLES: Record<string, string> = {
-  "/comisiones/resumen": "Dashboard",
-  "/comisiones/subir": "Comisiones",
-  "/comisiones/statement": "Detalle del statement",
-  "/comisiones/conciliacion": "Conciliación",
-  "/comisiones/liquidacion": "Liquidación",
-  "/comisiones/agentes": "Agentes",
-  "/comisiones/clientes": "Book of Business",
-  "/comisiones/oficinas": "Office",
-  "/comisiones/bonos": "Bonos",
-  "/comisiones/configuracion": "Configuración",
-  "/comisiones/cuenta": "Mi cuenta",
+const TITLES: Record<string, ClaveTexto> = {
+  "/comisiones/resumen": "nav.dashboard",
+  "/comisiones/subir": "nav.commissions",
+  "/comisiones/statement": "nav.statementDetail",
+  "/comisiones/conciliacion": "nav.reconciliation",
+  "/comisiones/liquidacion": "nav.payout",
+  "/comisiones/agentes": "nav.agents",
+  "/comisiones/clientes": "nav.book",
+  "/comisiones/oficinas": "nav.offices",
+  "/comisiones/bonos": "nav.bonuses",
+  "/comisiones/configuracion": "nav.settings",
+  "/comisiones/cuenta": "nav.account",
 };
 
 export function Topbar({ onMenu }: { onMenu?: () => void }) {
+  const t = useT();
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -45,8 +48,8 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const title =
-    Object.entries(TITLES).find(([href]) => pathname?.startsWith(href))?.[1] ?? "Gelpi Insurance";
+  const claveTitulo = Object.entries(TITLES).find(([href]) => pathname?.startsWith(href))?.[1];
+  const title = claveTitulo ? t(claveTitulo) : "Gelpi Insurance";
 
   async function handleSignOut() {
     await signOut();
@@ -71,7 +74,9 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
         >
           <Menu size={18} />
         </button>
-        <h1 className="truncate text-[18px] font-semibold text-foreground">{title}</h1>
+        {/* El titulo de pantalla es lo unico en serif, como en Nextere: le da caracter sin
+            cansar la vista, que es lo que pasaria si las tablas tambien fueran serif. */}
+        <h1 className="truncate font-display text-[26px] leading-tight font-normal text-foreground">{title}</h1>
       </div>
       <div className="flex flex-shrink-0 items-center gap-4">
         <form onSubmit={buscarGlobal} className="hidden h-9 w-70 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px] text-muted focus-within:border-brand lg:flex">

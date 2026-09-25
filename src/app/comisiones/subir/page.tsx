@@ -1,13 +1,15 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, CheckCircle2, X, Inbox, GitCompare, Wallet, ChevronDown } from "lucide-react";
+import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, CheckCircle2, X, Inbox, GitCompare, Wallet, ChevronDown, Download } from "lucide-react";
 import SubirReporteModal from "@/components/reportes/SubirReporteModal";
 import clsx from "clsx";
 import { Badge, Card, CardHead, EmptyState, Select, type Tone } from "@/components/ui";
-import { fechaHora, TIPOS_REPORTE } from "@/lib/format";
+import { fechaHora, money, TIPOS_REPORTE } from "@/lib/format";
+import { useT } from "@/lib/i18n";
+import type { ClaveTexto } from "@/lib/i18n/textos";
 import {
   esReporteReintentable,
   getReporteLineas,
@@ -34,27 +36,31 @@ const ESTADOS_REPORTE: Record<string, string> = {
   bloqueado: "Bloqueado",
 };
 
-function estadoReporteBadge(r: Reporte): { tone: Tone; label: string; icon?: ReactNode } {
+// El estado que ve el usuario, dicho en plata y no en jerga del sistema. Decía "Matcheado · 40
+// pend." o "Extraído · revisar mapeo": palabras del motor, no de la agencia. Lo que hay que saber
+// mirando la lista es una sola cosa — ¿este statement ya lo puedo pagar o todavía me falta algo?
+//
+// El número de pendientes salió de acá porque ya tiene su propia columna al lado: repetirlo hacía
+// leer el mismo dato dos veces sin que la segunda agregara nada.
+type Traducir = (c: ClaveTexto, v?: Record<string, string | number>) => string;
+
+function estadoReporteBadge(r: Reporte, t: Traducir): { tone: Tone; label: string; icon?: ReactNode } {
   const pend = r.pendientes_reales ?? r.total_excepciones ?? 0;
   switch (r.estado) {
     case "subido":
-      return { tone: "neutral", label: "Subido" };
     case "extrayendo":
-      return { tone: "info", label: "Extrayendo…", icon: <RefreshCw size={12} className="animate-spin" /> };
+      return { tone: "info", label: t("status.reading"), icon: <RefreshCw size={12} className="animate-spin" /> };
     case "extraido":
-      return pend > 0
-        ? { tone: "warn", label: `Extraído · revisar mapeo (${pend} pend.)`, icon: <AlertTriangle size={12} /> }
-        : { tone: "ok", label: "Extraído", icon: <CheckCircle2 size={12} /> };
     case "matcheado":
       return pend > 0
-        ? { tone: "warn", label: `Matcheado · ${pend} pend.`, icon: <AlertTriangle size={12} /> }
-        : { tone: "ok", label: "Matcheado", icon: <CheckCircle2 size={12} /> };
+        ? { tone: "warn", label: t("status.needsWork"), icon: <AlertTriangle size={12} /> }
+        : { tone: "ok", label: t("status.readyToPay"), icon: <CheckCircle2 size={12} /> };
     case "cerrado":
-      return { tone: "ok", label: "Finalizado", icon: <CheckCircle2 size={12} /> };
+      return { tone: "ok", label: t("status.closed"), icon: <CheckCircle2 size={12} /> };
     case "error":
-      return { tone: "bad", label: "Error", icon: <AlertTriangle size={12} /> };
+      return { tone: "bad", label: t("status.failed"), icon: <AlertTriangle size={12} /> };
     case "bloqueado":
-      return { tone: "bad", label: "Bloqueado", icon: <Ban size={12} /> };
+      return { tone: "bad", label: t("status.blocked"), icon: <Ban size={12} /> };
     default:
       return { tone: "neutral", label: r.estado };
   }
@@ -77,19 +83,22 @@ const TIPOS_PANTALLA_STATEMENT = new Set<TipoReporte>([
   "otro",
 ]);
 
-// Agrupa por período (o, si no se asignó uno, por el mes de subida) para que la tabla se lea
-// como una sola lista larga con encabezados, en vez de una fila plana por archivo. Los reportes
-// ya llegan ordenados por fecha descendente, así que recorrerlos una vez con un Map alcanza para
-// que los grupos salgan en orden correcto sin tener que parsear ni comparar fechas de nuevo.
+// El mes en palabras. Se arma con UTC a propósito: mes_statement viene como "2026-08-01" y si se
+// interpreta en la zona horaria de Miami, esa fecha cae el 31 de julio a las 8 de la noche y el
+// statement de agosto aparece etiquetado como julio.
 function mesLabel(iso: string): string {
-  const raw = new Date(iso).toLocaleDateString("es-US", { year: "numeric", month: "long" });
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
+  const raw = d.toLocaleDateString("es-US", { year: "numeric", month: "long", timeZone: "UTC" });
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
+// Agrupa por el mes del statement, no por el texto del período: ese texto lo escribe la IA
+// distinto cada vez ("Agosto 2026", "2026-08", "JULY 2026") y dos statements del mismo mes caían
+// en encabezados separados. mes_statement ya viene interpretado por la base.
 function agruparReportesPorPeriodo(lista: Reporte[]): { clave: string; reportes: Reporte[] }[] {
   const grupos = new Map<string, Reporte[]>();
   for (const r of lista) {
-    const clave = r.periodo?.trim() || mesLabel(r.created_at);
+    const clave = r.mes_statement ? mesLabel(r.mes_statement) : "Sin mes asignado";
     if (!grupos.has(clave)) grupos.set(clave, []);
     grupos.get(clave)!.push(r);
   }
@@ -98,6 +107,7 @@ function agruparReportesPorPeriodo(lista: Reporte[]): { clave: string; reportes:
 
 export default function SubirPage() {
   const router = useRouter();
+  const t = useT();
   const [aseguradoras, setAseguradoras] = useState<Aseguradora[]>([]);
   const [reportes, setReportes] = useState<Reporte[]>([]);
   const [loadingReportes, setLoadingReportes] = useState(true);
@@ -106,6 +116,9 @@ export default function SubirPage() {
   const [filtroTipo, setFiltroTipo] = useState("");
   const [filtroAseguradora, setFiltroAseguradora] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
+  // El mes es el filtro que de verdad se usa: "cuánto me pagaron en agosto". Los otros tres son
+  // para buscar algo puntual. Por eso va primero y es el único que arranca con un valor puesto.
+  const [filtroMes, setFiltroMes] = useState("");
 
   const [modalAbierto, setModalAbierto] = useState(false);
 
@@ -123,6 +136,10 @@ export default function SubirPage() {
       if (!opts?.silent) setLoadingReportes(true);
       try {
         const rows = await listReportes({
+          // El Active Business Book no es un statement: es el padrón de pólizas de la agencia. Vive
+          // en Book of Business, que es donde se lo mira. Acá solo estorbaba — el usuario veía
+          // "Septiembre 2026 · 2 archivos" y los dos eran el Book.
+          familia: "statements",
           tipo: filtroTipo || undefined,
           aseguradoraId: filtroAseguradora || undefined,
           estado: filtroEstado || undefined,
@@ -169,6 +186,32 @@ export default function SubirPage() {
     };
   }, [selectedReporte?.id]);
 
+  // Baja lo que se está viendo, con los mismos números de la pantalla. El contador lo exporta ya
+  // resuelto (no el crudo de la fila) para que el Excel no contradiga lo que el usuario vio.
+  function exportarCsv() {
+    const encabezado = ["Carrier", "Statement", "Amount", "Lines", "Resolved", "Missing", "Status"];
+    const filas = reportesVisibles.map((r) =>
+      [
+        r.aseguradora?.nombre ?? "",
+        r.mes_statement ? mesLabel(r.mes_statement) : "",
+        Number(r.monto_total ?? 0).toFixed(2),
+        r.lineas_reales ?? 0,
+        r.ok_reales ?? 0,
+        r.pendientes_reales ?? 0,
+        estadoReporteBadge(r, t).label,
+      ]
+        .map((c) => `"${String(c).replace(/"/g, '""')}"`)
+        .join(",")
+    );
+    const csv = [encabezado.join(","), ...filas].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `statements-${filtroMes || "todos"}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function abrirVistaPrevia(reporte: Reporte) {
     solicitudLineasRef.current = reporte.id; // marca esta como la solicitud vigente (síncrono, no depende del render)
     setSelectedReporte(reporte);
@@ -211,7 +254,40 @@ export default function SubirPage() {
   const aseguradoraOptions = aseguradoras.map((a) => ({ value: a.id, label: a.nombre }));
   const tipoFiltroOptions = Object.entries(TIPOS_REPORTE).map(([value, label]) => ({ value, label }));
   const estadoFiltroOptions = Object.entries(ESTADOS_REPORTE).map(([value, label]) => ({ value, label }));
-  const gruposReportes = agruparReportesPorPeriodo(reportes);
+  // Los meses que de verdad tienen statements. Ofrecer meses vacíos del calendario hace que el
+  // usuario elija uno, no vea nada, y no sepa si es que no hay o si algo se rompió.
+  const mesesOptions = useMemo(() => {
+    const vistos = new Map<string, string>();
+    for (const r of reportes) {
+      if (r.mes_statement) vistos.set(r.mes_statement.slice(0, 10), mesLabel(r.mes_statement));
+    }
+    return Array.from(vistos, ([value, label]) => ({ value, label })).sort((a, b) =>
+      b.value.localeCompare(a.value)
+    );
+  }, [reportes]);
+
+  const reportesVisibles = useMemo(
+    () => (filtroMes ? reportes.filter((r) => r.mes_statement?.slice(0, 10) === filtroMes) : reportes),
+    [reportes, filtroMes]
+  );
+
+  // El total de arriba sigue al filtro. Un total que no cambia cuando cambiás el mes es un total
+  // en el que no se puede confiar — pasó con el dashboard y no se repite acá.
+  const resumen = useMemo(() => {
+    let monto = 0;
+    let faltan = 0;
+    for (const r of reportesVisibles) {
+      monto += Number(r.monto_total ?? 0);
+      faltan += r.pendientes_reales ?? 0;
+    }
+    return { monto, faltan, n: reportesVisibles.length };
+  }, [reportesVisibles]);
+
+  const etiquetaMesActual = filtroMes
+    ? mesesOptions.find((m) => m.value === filtroMes)?.label ?? ""
+    : t("statements.allMonths").toLowerCase();
+
+  const gruposReportes = agruparReportesPorPeriodo(reportesVisibles);
 
   return (
     <div className="flex flex-col gap-7">
@@ -227,8 +303,8 @@ export default function SubirPage() {
         >
           <GitCompare className="h-5 w-5 flex-shrink-0 text-brand" />
           <span className="flex flex-col">
-            <span className="text-[14px] font-semibold text-foreground">Conciliación</span>
-            <span className="text-xs text-muted">Resolvé las líneas que el sistema no pudo identificar</span>
+            <span className="text-[14px] font-semibold text-foreground">{t("reconciliation.title")}</span>
+            <span className="text-xs text-muted">{t("reconciliation.hint")}</span>
           </span>
         </Link>
         <Link
@@ -237,8 +313,8 @@ export default function SubirPage() {
         >
           <Wallet className="h-5 w-5 flex-shrink-0 text-brand" />
           <span className="flex flex-col">
-            <span className="text-[14px] font-semibold text-foreground">Liquidación</span>
-            <span className="text-xs text-muted">Cuánto le toca a cada agente este mes</span>
+            <span className="text-[14px] font-semibold text-foreground">{t("payout.title")}</span>
+            <span className="text-xs text-muted">{t("payout.hint")}</span>
           </span>
         </Link>
       </div>
@@ -258,20 +334,14 @@ export default function SubirPage() {
           formulario (tipo de reporte, compañía, período, archivo) vive en una ventana que se abre
           encima. El de ventas interno dejó de tener cajón propio y pasó a ser un tipo más dentro
           de la lista, con la explicación al lado de para qué sirve. */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col">
-          <span className="text-[15px] font-semibold text-foreground">Statements y reportes</span>
-          <span className="text-xs text-muted">
-            Subí el estado de cuenta de cada compañía y el sistema reparte las comisiones
-          </span>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <button
           type="button"
           onClick={() => setModalAbierto(true)}
           className="flex h-10 items-center gap-2 rounded-xl bg-brand px-4 text-[13px] font-semibold text-white transition-colors hover:bg-brand-dark"
         >
           <UploadCloud size={16} />
-          Subir reporte
+          {t("statements.upload")}
         </button>
       </div>
 
@@ -302,12 +372,40 @@ export default function SubirPage() {
 
       {/* TABLA DE ARCHIVOS */}
       <Card className="flex flex-col overflow-hidden rounded-2xl!">
-        <CardHead
-          title="Archivos subidos"
-          subtitle="“Te faltan” son las líneas de ese archivo que todavía esperan una decisión tuya, contadas en este momento. No tiene por qué coincidir con Conciliación: esa cola acumula también statements de meses anteriores."
-          action={<Badge tone="neutral">{reportes.length} archivo{reportes.length === 1 ? "" : "s"}</Badge>}
-        />
+        <CardHead title={t("statements.title")} subtitle={t("statements.subtitle")} />
+
+        {/* El total va arriba de todo y en grande, como en Nextere: es lo primero que se busca y
+            hasta ahora había que entrar archivo por archivo para saberlo. Sigue al filtro de mes,
+            porque un total que no cambia cuando cambiás el mes no se puede usar para nada. */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-5 py-4">
+          <div className="flex flex-col">
+            <span className="text-[13px] text-muted">
+              {t("statements.totalLabel", { mes: etiquetaMesActual })}
+            </span>
+            <span className="text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+              {money(resumen.monto)}
+            </span>
+          </div>
+          <div className="flex flex-col items-end gap-0.5 text-right">
+            <span className="text-[13px] text-muted">
+              {t("statements.countLabel", { n: resumen.n, mes: etiquetaMesActual })}
+            </span>
+            {resumen.faltan > 0 && (
+              <span className="text-[13px] font-medium text-warn-fg">
+                {t("statements.missingLabel", { n: resumen.faltan })}
+              </span>
+            )}
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-5 py-3">
+          <Select
+            options={mesesOptions}
+            placeholder={t("statements.allMonths")}
+            value={filtroMes}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setFiltroMes(e.target.value)}
+            className="w-44"
+          />
           <Select
             options={tipoFiltroOptions}
             placeholder="Tipo de archivo"
@@ -329,6 +427,18 @@ export default function SubirPage() {
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setFiltroEstado(e.target.value)}
             className="w-44"
           />
+          {/* Exportar vive con los filtros y no arriba a la derecha: es una acción sobre lo que
+              estás mirando en este momento, no una acción principal. Al lado de "Subir statement"
+              competía con él y no se distinguía cuál era cuál. */}
+          <button
+            type="button"
+            onClick={exportarCsv}
+            disabled={reportesVisibles.length === 0}
+            className="ml-auto flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-foreground hover:bg-background disabled:opacity-40"
+          >
+            <Download size={14} />
+            {t("statements.export")}
+          </button>
         </div>
 
         {loadingReportes ? (
@@ -336,7 +446,7 @@ export default function SubirPage() {
         ) : reportes.length === 0 ? (
           <EmptyState
             icon={<Inbox size={22} />}
-            title="Todavía no hay archivos"
+            title={t("statements.empty")}
             description="Subí un statement de aseguradora o un reporte de ventas usando las zonas de arriba."
           />
         ) : (
@@ -344,7 +454,19 @@ export default function SubirPage() {
             <table className="w-full border-collapse text-[13px]">
               <thead>
                 <tr className="bg-background">
-                  {["Archivo", "Tipo", "Aseguradora", "Fecha", "Filas", "Resueltas", "Te faltan", "Estado del archivo"].map(
+                  {/* El nombre del archivo salió de la tabla. "DetailedStatement20260924 (1).xlsx"
+                      no le dice nada a nadie, y peor: dos statements de meses distintos se llaman
+                      casi igual. Lo que identifica a un statement es de qué compañía es y de qué
+                      mes. El nombre del archivo sigue estando en el panel de detalle. */}
+                  {[
+                    t("col.carrier"),
+                    t("col.statement"),
+                    t("col.amount"),
+                    t("col.lines"),
+                    t("col.resolved"),
+                    t("col.missing"),
+                    t("col.status"),
+                  ].map(
                     (h, i) => (
                       <th
                         key={h}
@@ -364,14 +486,14 @@ export default function SubirPage() {
                   <Fragment key={grupo.clave}>
                     <tr className="bg-background">
                       <td
-                        colSpan={8}
+                        colSpan={7}
                         className="border-t border-border px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted"
                       >
-                        {grupo.clave} · {grupo.reportes.length} archivo{grupo.reportes.length === 1 ? "" : "s"}
+                        {grupo.clave} · {grupo.reportes.length} statement{grupo.reportes.length === 1 ? "" : "s"}
                       </td>
                     </tr>
                     {grupo.reportes.map((r) => {
-                      const badge = estadoReporteBadge(r);
+                      const badge = estadoReporteBadge(r, t);
                       const clickable = isPreviewable(r.estado);
                       // Mientras se está leyendo el archivo los contadores no significan nada.
                       const leyendo = r.estado === "subido" || r.estado === "extrayendo";
@@ -388,10 +510,39 @@ export default function SubirPage() {
                             selected && "bg-brand-tint"
                           )}
                         >
-                          <td className="px-5 py-2.5 font-medium text-foreground">{r.nombre_archivo}</td>
-                          <td className="px-5 py-2.5 text-muted">{TIPOS_REPORTE[r.tipo] ?? r.tipo}</td>
-                          <td className="px-5 py-2.5">{r.aseguradora?.nombre ?? "—"}</td>
-                          <td className="px-5 py-2.5 text-muted">{fechaHora(r.created_at)}</td>
+                          {/* La compañía es lo primero que se busca con el ojo al barrer la lista,
+                              así que va primera y en negrita. Debajo, el tipo de papel, que casi
+                              siempre dice "Statement de comisiones" y por eso no merece una columna
+                              propia — solo importa cuando NO es eso. */}
+                          <td className="px-5 py-2.5">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground">{r.aseguradora?.nombre ?? "Sin compañía"}</span>
+                              {r.tipo !== "comision_aseguradora" && (
+                                <span className="text-[11px] text-muted">{TIPOS_REPORTE[r.tipo] ?? r.tipo}</span>
+                              )}
+                            </div>
+                          </td>
+                          {/* De qué mes es el statement. Cuando la IA no pudo leerle el período al
+                              archivo se dice, en vez de inventar un mes: sin eso, el statement se
+                              suma al mes equivocado y el total del dashboard deja de cuadrar. */}
+                          <td className="px-5 py-2.5">
+                            {r.mes_statement ? (
+                              <span className="text-foreground">{mesLabel(r.mes_statement)}</span>
+                            ) : (
+                              <span className="text-warn-fg">Sin mes</span>
+                            )}
+                          </td>
+                          {/* El monto es lo que se viene a buscar, así que va en negrita y alineado
+                              a la derecha con los demás números: leer una columna de plata
+                              desalineada obliga a comparar dígito por dígito. El nombre del archivo
+                              y la fecha de subida quedan en el tooltip — existen, pero no ocupan
+                              una columna que se mira todos los días. */}
+                          <td
+                            className="px-5 py-2.5 text-right font-medium tabular-nums text-foreground"
+                            title={`${r.nombre_archivo} · ${fechaHora(r.created_at)}`}
+                          >
+                            {leyendo ? "—" : money(Number(r.monto_total ?? 0))}
+                          </td>
                           {/* Los contadores salen de v_reportes, que los cuenta en el momento. Los
                               guardados en la fila envejecen: un statement resuelto seguía diciendo
                               "38 OK · 14 excepciones" cuando ya eran 52 OK y nada pendiente. */}

@@ -48,6 +48,10 @@ export interface Reporte {
   ok_reales: number;
   pendientes_reales: number;
   fuera_reales: number;
+  // El mes al que pertenece el statement, ya interpretado por la base: el período viene escrito
+  // distinto cada vez ("Agosto 2026", "2026-08", "JULY 2026") y agrupar por ese texto ponía dos
+  // statements del mismo mes en grupos separados. Null en Book y ventas internas: no son de un mes.
+  mes_statement: string | null;
   confianza_promedio: number | null;
   mapeo_columnas: Record<string, string> | null;
   columnas_detectadas: string[] | null;
@@ -382,17 +386,28 @@ export interface FiltrosReportes {
   tipo?: string;
   aseguradoraId?: string;
   estado?: string;
+  // Qué familia de archivos se pide. El Active Business Book no es un statement — es el padrón de
+  // pólizas de la agencia — y mezclarlo en la lista de Comisiones confundía dos cosas distintas:
+  // el usuario veía "Septiembre 2026 · 2 archivos" y los dos eran el Book. Ahora cada pantalla
+  // pide lo suyo.
+  familia?: "statements" | "book";
 }
+
+// El Book se sube y se consulta desde Book of Business. Todo lo demás son papeles que manda una
+// compañía y se trabajan en Comisiones.
+const TIPO_BOOK = "actualizacion_abb";
 
 function construirQueryReportes(filtros: FiltrosReportes) {
   let q = supabase
     .from("v_reportes")
     .select(
-      "id, tipo, aseguradora_id, nombre_archivo, storage_path, mime, hash_archivo, subido_por, periodo, estado, total_lineas, total_ok, total_excepciones, lineas_reales, ok_reales, pendientes_reales, fuera_reales, confianza_promedio, mapeo_columnas, columnas_detectadas, resumen_ia, error, created_at, updated_at, aseguradora:aseguradoras(nombre)"
+      "id, tipo, aseguradora_id, nombre_archivo, storage_path, mime, hash_archivo, subido_por, periodo, estado, total_lineas, total_ok, total_excepciones, lineas_reales, ok_reales, pendientes_reales, fuera_reales, mes_statement, confianza_promedio, mapeo_columnas, columnas_detectadas, resumen_ia, error, created_at, updated_at, aseguradora:aseguradoras(nombre)"
     )
     .order("created_at", { ascending: false })
     .order("id", { ascending: true });
 
+  if (filtros.familia === "book") q = q.eq("tipo", TIPO_BOOK);
+  else if (filtros.familia === "statements") q = q.neq("tipo", TIPO_BOOK);
   if (filtros.tipo) q = q.eq("tipo", filtros.tipo);
   if (filtros.aseguradoraId) q = q.eq("aseguradora_id", filtros.aseguradoraId);
   if (filtros.estado) q = q.eq("estado", filtros.estado);

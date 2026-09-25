@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { AppShell } from "@/components/shell/AppShell";
+import { I18nProvider } from "@/lib/i18n";
 
 export default function ComisionesLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -36,5 +37,11 @@ export default function ComisionesLayout({ children }: { children: ReactNode }) 
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  // El idioma envuelve a todo el sistema y no a cada pantalla: si viviera pantalla por pantalla,
+  // cambiarlo en Settings no se reflejaría en el menú ni en el encabezado hasta recargar.
+  return (
+    <I18nProvider>
+      <AppShell>{children}</AppShell>
+    </I18nProvider>
+  );
 }

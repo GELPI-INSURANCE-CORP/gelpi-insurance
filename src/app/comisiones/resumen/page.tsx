@@ -11,9 +11,6 @@ import {
   Copy,
   Loader2,
   ShieldAlert,
-  UploadCloud,
-  UserCog,
-  Users,
 } from "lucide-react";
 import clsx from "clsx";
 import { Badge, Button, Card, CardHead, Chip, EmptyState } from "@/components/ui";
@@ -124,10 +121,6 @@ export default function ResumenPage() {
   }, [mes]);
 
   const opcionesMes = useMemo(() => Array.from({ length: 12 }, (_, i) => primerDiaDelMes(i)), []);
-  const maxAseguradora = useMemo(
-    () => Math.max(1, ...(kpis?.por_aseguradora ?? []).map((a) => a.comision)),
-    [kpis]
-  );
   const totalOficinas = kpis?.por_oficina ?? [];
   const primaPorOficina = book?.primaPorOficina ?? new Map<string, number>();
   const sumaOficinas = useMemo(
@@ -315,7 +308,14 @@ export default function ResumenPage() {
 
             <div className="lg:col-span-2">
               <Card>
-                <CardHead title="Comisiones y excepciones por oficina" />
+                <CardHead
+                  title="Comisiones y excepciones por oficina"
+                  action={
+                    <Button variant="ghost" size="sm" href="/comisiones/agentes/">
+                      Ver agentes
+                    </Button>
+                  }
+                />
                 {totalOficinas.length === 0 ? (
                   <EmptyState title="Sin datos de oficinas" description="Todavía no hay comisiones conciliadas en este período." />
                 ) : (
@@ -362,44 +362,6 @@ export default function ResumenPage() {
             </div>
           </div>
 
-          {/* Gráfico por aseguradora */}
-          <Card>
-            <CardHead title={`Comisión conciliada por aseguradora — ${etiquetaMes(mes)}`} />
-            <div className="flex flex-col gap-3 px-5 py-4">
-              {(kpis?.por_aseguradora ?? []).length === 0 ? (
-                <EmptyState title="Sin comisión conciliada en este período" />
-              ) : (
-                kpis!.por_aseguradora.map((a) => (
-                  <div key={a.aseguradora} className="grid grid-cols-[110px_minmax(0,1fr)_90px] items-center gap-3 sm:grid-cols-[130px_minmax(0,1fr)_100px]">
-                    <span className="truncate text-xs text-muted">{a.aseguradora}</span>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-neutral-bg">
-                      <div
-                        className="h-full rounded-full bg-brand"
-                        style={{ width: `${Math.max(2, (a.comision / maxAseguradora) * 100)}%` }}
-                      />
-                    </div>
-                    <span className="text-right text-sm font-medium text-foreground">{money(a.comision)}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
-
-          {/* Accesos rápidos */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Button variant="dark" href="/comisiones/subir" className="h-14 justify-center text-sm">
-              <UploadCloud size={16} />
-              Subir un reporte
-            </Button>
-            <Button variant="primary" href="/comisiones/conciliacion" className="h-14 justify-center text-sm">
-              <Users size={16} />
-              Ir a Conciliación ({totalPendientes} pendientes)
-            </Button>
-            <Button variant="secondary" href="/comisiones/agentes" className="h-14 justify-center text-sm">
-              <UserCog size={16} />
-              Ver Agentes
-            </Button>
-          </div>
         </>
       )}
     </div>
