@@ -28,6 +28,7 @@ import {
   finalizarStatement,
   reabrirStatement,
   reasignarLinea,
+  asignarLineaCreandoPoliza,
   marcarLineaComoAjuste,
   CATEGORIAS_AJUSTE,
   type GrupoLinea,
@@ -170,8 +171,11 @@ function StatementContent() {
   // "seleccionar todo" ya no puede significar a la vez "todo lo que se ve" y "todo lo filtrado":
   // se eligió lo primero, que es lo que el ojo ve al tocar el check, y se ofrece por separado
   // extender la selección a todo lo filtrado (aviso arriba de la tabla, junto a la paginación).
-  const seleccionablesPagina = useMemo(() => lineasPaginadas.filter((l) => l.excepcionId), [lineasPaginadas]);
-  const seleccionablesFiltradas = useMemo(() => lineasFiltradas.filter((l) => l.excepcionId), [lineasFiltradas]);
+  // Seleccionable = todo lo que falta resolver, tenga o no excepcion interna abierta. Las
+  // cancelaciones sin original no tienen excepcion y son justamente las que hay que asignar.
+  const faltaResolver = (l: LineaStatement) => l.grupo !== "aprobado" && l.grupo !== "excluida";
+  const seleccionablesPagina = useMemo(() => lineasPaginadas.filter(faltaResolver), [lineasPaginadas]);
+  const seleccionablesFiltradas = useMemo(() => lineasFiltradas.filter(faltaResolver), [lineasFiltradas]);
   const paginaCompletaSeleccionada =
     seleccionablesPagina.length > 0 && seleccionablesPagina.every((l) => selectedIds.has(l.id));
   const todoElFiltroSeleccionado =
@@ -197,7 +201,7 @@ function StatementContent() {
   // Solo las seleccionadas que todavia tienen una excepcion abierta: sobre una linea ya resuelta
   // no hay nada que marcar, y contarlas haria que el boton prometa mas de lo que hace.
   const seleccionadasConExcepcion = useMemo(
-    () => (data ? data.lineas.filter((l) => selectedIds.has(l.id) && l.excepcionId) : []),
+    () => (data ? data.lineas.filter((l) => selectedIds.has(l.id) && l.grupo !== "aprobado" && l.grupo !== "excluida") : []),
     [data, selectedIds]
   );
 
@@ -253,10 +257,12 @@ function StatementContent() {
   }
 
   async function asignarLinea(l: LineaStatement, agenteId: string) {
-    if (!l.excepcionId || !agenteId) return;
-    setAccionEnCursoId(l.excepcionId);
+    if (!agenteId) return;
+    setAccionEnCursoId(l.excepcionId ?? l.id);
     try {
-      await resolverExcepcion({ excepcionId: l.excepcionId, accion: "asignar", agenteId });
+      // Además de asignar, deja la póliza guardada en el Book: la línea se borra al reprocesar, la
+      // póliza no. Es lo que evita volver a asignar lo mismo todos los meses.
+      await asignarLineaCreandoPoliza(l.id, agenteId);
       setAgenteSeleccionado((prev) => {
         const next = { ...prev };
         delete next[l.id];
@@ -293,14 +299,14 @@ function StatementContent() {
 
   async function asignarSeleccionadas() {
     if (!data || !bulkAgenteId) return;
-    const objetivo = data.lineas.filter((l) => selectedIds.has(l.id) && l.excepcionId);
+    const objetivo = data.lineas.filter((l) => selectedIds.has(l.id) && l.grupo !== "aprobado" && l.grupo !== "excluida");
     if (objetivo.length === 0) return;
     setBulkBusy(true);
     let ok = 0;
     let fail = 0;
     for (const l of objetivo) {
       try {
-        await resolverExcepcion({ excepcionId: l.excepcionId!, accion: "asignar", agenteId: bulkAgenteId });
+        await asignarLineaCreandoPoliza(l.id, bulkAgenteId);
         ok += 1;
       } catch {
         fail += 1;
@@ -319,7 +325,7 @@ function StatementContent() {
   // cargos por correr reportes de vehículo de cotizaciones que no se vendieron. Es una propuesta,
   // no una decisión — el desplegable queda abierto para cambiarla.
   function abrirAjuste(lineas: LineaStatement[]) {
-    const conExcepcion = lineas.filter((l) => l.excepcionId);
+    const conExcepcion = lineas.filter(faltaResolver);
     if (conExcepcion.length === 0) return;
     setLineaAjuste(conExcepcion);
     const primera = conExcepcion[0];
@@ -1093,7 +1099,11 @@ function FilaLinea({
         <Badge tone={etiquetaAjuste ? "brand" : estado.tone}>{etiquetaAjuste ?? estado.label}</Badge>
       </td>
       <td className="px-4 py-2.5">
-        {l.excepcionId ? (
+        {/* Los controles se muestran por lo que le FALTA a la línea, no por si tiene una excepción
+            interna abierta. Las cancelaciones sin original quedan en 'en_espera' sin excepción, así
+            que antes solo mostraban "Cambiar" y no había forma de asignarles agente — que es
+            justamente lo único que hace falta para resolverlas. */}
+        {l.grupo !== "aprobado" && l.grupo !== "excluida" ? (
           <div className="flex flex-wrap items-center gap-1.5">
             {l.agenteSugeridoId && (
               <Button

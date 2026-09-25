@@ -344,3 +344,30 @@ export async function reasignarLinea(params: {
     motivo,
   });
 }
+
+export interface ResultadoAsignacion {
+  ok: boolean;
+  poliza_creada: boolean;
+  cliente_creado: boolean;
+  numero_poliza?: string;
+  motivo?: string;
+}
+
+// Asigna el agente Y deja el dato guardado en el Book. Es la diferencia entre arreglar este mes y
+// arreglarlo para siempre: la línea se borra al reprocesar, la póliza no. Si la póliza no existía
+// se crea con el número y el asegurado que trae el propio statement, reusando el cliente si ya
+// estaba; si existía pero sin agente, se le pone. A partir de ahí el motor la encuentra sola por
+// número de póliza, que es su paso más confiable.
+export async function asignarLineaCreandoPoliza(
+  lineaId: string,
+  agenteId: string,
+  motivo?: string
+): Promise<ResultadoAsignacion> {
+  const { data, error } = await supabase.rpc("asignar_linea_creando_poliza", {
+    p_linea_id: lineaId,
+    p_agente_id: agenteId,
+    p_motivo: motivo ?? null,
+  });
+  if (error) throw error;
+  return data as ResultadoAsignacion;
+}
