@@ -59,6 +59,40 @@ export function periodoActual(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+type AgenteDeLiquidacion = {
+  id: string;
+  nombre: string;
+  oficina_id: string | null;
+  activo: boolean;
+  pct_split_default: number | null;
+  pct_sobre_prima?: number | null;
+};
+
+// El frontend se despliega con un push y las migraciones se corren a mano, así que entre las dos
+// cosas hay una ventana en la que el código nuevo le pide a la base una columna que todavía no
+// existe. Si eso tumbara la pantalla entera, la liquidación quedaría muerta hasta que alguien
+// corriera el SQL. Se reintenta sin la columna nueva: se ve todo lo de antes y el pago por
+// premium sale en cero, que es lo honesto mientras el dato no exista.
+// Mismo criterio que ya se usa más abajo con la tabla `liquidaciones`.
+async function traerAgentes(): Promise<AgenteDeLiquidacion[]> {
+  const conPrima = await supabase
+    .from("agentes")
+    .select("id, nombre, oficina_id, activo, pct_split_default, pct_sobre_prima")
+    .order("nombre");
+  if (!conPrima.error) return (conPrima.data ?? []) as AgenteDeLiquidacion[];
+
+  const faltaLaColumna =
+    conPrima.error.code === "42703" || /pct_sobre_prima/.test(conPrima.error.message ?? "");
+  if (!faltaLaColumna) throw conPrima.error;
+
+  const sinPrima = await supabase
+    .from("agentes")
+    .select("id, nombre, oficina_id, activo, pct_split_default")
+    .order("nombre");
+  if (sinPrima.error) throw sinPrima.error;
+  return (sinPrima.data ?? []) as AgenteDeLiquidacion[];
+}
+
 async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
   const { desde, hasta } = rangoDePeriodo(periodo);
 
@@ -66,13 +100,13 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
   // dice cada archivo (el "Renewal Count" de Progressive, la sección de GEICO, el código de
   // transacción del resto) y no de una suposición del navegador. Ver
   // supabase/migrations/20260926000005_negocio_nuevo_para_liquidar.sql.
-  const [{ data: agentes, error }, { data: reparto, error: errReparto }, oficinas, lineas] = await Promise.all([
-    supabase.from("agentes").select("id, nombre, oficina_id, activo, pct_split_default, pct_sobre_prima").order("nombre"),
+  const [agentesRes, { data: reparto, error: errReparto }, oficinas, lineas] = await Promise.all([
+    traerAgentes(),
     supabase.rpc("liquidacion_negocio_nuevo", { p_desde: desde, p_hasta: hasta }),
     listOficinasSimple(),
     fetchTodasLineasComision(desde, hasta, ESTADOS_CONCILIADOS),
   ]);
-  if (error) throw error;
+  const agentes = agentesRes;
   if (errReparto) throw errReparto;
 
   const oficinaPorId = new Map((oficinas ?? []).map((o) => [o.id, o.nombre]));
@@ -140,11 +174,23 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
 }
 
 export async function getLiquidacion(periodo: string): Promise<Liquidacion> {
-  const { data: cerrada, error } = await supabase
+  // Igual que con los agentes: mientras la migración no esté corrida, las columnas del pago por
+  // premium no existen todavía y pedirlas tumbaría la pantalla. Se reintenta sin ellas.
+  const CAMPOS_BASE =
+    "agente_id, agente_nombre, comision_recibida, comision_nuevo, comision_renovacion, comision_sin_clasificar, pct, a_pagar";
+  const CABECERA = "id, cerrada_en, total_recibido, total_a_pagar, liquidacion_agente";
+  let { data: cerrada, error } = await supabase
     .from("liquidaciones")
-    .select("id, cerrada_en, total_recibido, total_a_pagar, liquidacion_agente(agente_id, agente_nombre, comision_recibida, comision_nuevo, comision_renovacion, comision_sin_clasificar, pct, a_pagar, prima_nuevo, pct_prima, a_pagar_prima)")
+    .select(`${CABECERA}(${CAMPOS_BASE}, prima_nuevo, pct_prima, a_pagar_prima)`)
     .eq("periodo", periodo)
     .maybeSingle();
+  if (error && (error.code === "42703" || /prima_nuevo|pct_prima|a_pagar_prima/.test(error.message ?? ""))) {
+    ({ data: cerrada, error } = await supabase
+      .from("liquidaciones")
+      .select(`${CABECERA}(${CAMPOS_BASE})`)
+      .eq("periodo", periodo)
+      .maybeSingle());
+  }
   // Si la migración de liquidaciones todavía no corrió, la tabla no existe. Eso no es motivo para
   // dejar al usuario sin la pantalla: se cae al cálculo en vivo, que es exactamente como funcionaba
   // antes. Cualquier otro error sí se levanta.
