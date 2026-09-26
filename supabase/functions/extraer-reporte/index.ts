@@ -104,7 +104,11 @@ function coerceNumber(v: unknown): number | null {
   // Limpiar '$'/','/espacios ANTES de evaluar paréntesis/signo: en formato contable el '$'
   // puede quedar fuera del paréntesis (ej. "$(1,234.56)"), y si no se limpia primero el
   // patrón de paréntesis nunca matchea y el monto negativo se pierde (da NaN).
-  s = s.replace(/[$,\s]/g, "");
+  //
+  // El '%' se limpia igual. GEICO manda la tasa como texto — "15.00%" — y sin esto
+  // Number("15.00%") es NaN: las 487 tasas del statement de agosto entraban en null. Queda 15,
+  // que es la misma convención que ya usan las demás (United guarda 13 para el 13%).
+  s = s.replace(/[$,%\s]/g, "");
   let negative = false;
   if (/^\(.*\)$/.test(s)) { negative = true; s = s.slice(1, -1); }
   if (s.startsWith("-")) { negative = true; s = s.slice(1); }
