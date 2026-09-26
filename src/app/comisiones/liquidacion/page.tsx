@@ -12,6 +12,7 @@ import {
   periodoActual,
   type Liquidacion,
 } from "@/lib/queries/liquidacion";
+import DetalleAgenteDrawer from "@/components/liquidacion/DetalleAgenteDrawer";
 
 const MESES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -43,6 +44,9 @@ function LiquidacionContent() {
   const [soloActivos, setSoloActivos] = useState(true);
   // % en edición por agente (texto libre mientras escribe; se guarda al salir del campo)
   const [pctEditado, setPctEditado] = useState<Record<string, string>>({});
+  // Qué agente está abierto en el panel de detalle. Se guarda el id y el nombre juntos para no
+  // tener que buscarlo de nuevo en la lista cuando el panel se dibuja.
+  const [verDetalle, setVerDetalle] = useState<{ id: string; nombre: string } | null>(null);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [cerrandoMes, setCerrandoMes] = useState(false);
 
@@ -267,7 +271,23 @@ function LiquidacionContent() {
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{money(f.comisionNuevo)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    {/* El número es la puerta al detalle: de acá sale el pago, así que tiene que
+                        poder abrirse y ver de dónde. Se deja como texto plano cuando no hay nada
+                        que mostrar, para no ofrecer un clic que no lleva a ningún lado. */}
+                    {f.comisionNuevo === 0 && f.comisionRenovacion === 0 && f.comisionSinClasificar === 0 ? (
+                      money(f.comisionNuevo)
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setVerDetalle({ id: f.agenteId, nombre: f.nombre })}
+                        className="tabular-nums underline decoration-dotted underline-offset-4 hover:text-brand"
+                        title={`Ver todo lo que vendió ${f.nombre} en ${etiquetaPeriodo(periodo)}`}
+                      >
+                        {money(f.comisionNuevo)}
+                      </button>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-muted">{money(f.comisionRenovacion)}</td>
                   {/* Solo se pinta cuando hay algo que revisar: un cero en amarillo en todas las
                       filas entrena a ignorar el color justo cuando importa. */}
@@ -312,6 +332,16 @@ function LiquidacionContent() {
           )}
         </div>
       </Card>
+
+      {verDetalle && (
+        <DetalleAgenteDrawer
+          agenteId={verDetalle.id}
+          nombre={verDetalle.nombre}
+          periodo={periodo}
+          etiquetaPeriodo={etiquetaPeriodo(periodo)}
+          onClose={() => setVerDetalle(null)}
+        />
+      )}
     </div>
   );
 }
