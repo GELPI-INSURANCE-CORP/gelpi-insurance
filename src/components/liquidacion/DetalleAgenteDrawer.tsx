@@ -44,7 +44,10 @@ export default function DetalleAgenteDrawer({
   const nuevo = (lineas ?? []).filter((l) => l.negocioNuevo === true);
   const renovacion = (lineas ?? []).filter((l) => l.negocioNuevo === false);
   const sinClasificar = (lineas ?? []).filter((l) => l.negocioNuevo == null);
-  const suma = (ls: LineaDeAgente[]) => ls.reduce((s, l) => s + l.comision, 0);
+  // El pago sale del PREMIUM, así que las cajas tienen que sumar premium. Antes sumaban comisión
+  // y el panel terminaba explicando un número distinto del que se clickeó.
+  const suma = (ls: LineaDeAgente[]) => ls.reduce((s, l) => s + (l.prima ?? 0), 0);
+  const sumaComision = (ls: LineaDeAgente[]) => ls.reduce((s, l) => s + l.comision, 0);
   const polizas = new Set((lineas ?? []).map((l) => l.numeroPoliza).filter((p) => p !== "—")).size;
 
   function exportar() {
@@ -80,10 +83,12 @@ export default function DetalleAgenteDrawer({
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <Caja titulo="Negocio nuevo" detalle="se paga" monto={suma(nuevo)} n={nuevo.length} destacado />
-            <Caja titulo="Renovación" detalle="no se paga" monto={suma(renovacion)} n={renovacion.length} />
+            <Caja titulo="Premium nuevo" detalle="de acá sale el pago" monto={suma(nuevo)} n={nuevo.length}
+                  comision={sumaComision(nuevo)} destacado />
+            <Caja titulo="Premium renovación" detalle="no se paga" monto={suma(renovacion)} n={renovacion.length}
+                  comision={sumaComision(renovacion)} />
             <Caja titulo="Sin clasificar" detalle="hay que revisarlo" monto={suma(sinClasificar)} n={sinClasificar.length}
-                  alerta={sinClasificar.length > 0} />
+                  comision={sumaComision(sinClasificar)} alerta={sinClasificar.length > 0} />
           </div>
 
           {lineas.length === 0 ? (
@@ -133,15 +138,21 @@ export default function DetalleAgenteDrawer({
 }
 
 function Caja({
-  titulo, detalle, monto, n, destacado, alerta,
+  titulo, detalle, monto, n, comision, destacado, alerta,
 }: {
-  titulo: string; detalle: string; monto: number; n: number; destacado?: boolean; alerta?: boolean;
+  titulo: string; detalle: string; monto: number; n: number; comision: number;
+  destacado?: boolean; alerta?: boolean;
 }) {
   return (
     <div className={alerta ? "rounded-xl border border-warn-fg/30 bg-warn-bg px-3 py-2.5" : "rounded-xl border border-border px-3 py-2.5"}>
       <div className="text-[11px] text-muted uppercase tracking-wide">{titulo}</div>
       <div className={destacado ? "text-[19px] font-semibold tabular-nums" : "text-[19px] tabular-nums"}>{money(monto)}</div>
-      <div className="text-[11px] text-muted">{n} línea{n === 1 ? "" : "s"} · {detalle}</div>
+      {/* La comisión abajo y en chico: sigue siendo útil para cuadrar contra el statement, pero
+          ya no es la base del pago y no tiene que competir con el premium por la atención. */}
+      <div className="text-[11px] text-muted">
+        {n} línea{n === 1 ? "" : "s"} · {detalle}
+      </div>
+      <div className="text-[11px] text-muted">comisión {money(comision)}</div>
     </div>
   );
 }
