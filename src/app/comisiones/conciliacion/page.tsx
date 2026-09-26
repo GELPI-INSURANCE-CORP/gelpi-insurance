@@ -27,6 +27,7 @@ import {
   Tabs,
   type TabItem,
 } from "@/components/ui";
+import SinClasificarPanel from "@/components/conciliacion/SinClasificarPanel";
 import { money, fecha, pct, RAMOS } from "@/lib/format";
 import {
   buscarPolizas,
@@ -135,7 +136,9 @@ function ConciliacionContent() {
   const [kpisError, setKpisError] = useState<string | null>(null);
 
   // ----- filtros (inicializados desde el deep-link: ?agente=, ?oficina=, ?buscar=) -----
-  const [tab, setTab] = useState<"todas" | TipoExcepcion>("todas");
+  const [tab, setTab] = useState<"todas" | TipoExcepcion | "sin_clasificar">("todas");
+  // Lo reporta el propio panel cuando carga: esa cuenta sale de otra consulta, no de v_excepciones.
+  const [sinClasificarCount, setSinClasificarCount] = useState(0);
   const [buscarTexto, setBuscarTexto] = useState(buscarUrl);
   const [buscarDebounced, setBuscarDebounced] = useState(buscarUrl);
   const [aseguradoraId, setAseguradoraId] = useState("");
@@ -236,7 +239,8 @@ function ConciliacionContent() {
   // ----- listado principal -----
   const filtros: FiltrosExcepciones = useMemo(
     () => ({
-      tipo: tab === "todas" ? undefined : tab,
+      // "sin_clasificar" no es un tipo de excepción: en esa pestaña la cola se pide sin filtrar.
+      tipo: tab === "todas" || tab === "sin_clasificar" ? undefined : tab,
       aseguradoraId: aseguradoraId || undefined,
       oficinaId: oficinaId || undefined,
       agenteId: agenteId || undefined,
@@ -451,7 +455,7 @@ function ConciliacionContent() {
   }
 
   // ----- KPI click → cambia tab -----
-  function irATab(t: "todas" | TipoExcepcion) {
+  function irATab(t: "todas" | TipoExcepcion | "sin_clasificar") {
     setTab(t);
   }
 
@@ -461,6 +465,7 @@ function ConciliacionContent() {
     { key: "sin_identificar", label: "Sin identificar", count: counts.sin_identificar, tone: "bad" },
     { key: "duplicado", label: "Duplicados sospechosos", count: counts.duplicado, tone: "neutral" },
     { key: "conflicto_venta", label: "Conflictos de venta", count: counts.conflicto_venta, tone: "info" },
+    { key: "sin_clasificar", label: "Sin clasificar", count: sinClasificarCount, tone: "warn" },
   ];
 
   const agenteOptions = agentes.map((a) => ({ value: a.id, label: a.nombre }));
@@ -560,7 +565,8 @@ function ConciliacionContent() {
             </>
           }
         />
-        {filtrosAbiertos && (
+        {/* Los filtros son de la cola de excepciones; en "Sin clasificar" no aplican. */}
+        {filtrosAbiertos && tab !== "sin_clasificar" && (
         <div className="flex flex-col gap-2.5 border-b border-border bg-background/60 px-5 py-3.5">
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -633,7 +639,13 @@ function ConciliacionContent() {
         )}
       </Card>
 
+      {/* Las líneas sin clasificar no son excepciones: ya están conciliadas y tienen agente. Lo
+          que falta es saber si cuentan como negocio nuevo, que es lo que decide si se pagan.
+          Por eso son su propia pestaña con su propia tabla, y no una fila más de la cola. */}
+      {tab === "sin_clasificar" && <SinClasificarPanel onCount={setSinClasificarCount} />}
+
       {/* TABLA — a todo el ancho; el detalle se abre como caja flotante anclada a la fila */}
+      {tab !== "sin_clasificar" && (
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <Card className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <CardHead
@@ -806,6 +818,7 @@ function ConciliacionContent() {
           </div>
         </Card>
       </div>
+      )}
 
       {/* MINI BOX flotante — anclada a la fila que se clickeó, en vez de un panel fijo */}
       {popoverPos && (

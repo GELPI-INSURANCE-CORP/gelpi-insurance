@@ -490,3 +490,90 @@ export function exportExcepcionesCsv(rows: ExcepcionRow[], filename = "cola-conc
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// =========================================================
+// Líneas que el archivo no clasificó como nuevo ni como renovación
+// =========================================================
+// A los agentes se les paga solo el negocio nuevo, así que una línea que el sistema no supo
+// clasificar es plata parada: no se paga y nadie sabe si se debería. Son sobre todo
+// cancelaciones y endosos, que por sí solos no dicen a qué término pertenecen.
+//
+// lineas_sin_clasificar() las trae junto con lo que dice la MISMA póliza en los demás
+// statements, como sugerencia. Ver 20260926000011.
+
+export interface LineaSinClasificar {
+  id: string;
+  compania: string;
+  periodo: string;
+  fecha: string | null;
+  numeroPoliza: string;
+  numeroNormalizado: string | null;
+  cliente: string;
+  tipo: string;
+  prima: number | null;
+  comision: number;
+  agente: string;
+  agenteId: string | null;
+  sugerencia: boolean | null;
+  motivo: string;
+}
+
+export async function getLineasSinClasificar(
+  desde?: string | null,
+  hasta?: string | null
+): Promise<LineaSinClasificar[]> {
+  const { data, error } = await supabase.rpc("lineas_sin_clasificar", {
+    p_desde: desde ?? null,
+    p_hasta: hasta ?? null,
+  });
+  if (error) throw error;
+  return (data ?? []).map((d: Record<string, unknown>) => ({
+    id: String(d.linea_id),
+    compania: String(d.compania ?? "—"),
+    periodo: String(d.periodo ?? "—"),
+    fecha: (d.fecha as string) ?? null,
+    numeroPoliza: String(d.numero_poliza ?? "—"),
+    numeroNormalizado: (d.numero_normalizado as string) ?? null,
+    cliente: String(d.cliente ?? "—"),
+    tipo: String(d.tipo ?? "—"),
+    prima: d.prima == null ? null : Number(d.prima),
+    comision: Number(d.comision ?? 0),
+    agente: String(d.agente ?? "Sin agente"),
+    agenteId: (d.agente_id as string) ?? null,
+    sugerencia: d.sugerencia == null ? null : Boolean(d.sugerencia),
+    motivo: String(d.sugerencia_motivo ?? ""),
+  }));
+}
+
+export interface ResultadoClasificar {
+  polizasGuardadas: number;
+  lineasAlcanzadas: number;
+  lineasSinPoliza: number;
+}
+
+// Guarda contra la PÓLIZA, no contra la línea: así un reproceso no borra la decisión. Por eso
+// puede alcanzar más líneas de las que se marcaron — las hermanas de la misma póliza.
+export async function clasificarNegocio(
+  lineaIds: string[],
+  negocioNuevo: boolean,
+  nota?: string | null
+): Promise<ResultadoClasificar> {
+  const { data, error } = await supabase.rpc("clasificar_negocio", {
+    p_lineas: lineaIds,
+    p_negocio_nuevo: negocioNuevo,
+    p_nota: nota ?? null,
+  });
+  if (error) throw error;
+  const r = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
+  return {
+    polizasGuardadas: Number(r?.polizas_guardadas ?? 0),
+    lineasAlcanzadas: Number(r?.lineas_alcanzadas ?? 0),
+    lineasSinPoliza: Number(r?.lineas_sin_poliza ?? 0),
+  };
+}
+
+export async function desclasificarNegocio(lineaIds: string[]): Promise<number> {
+  const { data, error } = await supabase.rpc("desclasificar_negocio", { p_lineas: lineaIds });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
