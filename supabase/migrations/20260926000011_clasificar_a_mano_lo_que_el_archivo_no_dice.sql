@@ -62,14 +62,14 @@ comment on table clasificacion_negocio_manual is
   'nunca le cambia el veredicto a una línea que el archivo sí clasificó.';
 
 alter table clasificacion_negocio_manual enable row level security;
-do $$
+do $do$
 begin
   if not exists (select 1 from pg_policies
                   where tablename = 'clasificacion_negocio_manual' and policyname = 'auth_all') then
     create policy auth_all on clasificacion_negocio_manual
       for all to authenticated using (true) with check (true);
   end if;
-end $$;
+end $do$;
 
 -- ---------------------------------------------------------
 -- 2. La vista, con la decisión manual como último recurso
@@ -142,14 +142,14 @@ returns table (
   sugerencia         boolean,
   sugerencia_motivo  text
 )
-language sql stable as $$
+language sql stable as $fn$
   with cia as (
     -- Las compañías del mismo grupo comparten clave, así la evidencia cruza entre ellas.
     select id, coalesce(grupo, id::text) as clave, nombre from aseguradoras
   ),
   evidencia as (
     select c.clave,
-           v.numero_normalizado,
+           v.numero_normalizado as num,
            bool_or(v.negocio_nuevo) as hay_nueva,
            bool_or(not v.negocio_nuevo) as hay_renovacion,
            count(*) as n,
@@ -210,14 +210,14 @@ language sql stable as $$
     end
   from pendientes x
   join cia c on c.id = x.aseguradora_id
-  left join evidencia e on e.clave = c.clave and e.numero_normalizado = x.numero_normalizado
+  left join evidencia e on e.clave = c.clave and e.num = x.numero_normalizado
   left join agentes a on a.id = x.agente_id
   left join polizas p on p.id = x.poliza_id
   left join clientes cl on cl.id = p.cliente_id
   where (p_desde is null or x.mes >= p_desde)
     and (p_hasta is null or x.mes <= p_hasta)
   order by x.mes desc, c.nombre, x.numero_normalizado;
-$$;
+$fn$;
 
 -- ---------------------------------------------------------
 -- 4. Guardar la decisión
@@ -234,9 +234,9 @@ create or replace function clasificar_negocio(
   p_nota text default null
 )
 returns table (polizas_guardadas int, lineas_alcanzadas int, lineas_sin_poliza int)
-language sql volatile as $$
+language sql volatile as $fn$
   with obj as (
-    select distinct r.aseguradora_id, l.numero_normalizado
+    select distinct r.aseguradora_id as asg, l.numero_normalizado as num
     from lineas_comision l
     join reportes r on r.id = l.reporte_id
     where l.id = any(p_lineas)
@@ -245,7 +245,7 @@ language sql volatile as $$
   ins as (
     insert into clasificacion_negocio_manual
       (aseguradora_id, numero_normalizado, negocio_nuevo, nota, decidido_por)
-    select o.aseguradora_id, o.numero_normalizado, p_negocio_nuevo, p_nota, auth.uid()
+    select o.asg, o.num, p_negocio_nuevo, p_nota, auth.uid()
     from obj o
     on conflict (aseguradora_id, numero_normalizado) do update
       set negocio_nuevo = excluded.negocio_nuevo,
@@ -260,16 +260,15 @@ language sql volatile as $$
     -- resuelve todas sus hermanas.
     (select count(*) from lineas_comision l
        join reportes r on r.id = l.reporte_id
-       join obj o on o.aseguradora_id = r.aseguradora_id
-                 and o.numero_normalizado = l.numero_normalizado)::int,
+       join obj o on o.asg = r.aseguradora_id and o.num = l.numero_normalizado)::int,
     (select count(*) from lineas_comision l
       where l.id = any(p_lineas) and l.numero_normalizado is null)::int;
-$$;
+$fn$;
 
 -- Deshacer una decisión, por si se marcó mal.
 create or replace function desclasificar_negocio(p_lineas uuid[])
 returns int
-language plpgsql volatile as $$
+language plpgsql volatile as $fn$
 declare v_n int;
 begin
   delete from clasificacion_negocio_manual m
@@ -280,7 +279,7 @@ begin
     and m.numero_normalizado = l.numero_normalizado;
   get diagnostics v_n = row_count;
   return v_n;
-end $$;
+end $fn$;
 
 -- ---------------------------------------------------------
 -- Qué hay para clasificar ahora mismo
