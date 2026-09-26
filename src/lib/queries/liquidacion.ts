@@ -21,6 +21,17 @@ export interface FilaLiquidacion {
   comisionNuevo: number;
   comisionRenovacion: number;
   comisionSinClasificar: number;
+  // LA BASE DE PAGO BUENA: el premium que vendió el agente, no la comisión que cobró la agencia.
+  // Con la base vieja, lo que ganaba el agente dependía de cuánto le paga la compañía a la
+  // agencia — vender $100.000 de una compañía al 15% pagaba más que vender $100.000 de una al
+  // 10%, por el mismo trabajo. Ver 20260926000012.
+  primaNuevo: number;
+  primaRenovacion: number;
+  primaSinClasificar: number;
+  // Nulo = todavía no se le definió el porcentaje a este agente. No es lo mismo que 0: uno es
+  // "no cobra nada" y el otro es "falta configurarlo", y la pantalla los muestra distinto.
+  pctPrima: number | null;
+  aPagarPrima: number;
 }
 
 export interface Liquidacion {
@@ -28,6 +39,8 @@ export interface Liquidacion {
   filas: FilaLiquidacion[];
   totalRecibido: number;
   totalAPagar: number;
+  totalPrimaNuevo: number;
+  totalAPagarPrima: number;
   sinAsignar: number;
   // Un período cerrado muestra la foto que se guardó al cerrarlo, no un cálculo en vivo: cambiar
   // el % de un agente después no puede mover lo que ya se pagó.
@@ -54,7 +67,7 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
   // transacción del resto) y no de una suposición del navegador. Ver
   // supabase/migrations/20260926000005_negocio_nuevo_para_liquidar.sql.
   const [{ data: agentes, error }, { data: reparto, error: errReparto }, oficinas, lineas] = await Promise.all([
-    supabase.from("agentes").select("id, nombre, oficina_id, activo, pct_split_default").order("nombre"),
+    supabase.from("agentes").select("id, nombre, oficina_id, activo, pct_split_default, pct_sobre_prima").order("nombre"),
     supabase.rpc("liquidacion_negocio_nuevo", { p_desde: desde, p_hasta: hasta }),
     listOficinasSimple(),
     fetchTodasLineasComision(desde, hasta, ESTADOS_CONCILIADOS),
@@ -68,6 +81,10 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
     comision_nuevo: number;
     comision_renovacion: number;
     comision_sin_clasificar: number;
+    prima_nuevo: number | null;
+    prima_renovacion: number | null;
+    prima_sin_clasificar: number | null;
+    a_pagar_prima: number | null;
   };
   const repartoPorAgente = new Map<string, Reparto>(
     ((reparto ?? []) as Reparto[]).map((r) => [r.agente_id, r])
@@ -84,6 +101,9 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
     const comisionRenovacion = Number(r?.comision_renovacion ?? 0);
     const comisionSinClasificar = Number(r?.comision_sin_clasificar ?? 0);
     const pct = Number(a.pct_split_default ?? 0);
+    const primaNuevo = Number(r?.prima_nuevo ?? 0);
+    // El % sobre prima puede no estar puesto todavía, y eso hay que poder distinguirlo de un 0.
+    const pctPrima = a.pct_sobre_prima == null ? null : Number(a.pct_sobre_prima);
     return {
       agenteId: a.id,
       nombre: a.nombre,
@@ -98,6 +118,11 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
       comisionSinClasificar,
       // El porcentaje se aplica solo sobre el negocio nuevo.
       aPagar: (comisionNuevo * pct) / 100,
+      primaNuevo,
+      primaRenovacion: Number(r?.prima_renovacion ?? 0),
+      primaSinClasificar: Number(r?.prima_sin_clasificar ?? 0),
+      pctPrima,
+      aPagarPrima: (primaNuevo * (pctPrima ?? 0)) / 100,
     };
   });
 
@@ -106,6 +131,8 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
     filas,
     totalRecibido: filas.reduce((s, f) => s + f.comisionRecibida, 0),
     totalAPagar: filas.reduce((s, f) => s + f.aPagar, 0),
+    totalPrimaNuevo: filas.reduce((s, f) => s + f.primaNuevo, 0),
+    totalAPagarPrima: filas.reduce((s, f) => s + f.aPagarPrima, 0),
     sinAsignar,
     cerrada: false,
     cerradaEn: null,
@@ -115,7 +142,7 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
 export async function getLiquidacion(periodo: string): Promise<Liquidacion> {
   const { data: cerrada, error } = await supabase
     .from("liquidaciones")
-    .select("id, cerrada_en, total_recibido, total_a_pagar, liquidacion_agente(agente_id, agente_nombre, comision_recibida, comision_nuevo, comision_renovacion, comision_sin_clasificar, pct, a_pagar)")
+    .select("id, cerrada_en, total_recibido, total_a_pagar, liquidacion_agente(agente_id, agente_nombre, comision_recibida, comision_nuevo, comision_renovacion, comision_sin_clasificar, pct, a_pagar, prima_nuevo, pct_prima, a_pagar_prima)")
     .eq("periodo", periodo)
     .maybeSingle();
   // Si la migración de liquidaciones todavía no corrió, la tabla no existe. Eso no es motivo para
@@ -146,6 +173,9 @@ export async function getLiquidacion(periodo: string): Promise<Liquidacion> {
     comision_sin_clasificar: number | null;
     pct: number;
     a_pagar: number;
+    prima_nuevo: number | null;
+    pct_prima: number | null;
+    a_pagar_prima: number | null;
   }[];
 
   const filas: FilaLiquidacion[] = detalle
@@ -165,6 +195,13 @@ export async function getLiquidacion(periodo: string): Promise<Liquidacion> {
         comisionRenovacion: Number(d.comision_renovacion ?? 0),
         comisionSinClasificar: Number(d.comision_sin_clasificar ?? 0),
         aPagar: Number(d.a_pagar ?? 0),
+        // Los meses cerrados antes de que existiera el pago por premium no lo guardaron. Quedan
+        // en cero y con el % nulo, que es la verdad: en esos meses el pago no salió de ahí.
+        primaNuevo: Number(d.prima_nuevo ?? 0),
+        primaRenovacion: 0,
+        primaSinClasificar: 0,
+        pctPrima: d.pct_prima == null ? null : Number(d.pct_prima),
+        aPagarPrima: Number(d.a_pagar_prima ?? 0),
       };
     })
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -174,6 +211,8 @@ export async function getLiquidacion(periodo: string): Promise<Liquidacion> {
     filas,
     totalRecibido: Number(cerrada.total_recibido ?? 0),
     totalAPagar: Number(cerrada.total_a_pagar ?? 0),
+    totalPrimaNuevo: filas.reduce((s, f) => s + f.primaNuevo, 0),
+    totalAPagarPrima: filas.reduce((s, f) => s + f.aPagarPrima, 0),
     sinAsignar: 0,
     cerrada: true,
     cerradaEn: cerrada.cerrada_en as string,
@@ -185,11 +224,21 @@ export async function actualizarPctSplit(agenteId: string, pct: number): Promise
   if (error) throw error;
 }
 
+// El porcentaje sobre el premium vendido, que es la base de pago buena. Se guarda null cuando se
+// borra el campo, y no 0: "todavía no lo definí" y "a este no le pago nada" son cosas distintas
+// y la pantalla las tiene que poder mostrar distinto.
+export async function actualizarPctSobrePrima(agenteId: string, pct: number | null): Promise<void> {
+  const { error } = await supabase.from("agentes").update({ pct_sobre_prima: pct }).eq("id", agenteId);
+  if (error) throw error;
+}
+
 // Congela el mes: guarda cuánto entró por cada agente, con qué % y cuánto se le paga. A partir de
 // acá, tocar el % de un agente no mueve este mes.
 export async function cerrarLiquidacion(periodo: string): Promise<void> {
   const viva = await getLiquidacionEnVivo(periodo);
-  const conMovimiento = viva.filas.filter((f) => f.comisionRecibida !== 0);
+  // También cuenta el premium: un agente puede tener negocio nuevo cargado y todavía no tener
+  // comisión conciliada, y dejarlo fuera del recibo borraría su venta del mes.
+  const conMovimiento = viva.filas.filter((f) => f.comisionRecibida !== 0 || f.primaNuevo !== 0);
   if (conMovimiento.length === 0) {
     throw new Error("No hay comisiones conciliadas en este período, no hay nada que cerrar.");
   }
@@ -223,6 +272,9 @@ export async function cerrarLiquidacion(periodo: string): Promise<void> {
       comision_sin_clasificar: f.comisionSinClasificar,
       pct: f.pct,
       a_pagar: f.aPagar,
+      prima_nuevo: f.primaNuevo,
+      pct_prima: f.pctPrima,
+      a_pagar_prima: f.aPagarPrima,
     }))
   );
   if (errDet) {
