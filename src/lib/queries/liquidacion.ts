@@ -14,6 +14,13 @@ export interface FilaLiquidacion {
   pct: number;
   comisionRecibida: number;
   aPagar: number;
+  // A los agentes se les paga un porcentaje SOLO del negocio nuevo; las renovaciones no se pagan.
+  // Las tres cifras van por separado y no solo la que se paga, porque un número suelto no deja
+  // ver de dónde sale. `sinClasificar` es la importante de mirar: si tiene plata, hay líneas que
+  // el sistema no pudo separar entre nuevo y renovación, y conviene revisarlas antes de pagar.
+  comisionNuevo: number;
+  comisionRenovacion: number;
+  comisionSinClasificar: number;
 }
 
 export interface Liquidacion {
@@ -42,27 +49,40 @@ export function periodoActual(): string {
 async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
   const { desde, hasta } = rangoDePeriodo(periodo);
 
-  const [{ data: agentes, error }, oficinas, lineas] = await Promise.all([
+  // El corte entre negocio nuevo y renovación lo hace la base, no esta pantalla: sale de lo que
+  // dice cada archivo (el "Renewal Count" de Progressive, la sección de GEICO, el código de
+  // transacción del resto) y no de una suposición del navegador. Ver
+  // supabase/migrations/20260926000005_negocio_nuevo_para_liquidar.sql.
+  const [{ data: agentes, error }, { data: reparto, error: errReparto }, oficinas, lineas] = await Promise.all([
     supabase.from("agentes").select("id, nombre, oficina_id, activo, pct_split_default").order("nombre"),
+    supabase.rpc("liquidacion_negocio_nuevo", { p_desde: desde, p_hasta: hasta }),
     listOficinasSimple(),
     fetchTodasLineasComision(desde, hasta, ESTADOS_CONCILIADOS),
   ]);
   if (error) throw error;
+  if (errReparto) throw errReparto;
 
   const oficinaPorId = new Map((oficinas ?? []).map((o) => [o.id, o.nombre]));
-  const comisionPorAgente = new Map<string, number>();
+  type Reparto = {
+    agente_id: string;
+    comision_nuevo: number;
+    comision_renovacion: number;
+    comision_sin_clasificar: number;
+  };
+  const repartoPorAgente = new Map<string, Reparto>(
+    ((reparto ?? []) as Reparto[]).map((r) => [r.agente_id, r])
+  );
+
+  // Las líneas sin agente se siguen contando aparte: es plata del período que todavía no tiene
+  // dueño, y tiene que verse aunque no entre en el pago de nadie.
   let sinAsignar = 0;
-  for (const l of lineas) {
-    const monto = Number(l.monto ?? 0);
-    if (!l.agente_id) {
-      sinAsignar += monto;
-      continue;
-    }
-    comisionPorAgente.set(l.agente_id, (comisionPorAgente.get(l.agente_id) ?? 0) + monto);
-  }
+  for (const l of lineas) if (!l.agente_id) sinAsignar += Number(l.monto ?? 0);
 
   const filas: FilaLiquidacion[] = (agentes ?? []).map((a) => {
-    const comisionRecibida = comisionPorAgente.get(a.id) ?? 0;
+    const r = repartoPorAgente.get(a.id);
+    const comisionNuevo = Number(r?.comision_nuevo ?? 0);
+    const comisionRenovacion = Number(r?.comision_renovacion ?? 0);
+    const comisionSinClasificar = Number(r?.comision_sin_clasificar ?? 0);
     const pct = Number(a.pct_split_default ?? 0);
     return {
       agenteId: a.id,
@@ -70,8 +90,14 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
       oficinaNombre: (a.oficina_id && oficinaPorId.get(a.oficina_id)) || "Sin oficina",
       activo: a.activo,
       pct,
-      comisionRecibida,
-      aPagar: (comisionRecibida * pct) / 100,
+      // Lo que entró a nombre del agente, todo junto. Se sigue mostrando para poder comparar
+      // contra el statement, pero ya NO es la base del pago.
+      comisionRecibida: comisionNuevo + comisionRenovacion + comisionSinClasificar,
+      comisionNuevo,
+      comisionRenovacion,
+      comisionSinClasificar,
+      // El porcentaje se aplica solo sobre el negocio nuevo.
+      aPagar: (comisionNuevo * pct) / 100,
     };
   });
 
@@ -89,7 +115,7 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
 export async function getLiquidacion(periodo: string): Promise<Liquidacion> {
   const { data: cerrada, error } = await supabase
     .from("liquidaciones")
-    .select("id, cerrada_en, total_recibido, total_a_pagar, liquidacion_agente(agente_id, agente_nombre, comision_recibida, pct, a_pagar)")
+    .select("id, cerrada_en, total_recibido, total_a_pagar, liquidacion_agente(agente_id, agente_nombre, comision_recibida, comision_nuevo, comision_renovacion, comision_sin_clasificar, pct, a_pagar)")
     .eq("periodo", periodo)
     .maybeSingle();
   // Si la migración de liquidaciones todavía no corrió, la tabla no existe. Eso no es motivo para
@@ -115,6 +141,9 @@ export async function getLiquidacion(periodo: string): Promise<Liquidacion> {
     agente_id: string;
     agente_nombre: string;
     comision_recibida: number;
+    comision_nuevo: number | null;
+    comision_renovacion: number | null;
+    comision_sin_clasificar: number | null;
     pct: number;
     a_pagar: number;
   }[];
@@ -129,6 +158,12 @@ export async function getLiquidacion(periodo: string): Promise<Liquidacion> {
         activo: hoy?.activo ?? false,
         pct: Number(d.pct ?? 0),
         comisionRecibida: Number(d.comision_recibida ?? 0),
+        // Los meses cerrados antes del corte por tipo de negocio no guardaron el desglose: en
+        // esos el pago se calculó sobre la comisión entera, así que esa ES la base que se usó, y
+        // mostrarla como tal es más fiel que mostrar un cero.
+        comisionNuevo: Number(d.comision_nuevo ?? 0) || Number(d.comision_recibida ?? 0),
+        comisionRenovacion: Number(d.comision_renovacion ?? 0),
+        comisionSinClasificar: Number(d.comision_sin_clasificar ?? 0),
         aPagar: Number(d.a_pagar ?? 0),
       };
     })
@@ -183,6 +218,9 @@ export async function cerrarLiquidacion(periodo: string): Promise<void> {
       agente_id: f.agenteId,
       agente_nombre: f.nombre,
       comision_recibida: f.comisionRecibida,
+      comision_nuevo: f.comisionNuevo,
+      comision_renovacion: f.comisionRenovacion,
+      comision_sin_clasificar: f.comisionSinClasificar,
       pct: f.pct,
       a_pagar: f.aPagar,
     }))

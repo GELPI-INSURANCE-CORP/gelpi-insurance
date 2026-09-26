@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { UploadCloud, Search, X, FileText, Loader2, Plus } from "lucide-react";
 import clsx from "clsx";
-import { Modal } from "@/components/agentes/ui";
+import { Modal, Select } from "@/components/agentes/ui";
 import { TIPOS_REPORTE } from "@/lib/format";
 import {
   DuplicadoError,
@@ -46,6 +46,40 @@ const AYUDA: Partial<Record<TipoReporte, string>> = {
 
 const SIN_ASEGURADORA: TipoReporte[] = ["venta_interna"];
 
+const MESES = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+// Un statement siempre llega el mes siguiente al período que cubre (el de agosto se sube en
+// septiembre), así que lo que conviene tener preseleccionado es el mes anterior al actual, no el
+// actual. En enero el mes anterior es diciembre del año pasado — por eso se arma con Date en vez
+// de restar 1 al mes a mano.
+function mesAnteriorPorDefecto(): { mes: number; anio: number } {
+  const hoy = new Date();
+  const d = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+  return { mes: d.getMonth() + 1, anio: d.getFullYear() };
+}
+
+// Desde dos años atrás hasta el año que viene, calculado siempre contra la fecha de hoy para no
+// tener que volver a esta lista cada enero.
+function aniosDisponibles(): number[] {
+  const actual = new Date().getFullYear();
+  const out: number[] = [];
+  for (let a = actual - 2; a <= actual + 1; a++) out.push(a);
+  return out;
+}
+
 export default function SubirReporteModal({
   open,
   onClose,
@@ -62,7 +96,8 @@ export default function SubirReporteModal({
   const [tipo, setTipo] = useState<TipoReporte>("comision_aseguradora");
   const [aseguradoraId, setAseguradoraId] = useState("");
   const [busqueda, setBusqueda] = useState("");
-  const [periodo, setPeriodo] = useState("");
+  const [periodoMes, setPeriodoMes] = useState(() => String(mesAnteriorPorDefecto().mes).padStart(2, "0"));
+  const [periodoAnio, setPeriodoAnio] = useState(() => String(mesAnteriorPorDefecto().anio));
   const [archivos, setArchivos] = useState<File[]>([]);
   const [arrastrando, setArrastrando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
@@ -77,7 +112,9 @@ export default function SubirReporteModal({
     setTipo("comision_aseguradora");
     setAseguradoraId("");
     setBusqueda("");
-    setPeriodo("");
+    const def = mesAnteriorPorDefecto();
+    setPeriodoMes(String(def.mes).padStart(2, "0"));
+    setPeriodoAnio(String(def.anio));
     setArchivos([]);
     setError(null);
   }, [open]);
@@ -131,6 +168,11 @@ export default function SubirReporteModal({
       setError("Elegí la compañía.");
       return;
     }
+    if (!periodoMes || !periodoAnio) {
+      setError("Falta el período.");
+      return;
+    }
+    const periodo = `${periodoAnio}-${periodoMes}`;
     setSubiendo(true);
     setError(null);
     const fallados: string[] = [];
@@ -140,7 +182,7 @@ export default function SubirReporteModal({
           file,
           tipo,
           aseguradoraId: pideAseguradora ? aseguradoraId : null,
-          periodo: periodo.trim() || null,
+          periodo,
         });
       } catch (err) {
         fallados.push(
@@ -245,13 +287,21 @@ export default function SubirReporteModal({
           </Campo>
         )}
 
-        <Campo label="Período" opcional>
-          <input
-            value={periodo}
-            onChange={(e) => setPeriodo(e.target.value)}
-            placeholder="Agosto 2026"
-            className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-[13px] text-foreground outline-none placeholder:text-muted focus:border-brand"
-          />
+        <Campo label="Período">
+          <div className="flex gap-2">
+            <Select
+              value={periodoMes}
+              onChange={setPeriodoMes}
+              options={MESES.map((nombre, i) => ({ value: String(i + 1).padStart(2, "0"), label: nombre }))}
+              className="flex-1"
+            />
+            <Select
+              value={periodoAnio}
+              onChange={setPeriodoAnio}
+              options={aniosDisponibles().map((a) => ({ value: String(a), label: String(a) }))}
+              className="w-28"
+            />
+          </div>
         </Campo>
 
         <Campo label="Archivo">

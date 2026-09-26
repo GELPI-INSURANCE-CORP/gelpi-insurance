@@ -19,16 +19,17 @@ import { money } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import type { ClaveTexto, Idioma } from "@/lib/i18n/textos";
 import {
-  type AgenteRanking,
   type BookResumen,
   type ExcepcionRow,
+  type OficinaRanking,
   type ProduccionMes,
   type ResumenKpis,
   getBookResumen,
   getExcepcionesPendientesCount,
   getExcepcionesTop,
+  getPrimaSinClasificar,
   getProduccionPorMes,
-  getRankingAgentes,
+  getRankingOficinas,
   getResumenKpis,
   rangoDelMes,
 } from "@/lib/queries/resumen";
@@ -96,7 +97,8 @@ export default function ResumenPage() {
   const [totalPendientes, setTotalPendientes] = useState(0);
   const [book, setBook] = useState<BookResumen | null>(null);
   const [produccion, setProduccion] = useState<ProduccionMes[]>([]);
-  const [ranking, setRanking] = useState<AgenteRanking[]>([]);
+  const [ranking, setRanking] = useState<OficinaRanking[]>([]);
+  const [primaSinClasificar, setPrimaSinClasificar] = useState(0);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,9 +129,10 @@ export default function ResumenPage() {
       getExcepcionesPendientesCount(),
       getBookResumen(),
       getProduccionPorMes(desdeAnio, hastaAnio),
-      getRankingAgentes(desde, hasta, 10),
+      getRankingOficinas(desde, hasta, 10),
+      getPrimaSinClasificar(desde, hasta),
     ])
-      .then(([k, ex, n, b, prod, rank]) => {
+      .then(([k, ex, n, b, prod, rank, sinClasificar]) => {
         if (!activo) return;
         setKpis(k);
         setExcepciones(ex);
@@ -137,6 +140,7 @@ export default function ResumenPage() {
         setBook(b);
         setProduccion(prod);
         setRanking(rank);
+        setPrimaSinClasificar(sinClasificar);
       })
       .catch((err: unknown) => {
         if (!activo) return;
@@ -148,6 +152,7 @@ export default function ResumenPage() {
         setBook(null);
         setProduccion([]);
         setRanking([]);
+        setPrimaSinClasificar(0);
       })
       .finally(() => {
         if (activo) setCargando(false);
@@ -352,36 +357,43 @@ export default function ResumenPage() {
 
             <Card className="overflow-hidden">
               <CardHead
-                title={t("dash.topAgents")}
-                subtitle={t("dash.byReconciledCommission")}
+                title={t("dash.topOffices")}
+                subtitle={t("dash.byNewBusinessPremium")}
               />
               {ranking.length === 0 ? (
                 <p className="px-5 py-8 text-center text-[13px] text-muted">
-                  {t("dash.noAgentCommission", { mes: etiquetaMes(mes, idioma) })}
+                  {t("dash.noOfficePremium", { mes: etiquetaMes(mes, idioma) })}
                 </p>
               ) : (
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="border-b border-border bg-background">
-                      <th className="px-5 py-2.5 text-left font-medium text-muted">{t("col.agent")}</th>
                       <th className="px-5 py-2.5 text-left font-medium text-muted">{t("col.office")}</th>
                       <th className="px-5 py-2.5 text-right font-medium text-muted">{t("col.lines")}</th>
+                      <th className="px-5 py-2.5 text-right font-medium text-muted">{t("dash.newBusinessPremium")}</th>
                       <th className="px-5 py-2.5 text-right font-medium text-muted">{t("dash.commission")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {ranking.map((a) => (
-                      <tr key={a.agente_id} className="border-b border-border last:border-b-0">
-                        <td className="px-5 py-3 font-medium text-foreground">{a.agente}</td>
-                        <td className="px-5 py-3 text-muted">{a.oficina ?? "—"}</td>
-                        <td className="px-5 py-3 text-right tabular-nums text-muted">{a.lineas}</td>
+                    {ranking.map((o) => (
+                      <tr key={o.oficina_id ?? "sin-oficina"} className="border-b border-border last:border-b-0">
+                        <td className="px-5 py-3 font-medium text-foreground">{o.oficina}</td>
+                        <td className="px-5 py-3 text-right tabular-nums text-muted">{o.polizas}</td>
                         <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">
-                          {money(Number(a.comision))}
+                          {money(Number(o.prima))}
+                        </td>
+                        <td className="px-5 py-3 text-right tabular-nums text-muted">
+                          {money(Number(o.comision))}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              )}
+              {primaSinClasificar > 0 && (
+                <div className="px-5 pb-4 pt-2 text-xs text-muted">
+                  {t("dash.unclassifiedPremiumNote", { monto: money(primaSinClasificar) })}
+                </div>
               )}
             </Card>
           </div>

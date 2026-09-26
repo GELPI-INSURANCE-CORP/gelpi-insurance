@@ -101,6 +101,42 @@ export async function getRankingAgentes(
   return (data ?? []) as AgenteRanking[];
 }
 
+export interface OficinaRanking {
+  oficina_id: string | null;
+  oficina: string;
+  polizas: number;
+  prima: number;
+  comision: number;
+}
+
+// Reemplaza al ranking de agentes: por oficina (agentes.oficina_id) y por prima de negocio nuevo,
+// no por comisión. Es lo que pidió Arturo: "si la póliza le costó 3.000 dólares, al 10% yo gano
+// 300. Lo que nosotros estamos mirando son los 3.000 dólares del cliente, quién vendió esos
+// 3.000" — y solo cuenta el new business, sin renovaciones. Las líneas sin clasificar (no se sabe
+// si son nuevas) quedan afuera a propósito; getPrimaSinClasificar dice cuánta plata es esa.
+export async function getRankingOficinas(
+  desde: string,
+  hasta: string,
+  limite = 10
+): Promise<OficinaRanking[]> {
+  const { data, error } = await supabase.rpc("ranking_oficinas", {
+    p_desde: desde,
+    p_hasta: hasta,
+    p_limite: limite,
+  });
+  if (error) throw error;
+  return (data ?? []) as OficinaRanking[];
+}
+
+// Cuánta prima del período no se pudo clasificar como negocio nuevo ni como renovación (ver
+// v_lineas_negocio). Esa plata no entra en getRankingOficinas, así que el dashboard la muestra
+// aparte para que el número de arriba no parezca completo cuando no lo está.
+export async function getPrimaSinClasificar(desde: string, hasta: string): Promise<number> {
+  const { data, error } = await supabase.rpc("prima_sin_clasificar", { p_desde: desde, p_hasta: hasta });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
 export async function getResumenKpis(desde: string, hasta: string): Promise<ResumenKpis> {
   const { data, error } = await supabase.rpc("resumen_kpis", { p_desde: desde, p_hasta: hasta });
   if (error) throw error;
