@@ -7,6 +7,7 @@ import { Card, Input, Select, Button, Chip, Pagination, Loading, EmptyState, Ban
 import PolizaDrawer, { EstadoBadge } from "@/components/clientes/PolizaDrawer";
 import AltaManualModal from "@/components/clientes/AltaManualModal";
 import SubirLibroButton from "@/components/clientes/SubirLibroButton";
+import ReprocesarLibroButton from "@/components/clientes/ReprocesarLibroButton";
 import { fecha, RAMOS } from "@/lib/format";
 import {
   listPolizas,
@@ -140,6 +141,7 @@ function ClientesContent() {
         <h1 className="text-lg font-semibold text-foreground">Clientes · Active Business Book</h1>
         <div className="flex items-center gap-2 flex-wrap">
           <SubirLibroButton onDone={cargar} />
+          <ReprocesarLibroButton onDone={cargar} />
           <Button size="sm" onClick={() => setAltaOpen(true)}>
             <Plus className="w-3.5 h-3.5" />
             Alta manual de cliente/póliza

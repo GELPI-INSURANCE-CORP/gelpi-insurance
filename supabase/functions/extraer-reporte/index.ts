@@ -239,6 +239,30 @@ function tipoDeTransaccion(f: Record<string, unknown>): TipoTransaccion {
   return propio;
 }
 
+// En el Book, el ramo no siempre llega mapeado: el modelo ve "LOB Class" y "Line of Business" y
+// no tiene por qué saber que la segunda es el ramo. Medido sobre el Book de septiembre, 2.305 de
+// 2.363 pólizas quedaron en "otro" — o sea, sin clasificar — y por eso las comerciales no se
+// podían encontrar como comerciales en la pantalla.
+//
+// El orden importa. "Line of Business" trae el ramo de verdad ("Commercial Auto", "Condo",
+// "Dwelling Fire"); "LOB Class" trae solo la familia ("Personal Lines", "Commercial Lines"), que
+// alcanza para separar comercial de personal pero mandaría las 2.165 personales a "otro". Por eso
+// la clase se mira última, como red de seguridad.
+const COLUMNAS_RAMO = [/line\s*of\s*business/i, /coverage|producto|product/i, /\blob\b|clase|class/i];
+function ramoDelLibro(f: Record<string, unknown>): Ramo {
+  const directo = coerceRamo(f.ramo);
+  if (directo && directo !== "otro") return directo;
+  const extra = (f.campos_extra as Record<string, unknown>) ?? {};
+  for (const patron of COLUMNAS_RAMO) {
+    for (const [col, valor] of Object.entries(extra)) {
+      if (!patron.test(col)) continue;
+      const r = coerceRamo(valor);
+      if (r && r !== "otro") return r;
+    }
+  }
+  return directo ?? "otro";
+}
+
 const RAMOS: Ramo[] = ["auto", "hogar", "comercial", "motocicleta", "bote", "inquilinos", "inundacion", "umbrella", "vida", "otro"];
 function coerceRamo(v: unknown): Ramo {
   if (!v) return null;
@@ -254,6 +278,29 @@ function coerceRamo(v: unknown): Ramo {
   if (/life|vida/.test(s)) return "vida";
   if (/auto|car|vehic/.test(s)) return "auto";
   return "otro";
+}
+
+// El nombre de un cliente se normaliza distinto que el resto de los textos: la base le saca las
+// palabras de forma societaria. Tiene que ser IDÉNTICA a normalizar_nombre() de SQL, que es la que
+// escribe clientes.nombre_normalizado desde un trigger.
+//
+// Cuando no coincidían pasaba esto, medido en el Book de septiembre: la base guardaba
+// "AIR TECHNIK INC" como "AIR TECHNIK", el importador la buscaba como "AIR TECHNIK INC" y no la
+// encontraba nunca. Dos daños por el mismo error. Uno: creaba un cliente nuevo en cada subida del
+// Book, así que las empresas terminaron con 3 y 4 copias mientras las personas tenían una sola.
+// Otro, peor: como la búsqueda fallaba, la póliza se guardaba con cliente_id en null — 101 pólizas
+// sin dueño y con el nombre en blanco en la pantalla del Book. Eran justo las comerciales, porque
+// son las únicas que llevan INC, LLC o CORP en el nombre.
+const FORMAS_SOCIETARIAS = /\b(LLC|INC|CORP|LTD|CO)\b/g;
+function normalizarNombreCliente(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(FORMAS_SOCIETARIAS, " ")
+    .replace(/[^A-Z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizarTexto(s: string | null | undefined): string {
@@ -1661,12 +1708,12 @@ async function procesarAbb(
       numeroNormalizado,
       aseguradoraId,
       nombreAsegurado,
-      nombreNorm: normalizarTexto(nombreAsegurado),
+      nombreNorm: normalizarNombreCliente(nombreAsegurado),
       telefono: (f.telefono as string) ?? null,
       email: (f.email as string) ?? null,
       agenteId,
       oficinaId,
-      ramo: coerceRamo(f.ramo) ?? "otro",
+      ramo: ramoDelLibro(f),
       fechaVigencia: coerceDate(f.fecha_vigencia),
       fechaVencimiento: coerceDate((f as any).fecha_vencimiento),
       prima: coerceNumber(f.prima),
