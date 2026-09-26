@@ -203,15 +203,39 @@ function coerceDate(v: unknown): string | null {
     if (anio >= 1900 && anio <= 2200 && mes >= 1 && mes <= 12) return `${aaaamm[1]}-${aaaamm[2]}-01`;
   }
 
+  // Nombres de mes en español, ANTES del new Date() de abajo. JavaScript no los conoce: a
+  // new Date("Agosto 2026") no le da error — le da 2026-01-01, porque lee el año y descarta la
+  // palabra que no entiende. Ese uno de enero después parece una fecha real y nadie lo cuestiona.
+  //
+  // Pasó de verdad: el statement de National General se subió con el período escrito "Agosto
+  // 2026", su archivo no trae columna de fecha de transacción, y las 31 líneas quedaron fechadas
+  // el 1 de enero. Parte de United también. Una fecha inventada es peor que no tener fecha,
+  // porque manda la comisión al mes equivocado sin avisar.
+  const MESES_ES: Record<string, string> = {
+    enero: "01", febrero: "02", marzo: "03", abril: "04", mayo: "05", junio: "06",
+    julio: "07", agosto: "08", septiembre: "09", setiembre: "09", octubre: "10",
+    noviembre: "11", diciembre: "12",
+  };
+  const sinAcentos = s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  for (const [nombre, mm] of Object.entries(MESES_ES)) {
+    if (!sinAcentos.includes(nombre)) continue;
+    const anio = sinAcentos.match(/\b(19|20)\d{2}\b/);
+    if (anio) return `${anio[0]}-${mm}-01`;
+  }
+
   const d = new Date(s);
   // El rango es la parte importante, no el isNaN. new Date("202608") NO es inválida: JavaScript la
   // lee como el año 202608, y toISOString() devuelve "+202608-01-01…". Postgres rechaza eso con
   // "time zone displacement out of range" y, como las líneas se insertan por lote, una sola fila
   // así voltea el statement entero — pasó con Progressive: 178 líneas perdidas por una celda.
-  if (!Number.isNaN(d.getTime()) && d.getUTCFullYear() >= 1900 && d.getUTCFullYear() <= 2200) {
-    return d.toISOString().slice(0, 10);
-  }
-  return null;
+  if (Number.isNaN(d.getTime()) || d.getUTCFullYear() < 1900 || d.getUTCFullYear() > 2200) return null;
+  // Y el último filtro: si el texto traía letras que no son un mes que JavaScript conozca, lo que
+  // devolvió es el año con enero por defecto, no una fecha que estuviera escrita ahí. Se descarta.
+  const esPrimeroDeEnero = d.getUTCMonth() === 0 && d.getUTCDate() === 1;
+  const mencionaEnero = /\bene|\bjan/.test(sinAcentos);
+  const traeLetras = /[a-z]/.test(sinAcentos);
+  if (esPrimeroDeEnero && traeLetras && !mencionaEnero) return null;
+  return d.toISOString().slice(0, 10);
 }
 
 const TIPO_TRANSACCION_CODES: Record<string, TipoTransaccion> = {
