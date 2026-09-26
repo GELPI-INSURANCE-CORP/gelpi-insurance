@@ -21,6 +21,19 @@
   --bad-bg: #fef2f2; --bad-fg: #b91c1c;
   --info-bg: #eff6ff; --info-fg: #1d4ed8;
   --neutral-bg: #f1f5f9; --neutral-fg: #475569;
+
+  /* Paleta de gráficas. Los tonos de estado de arriba (ok/warn/bad) dicen si algo está bien o
+     mal; estos no dicen nada, solo separan una porción de la de al lado. Mezclarlos haría que
+     un ramo pintado de rojo pareciera un problema cuando es nada más el tercero de la lista.
+     Ordenados para que dos vecinos nunca se confundan de un vistazo. */
+  --chart-1: #2563eb;
+  --chart-2: #0d9488;
+  --chart-3: #7c3aed;
+  --chart-4: #ea580c;
+  --chart-5: #db2777;
+  --chart-6: #0891b2;
+  --chart-7: #65a30d;
+  --chart-8: #94a3b8;
 }
 
 @theme inline {
@@ -41,6 +54,14 @@
   --color-bad-bg: var(--bad-bg); --color-bad-fg: var(--bad-fg);
   --color-info-bg: var(--info-bg); --color-info-fg: var(--info-fg);
   --color-neutral-bg: var(--neutral-bg); --color-neutral-fg: var(--neutral-fg);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
   --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
   /* Solo para titulos de pantalla. Un serif en toda la interfaz cansa la vista en tablas largas. */

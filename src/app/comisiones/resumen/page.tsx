@@ -6,13 +6,19 @@ import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
+  ArrowDownRight,
   ArrowRight,
+  ArrowUpRight,
+  Building2,
   Calendar,
   ChevronDown,
   Copy,
+  FileText,
   Loader2,
+  Shield,
   ShieldAlert,
   Trophy,
+  XCircle,
 } from "lucide-react";
 import clsx from "clsx";
 import { Badge, Button, Card, CardHead, Chip, EmptyState } from "@/components/ui";
@@ -33,10 +39,26 @@ import {
   getProduccionPorMes,
   getRankingOficinas,
   getResumenKpis,
+  getSerieBook,
+  getPrimaPorRamo,
+  variacion,
   rangoDelMes,
+  type PuntoSerie,
+  type RamoPrima,
 } from "@/lib/queries/resumen";
+import { Sparkline, Dona, Cascada, COLORES_GRAFICA, type PorcionDona } from "@/components/dashboard/charts";
 
 const UMBRAL_ATRASADA_DIAS = 10;
+
+// $3,639,752.46 no entra en el centro de una dona de 168px ni en una leyenda de siete renglones.
+// Acá se abrevia; el número exacto sigue estando en la tarjeta de arriba, que es de donde hay
+// que leerlo cuando importa el centavo.
+function moneyCorto(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `$${Math.round(n / 1_000)}K`;
+  return `$${Math.round(n)}`;
+}
 
 // Copa para el 1er, 2do y 3er puesto de "Top-producing offices". Clases completas y a mano (no
 // se arman con un template string) porque Tailwind purga lo que no encuentra escrito así en el
@@ -110,6 +132,9 @@ export default function ResumenPage() {
   const [produccion, setProduccion] = useState<ProduccionMes[]>([]);
   const [ranking, setRanking] = useState<OficinaRanking[]>([]);
   const [primaSinClasificar, setPrimaSinClasificar] = useState(0);
+  // La serie real del Book y el reparto por ramo: alimentan las lineas de las tarjetas y la dona.
+  const [serie, setSerie] = useState<PuntoSerie[]>([]);
+  const [ramos, setRamos] = useState<RamoPrima[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -142,8 +167,10 @@ export default function ResumenPage() {
       getProduccionPorMes(desdeAnio, hastaAnio),
       getRankingOficinas(desde, hasta, 10),
       getPrimaSinClasificar(desde, hasta),
+      getSerieBook(12),
+      getPrimaPorRamo(),
     ])
-      .then(([k, ex, n, b, prod, rank, sinClasificar]) => {
+      .then(([k, ex, n, b, prod, rank, sinClasificar, s, r]) => {
         if (!activo) return;
         setKpis(k);
         setExcepciones(ex);
@@ -152,6 +179,8 @@ export default function ResumenPage() {
         setProduccion(prod);
         setRanking(rank);
         setPrimaSinClasificar(sinClasificar);
+        setSerie(s);
+        setRamos(r);
       })
       .catch((err: unknown) => {
         if (!activo) return;
@@ -164,6 +193,8 @@ export default function ResumenPage() {
         setProduccion([]);
         setRanking([]);
         setPrimaSinClasificar(0);
+        setSerie([]);
+        setRamos([]);
       })
       .finally(() => {
         if (activo) setCargando(false);
@@ -176,6 +207,41 @@ export default function ResumenPage() {
 
   const opcionesMes = useMemo(() => Array.from({ length: 12 }, (_, i) => primerDiaDelMes(i)), []);
   const totalOficinas = kpis?.por_oficina ?? [];
+
+  // Para la dona: los seis ramos con más prima y el resto junto en "Otros". Más de seis porciones
+  // dejan de leerse — las últimas quedan como hilos de color sin nombre posible.
+  const { porcionesRamo, totalRamos } = useMemo(() => {
+    const total = ramos.reduce((s, r) => s + r.prima, 0);
+    const top = ramos.slice(0, 6);
+    const resto = ramos.slice(6).reduce((s, r) => s + r.prima, 0);
+    const porciones: PorcionDona[] = top.map((r, i) => ({
+      etiqueta: r.ramo,
+      valor: r.prima,
+      color: COLORES_GRAFICA[i % COLORES_GRAFICA.length],
+    }));
+    if (resto > 0) porciones.push({ etiqueta: t("dash.otherLines"), valor: resto, color: "var(--chart-8)" });
+    return { porcionesRamo: porciones, totalRamos: total };
+  }, [ramos, t]);
+
+  // Para la cascada: de qué está hecho el total en disputa.
+  //
+  // NO arranca en lo conciliado. El total en disputa es la SUMA de los tres tipos de excepción,
+  // no "lo conciliado menos las excepciones" — son dos bolsas distintas. Empezar en lo conciliado
+  // dibujaba una cascada que no cerraba: en agosto salía de $67,010.43 y terminaba en -$726.37
+  // sin que la resta diera eso. Arrancando en cero, cada barra encadena con la siguiente y la
+  // última es exactamente la suma de las anteriores, que es lo único que una cascada puede
+  // afirmar honestamente. Lo conciliado va en el subtítulo, como contexto.
+  //
+  // Los montos ya vienen en negativo desde la base, así que se suman tal cual.
+  const pasosCascada = useMemo(
+    () => [
+      { etiqueta: t("dash.unidentified"), valor: kpis?.sin_identificar.monto ?? 0 },
+      { etiqueta: t("dash.pendingMismatch"), valor: kpis?.mismatch.monto ?? 0 },
+      { etiqueta: t("dash.suspectedDuplicates"), valor: kpis?.duplicados.monto ?? 0 },
+      { etiqueta: t("dash.totalInDispute"), valor: kpis?.total_disputa.monto ?? 0, esTotal: true },
+    ],
+    [kpis, t]
+  );
   const primaPorOficina = book?.primaPorOficina ?? new Map<string, number>();
   const sumaOficinas = useMemo(
     () => ({
@@ -244,8 +310,12 @@ export default function ResumenPage() {
         </div>
       ) : (
         <>
-          {/* KPI del Book de negocio — lo primero que se ve */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* KPI del Book de negocio — lo primero que se ve.
+              La línea al pie de cada tarjeta es la serie real del Book mes a mes, reconstruida
+              desde las fechas de vigencia y vencimiento de cada póliza (ver 20260926000013). Las
+              dos tarjetas que no tienen serie real no llevan línea: dibujar una de adorno en una
+              pantalla donde se mira plata es peor que no dibujar nada. */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {/* El total de prima se sumaba sobre todas las activas sin decir que casi ninguna
                 traía prima cargada: 50 de 2.331. Un número así parece completo y no lo es, y con
                 él se toman decisiones. Ahora dice sobre cuántas está hecho, y avisa cuando la
@@ -259,18 +329,34 @@ export default function ResumenPage() {
                   : t("dash.premiumOverActive", { con: book?.activasConPrima ?? 0, total: book?.polizasActivas ?? 0 })
               }
               subTone={primaIncompleta ? "bad" : "brand"}
+              icono={<Shield size={17} />}
+              color="var(--chart-1)"
+              serie={serie.map((s) => s.prima)}
             />
             <KpiCard
               label={t("dash.activePolicies")}
-              value={String(book?.polizasActivas ?? 0)}
+              value={(book?.polizasActivas ?? 0).toLocaleString("en-US")}
               sub={t("dash.inActiveBook")}
               subTone="ok"
+              icono={<FileText size={17} />}
+              color="var(--chart-2)"
+              serie={serie.map((s) => s.polizas)}
             />
             <KpiCard
               label={t("dash.canceledPolicies")}
-              value={String(book?.polizasCanceladas ?? 0)}
+              value={(book?.polizasCanceladas ?? 0).toLocaleString("en-US")}
               sub={t("dash.canceledPremium", { monto: money(book?.premiumCancelado ?? 0) })}
               subTone="muted"
+              icono={<XCircle size={17} />}
+              color="var(--bad-fg)"
+            />
+            <KpiCard
+              label={t("dash.activeOffices")}
+              value={String(totalOficinas.length)}
+              sub={t("dash.writingThisMonth")}
+              subTone="muted"
+              icono={<Building2 size={17} />}
+              color="var(--chart-3)"
             />
           </div>
 
@@ -278,10 +364,10 @@ export default function ResumenPage() {
           <div className="text-xs font-semibold uppercase tracking-wide text-muted">{t("dash.commissionReconciliation")}</div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
             <KpiComisionesConciliadas monto={kpis?.conciliado ?? 0} mes={mes} numOficinas={totalOficinas.length} />
-            <KpiCard label={t("dash.unidentified")} value={money(kpis?.sin_identificar.monto ?? 0)} sub={t("dash.linesCount", { n: kpis?.sin_identificar.n ?? 0 })} subTone="warn" />
-            <KpiCard label={t("dash.pendingMismatch")} value={money(kpis?.mismatch.monto ?? 0)} sub={t("dash.linesCount", { n: kpis?.mismatch.n ?? 0 })} subTone="warn" />
-            <KpiCard label={t("dash.suspectedDuplicates")} value={money(kpis?.duplicados.monto ?? 0)} sub={t("dash.casesCount", { n: kpis?.duplicados.n ?? 0 })} subTone="muted" />
-            <KpiCard label={t("dash.saleConflicts")} value={String(kpis?.conflictos ?? 0)} sub={t("dash.openCases")} subTone="muted" />
+            <KpiCard label={t("dash.unidentified")} value={money(kpis?.sin_identificar.monto ?? 0)} sub={t("dash.linesCount", { n: kpis?.sin_identificar.n ?? 0 })} subTone="warn" icono={<AlertTriangle size={16} />} color="var(--warn-fg)" />
+            <KpiCard label={t("dash.pendingMismatch")} value={money(kpis?.mismatch.monto ?? 0)} sub={t("dash.linesCount", { n: kpis?.mismatch.n ?? 0 })} subTone="warn" icono={<AlertCircle size={16} />} color="var(--chart-4)" />
+            <KpiCard label={t("dash.suspectedDuplicates")} value={money(kpis?.duplicados.monto ?? 0)} sub={t("dash.casesCount", { n: kpis?.duplicados.n ?? 0 })} subTone="muted" icono={<Copy size={16} />} color="var(--chart-3)" />
+            <KpiCard label={t("dash.saleConflicts")} value={String(kpis?.conflictos ?? 0)} sub={t("dash.openCases")} subTone="muted" icono={<ShieldAlert size={16} />} color="var(--chart-6)" />
             <button
               type="button"
               onClick={() => router.push("/comisiones/conciliacion")}
@@ -303,7 +389,7 @@ export default function ResumenPage() {
           {/* Producción y ranking: las dos preguntas que el dashboard no contestaba. Van antes que
               las excepciones porque una es cómo viene el negocio y la otra es trabajo pendiente —
               y el trabajo pendiente ya está resumido arriba en un número. */}
-          <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-2 xl:grid-cols-3">
             <Card className="flex flex-col">
               <CardHead
                 title={t("dash.newPolicies")}
@@ -366,6 +452,40 @@ export default function ResumenPage() {
               </div>
             </Card>
 
+            {/* De qué está hecho el Book. Contesta una pregunta que hasta ahora no contestaba
+                ninguna pantalla: en qué ramo está metida la prima. */}
+            <Card className="flex flex-col">
+              <CardHead title={t("dash.premiumByLine")} subtitle={t("dash.ofActiveBook")} />
+              {porcionesRamo.length === 0 ? (
+                <div className="py-10 text-center text-[13px] text-muted">{t("dash.noLineData")}</div>
+              ) : (
+                <div className="flex flex-1 flex-wrap items-center justify-center gap-5 px-1 pb-1 pt-2">
+                  <Dona
+                    porciones={porcionesRamo}
+                    centroArriba={moneyCorto(totalRamos)}
+                    centroAbajo={t("dash.totalPremium")}
+                    tamano={168}
+                  />
+                  <div className="flex min-w-[168px] flex-1 flex-col gap-1.5">
+                    {porcionesRamo.map((p) => (
+                      <div key={p.etiqueta} className="flex items-center gap-2 text-[12px]">
+                        <span
+                          className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                          style={{ background: p.color }}
+                          aria-hidden
+                        />
+                        <span className="flex-1 truncate capitalize text-foreground">{p.etiqueta}</span>
+                        <span className="tabular-nums text-muted">
+                          {totalRamos > 0 ? ((p.valor / totalRamos) * 100).toFixed(1) : "0.0"}%
+                        </span>
+                        <span className="w-[74px] text-right tabular-nums text-foreground">{moneyCorto(p.valor)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
+
             <Card className="overflow-hidden">
               <CardHead
                 title={t("dash.topOffices")}
@@ -376,45 +496,55 @@ export default function ResumenPage() {
                   {t("dash.noOfficePremium", { mes: etiquetaMes(mes, idioma) })}
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[13px]">
-                    <thead>
-                      <tr className="border-b border-border bg-background">
-                        <th className="px-5 py-2.5 text-left font-medium text-muted">{t("col.office")}</th>
-                        <th className="px-5 py-2.5 text-right font-medium text-muted">{t("col.policies")}</th>
-                        <th className="px-5 py-2.5 text-right font-medium text-muted">{t("dash.newBusinessPremium")}</th>
-                        <th className="px-5 py-2.5 text-right font-medium text-muted">{t("dash.commission")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ranking.map((o, i) => {
-                        const copaClase = i === 0 || i === 1 || i === 2 ? COPA_POR_PUESTO[i] : null;
-                        return (
-                          <tr key={o.oficina_id ?? "sin-oficina"} className="border-b border-border last:border-b-0">
-                            <td className="px-5 py-3 font-medium text-foreground">
-                              <div className="flex items-center gap-2">
-                                <span className="flex w-5 flex-shrink-0 items-center justify-center">
-                                  {copaClase ? (
-                                    <Trophy size={16} className={copaClase} aria-hidden />
-                                  ) : (
-                                    <span className="text-xs tabular-nums text-muted">{i + 1}</span>
-                                  )}
-                                </span>
-                                <span className="truncate">{o.oficina}</span>
-                              </div>
-                            </td>
-                            <td className="px-5 py-3 text-right tabular-nums text-muted">{o.polizas}</td>
-                            <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">
-                              {money(Number(o.prima))}
-                            </td>
-                            <td className="px-5 py-3 text-right tabular-nums text-muted">
-                              {money(Number(o.comision))}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                /* Lista y no tabla: en la columna angosta del dashboard una tabla de cuatro
+                   columnas se corta y hay que arrastrarla de lado. La barra dice de un vistazo
+                   la distancia entre la primera oficina y las demás, que es justo lo que se
+                   viene a mirar acá — el detalle exacto está en la tabla de más abajo. */
+                <div className="flex flex-col gap-3 px-5 pb-4 pt-1">
+                  {ranking.map((o, i) => {
+                    const copaClase = i === 0 || i === 1 || i === 2 ? COPA_POR_PUESTO[i] : null;
+                    // La barra se mide contra la oficina que más vendió, no contra el total: si
+                    // se midiera contra el total, con cinco oficinas todas quedarían cortitas y
+                    // no se distinguiría nada.
+                    const tope = Math.max(...ranking.map((r) => Math.abs(Number(r.prima))), 1);
+                    const prima = Number(o.prima);
+                    const ancho = Math.max((Math.abs(prima) / tope) * 100, 1.5);
+                    const enRojo = prima < 0;
+                    return (
+                      <div key={o.oficina_id ?? "sin-oficina"} className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2 text-[13px]">
+                          <span className="flex w-5 flex-shrink-0 items-center justify-center">
+                            {copaClase ? (
+                              <Trophy size={16} className={copaClase} aria-hidden />
+                            ) : (
+                              <span className="text-xs tabular-nums text-muted">{i + 1}</span>
+                            )}
+                          </span>
+                          <span className="flex-1 truncate font-medium text-foreground">{o.oficina}</span>
+                          <span className="flex-shrink-0 text-xs tabular-nums text-muted">
+                            {t("dash.policiesShort", { n: o.polizas })}
+                          </span>
+                          <span
+                            className={clsx(
+                              "w-[86px] flex-shrink-0 text-right font-semibold tabular-nums",
+                              enRojo ? "text-bad-fg" : "text-foreground"
+                            )}
+                          >
+                            {money(prima)}
+                          </span>
+                        </div>
+                        <div className="ml-7 h-1.5 overflow-hidden rounded-full bg-background">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${ancho}%`,
+                              background: enRojo ? "var(--bad-fg)" : COLORES_GRAFICA[i % COLORES_GRAFICA.length],
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {primaSinClasificar > 0 && (
@@ -424,6 +554,25 @@ export default function ResumenPage() {
               )}
             </Card>
           </div>
+
+          {/* Cómo se llega de lo conciliado a lo que está en disputa. Los mismos números de las
+              tarjetas de arriba, pero encadenados: se ve cuál de los tres se está comiendo el
+              total en vez de tener que restarlos de cabeza. */}
+          <Card>
+            <CardHead
+              title={t("dash.waterfallTitle")}
+              subtitle={t("dash.waterfallSubtitle", {
+                mes: etiquetaMes(mes, idioma),
+                conciliado: money(kpis?.conciliado ?? 0),
+              })}
+            />
+            {/* Acotada y centrada: cuatro barras estiradas a todo el ancho de la pantalla quedan
+                tan separadas que se deja de leer que una encadena con la otra, que es lo único
+                que esta gráfica tiene para decir. */}
+            <div className="mx-auto w-full max-w-3xl px-5 pb-5 pt-3">
+              <Cascada pasos={pasosCascada} alto={170} />
+            </div>
+          </Card>
 
           {/* Excepciones + tabla por oficina */}
           <div className="grid grid-cols-1 gap-6 items-start lg:grid-cols-5">
@@ -573,11 +722,22 @@ function KpiCard({
   value,
   sub,
   subTone,
+  icono,
+  color,
+  serie,
+  destacado,
 }: {
   label: string;
   value: string;
   sub: string;
   subTone: "ok" | "warn" | "bad" | "muted" | "brand";
+  // Todo lo de abajo es opcional: las tarjetas de conciliación se quedan en la versión simple.
+  icono?: React.ReactNode;
+  color?: string;
+  // Si hay serie, va la línea y el badge de variación. Si no hay, no se dibuja nada: una curva
+  // inventada se ve igual de bien que una de verdad, y por eso no puede haber ninguna.
+  serie?: number[];
+  destacado?: boolean;
 }) {
   const toneClass: Record<typeof subTone, string> = {
     ok: "text-ok-fg",
@@ -586,11 +746,50 @@ function KpiCard({
     muted: "text-muted",
     brand: "text-brand",
   };
+  const cambio = serie ? variacion(serie) : null;
+
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface p-5">
-      <span className="text-[13px] text-muted">{label}</span>
-      <div className="text-[26px] font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
-      <div className={clsx("mt-2 text-xs font-medium", toneClass[subTone])}>{sub}</div>
+    <div
+      className={clsx(
+        "group relative flex flex-col overflow-hidden rounded-xl border bg-surface transition-shadow hover:shadow-md",
+        destacado ? "border-bad-fg/40" : "border-border"
+      )}
+    >
+      <div className="flex flex-col gap-1 p-5 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            {icono && (
+              <span
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px]"
+                style={color ? { background: `color-mix(in srgb, ${color} 12%, transparent)`, color } : undefined}
+                aria-hidden
+              >
+                {icono}
+              </span>
+            )}
+            <span className="text-[13px] leading-tight text-muted">{label}</span>
+          </div>
+          {cambio != null && (
+            <span
+              className={clsx(
+                "flex flex-shrink-0 items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums",
+                cambio >= 0 ? "bg-ok-bg text-ok-fg" : "bg-bad-bg text-bad-fg"
+              )}
+              title="Contra el mes anterior"
+            >
+              {cambio >= 0 ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+              {Math.abs(cambio).toFixed(1)}%
+            </span>
+          )}
+        </div>
+        <div className="mt-1 text-[26px] font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
+        <div className={clsx("text-xs font-medium", toneClass[subTone])}>{sub}</div>
+      </div>
+      {serie && serie.length > 1 && (
+        <div className="mt-auto">
+          <Sparkline datos={serie} color={color ?? "var(--chart-1)"} alto={46} />
+        </div>
+      )}
     </div>
   );
 }
