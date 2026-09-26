@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
@@ -302,8 +303,8 @@ export default function ResumenPage() {
           {/* Producción y ranking: las dos preguntas que el dashboard no contestaba. Van antes que
               las excepciones porque una es cómo viene el negocio y la otra es trabajo pendiente —
               y el trabajo pendiente ya está resumido arriba en un número. */}
-          <div className="grid grid-cols-1 gap-6 items-start lg:grid-cols-2">
-            <Card>
+          <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-2">
+            <Card className="flex flex-col">
               <CardHead
                 title={t("dash.newPolicies")}
                 action={
@@ -442,15 +443,25 @@ export default function ResumenPage() {
                     />
                   ) : (
                     <div className="flex flex-col">
+                      {/* Cada renglón es un link directo al panel de esa excepción en Conciliación
+                          (mismo deep-link ?excepcion=<id> que ya usa AgenteFicha). Arturo las veía
+                          pero no podía hacer nada con ellas — ahora un clic lo deja parado en la
+                          pantalla donde se resuelve. Se muestran más compactas (menos padding,
+                          sugerencia en una sola línea con truncate) porque el detalle completo ya
+                          está a un clic de distancia. */}
                       {excepciones.map((e, i) => {
                         const badge = e.atrasada
                           ? { texto: t("dash.overdue"), tone: "bad" as Tone, icon: <AlertTriangle size={12} /> }
                           : etiquetaTipoExcepcion(e.tipo, t);
                         const sugerencia = sugerenciaTexto(e, t);
                         return (
-                          <div
+                          <Link
                             key={e.id}
-                            className={clsx("flex flex-col gap-1 py-2.5", i < excepciones.length - 1 && "border-b border-border")}
+                            href={`/comisiones/conciliacion/?excepcion=${e.id}`}
+                            className={clsx(
+                              "group flex flex-col gap-0.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-background",
+                              i < excepciones.length - 1 && "border-b border-border"
+                            )}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex min-w-0 items-center gap-2">
@@ -462,17 +473,22 @@ export default function ResumenPage() {
                                 )}
                                 <span className="truncate text-sm font-medium text-foreground">{nombreExcepcion(e, t)}</span>
                               </div>
-                              <div className="flex flex-shrink-0 items-center gap-4">
+                              <div className="flex flex-shrink-0 items-center gap-3">
                                 <span className="min-w-[5rem] whitespace-nowrap text-right text-sm font-medium tabular-nums text-foreground">
                                   {money(e.monto)}
                                 </span>
                                 <span className="w-14 text-right text-xs tabular-nums text-muted">
                                   {t("dash.daysCount", { n: e.antiguedad_dias, s: e.antiguedad_dias === 1 ? "" : "s" })}
                                 </span>
+                                <ArrowRight
+                                  size={14}
+                                  className="flex-shrink-0 text-muted transition-colors group-hover:text-foreground"
+                                  aria-hidden
+                                />
                               </div>
                             </div>
-                            {sugerencia && <div className="pl-[76px] text-xs leading-relaxed text-muted">{sugerencia}</div>}
-                          </div>
+                            {sugerencia && <div className="truncate pl-[76px] text-xs text-muted">{sugerencia}</div>}
+                          </Link>
                         );
                       })}
                     </div>
