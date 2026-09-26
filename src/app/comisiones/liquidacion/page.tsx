@@ -129,12 +129,22 @@ function LiquidacionContent() {
   }, [data, soloActivos]);
 
   const totalRecibido = filas.reduce((s, f) => s + f.comisionRecibida, 0);
+  const totalNuevo = filas.reduce((s, f) => s + f.comisionNuevo, 0);
+  const totalRenovacion = filas.reduce((s, f) => s + f.comisionRenovacion, 0);
+  const totalSinClasificar = filas.reduce((s, f) => s + f.comisionSinClasificar, 0);
   const totalAPagar = filas.reduce((s, f) => s + f.aPagar, 0);
 
   function exportarCsv() {
-    const header = ["Agente", "Oficina", "% comisión", "Comisión recibida", "A pagar"];
+    const header = [
+      "Agente", "Oficina", "% comisión",
+      "Negocio nuevo", "Renovación", "Sin clasificar", "Comisión total", "A pagar",
+    ];
     const lineas = filas.map((f) =>
-      [f.nombre, f.oficinaNombre, f.pct, f.comisionRecibida.toFixed(2), f.aPagar.toFixed(2)]
+      [
+        f.nombre, f.oficinaNombre, f.pct,
+        f.comisionNuevo.toFixed(2), f.comisionRenovacion.toFixed(2),
+        f.comisionSinClasificar.toFixed(2), f.comisionRecibida.toFixed(2), f.aPagar.toFixed(2),
+      ]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`)
         .join(",")
     );
@@ -222,7 +232,11 @@ function LiquidacionContent() {
                 <th className="px-4 py-2.5 font-medium">Oficina</th>
                 <th className="px-4 py-2.5 font-medium">Estado</th>
                 <th className="px-4 py-2.5 font-medium w-32">% comisión</th>
-                <th className="px-4 py-2.5 font-medium text-right">Comisión recibida</th>
+                {/* El orden cuenta la cuenta: se paga sobre negocio nuevo, la renovación no se
+                    paga, y lo que no se pudo clasificar queda a la vista para revisarlo. */}
+                <th className="px-4 py-2.5 font-medium text-right">Negocio nuevo</th>
+                <th className="px-4 py-2.5 font-medium text-right text-muted">Renovación</th>
+                <th className="px-4 py-2.5 font-medium text-right">Sin clasificar</th>
                 <th className="px-4 py-2.5 font-medium text-right">A pagar</th>
               </tr>
             </thead>
@@ -253,7 +267,19 @@ function LiquidacionContent() {
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{money(f.comisionRecibida)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{money(f.comisionNuevo)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-muted">{money(f.comisionRenovacion)}</td>
+                  {/* Solo se pinta cuando hay algo que revisar: un cero en amarillo en todas las
+                      filas entrena a ignorar el color justo cuando importa. */}
+                  <td
+                    className={
+                      f.comisionSinClasificar !== 0
+                        ? "px-4 py-2.5 text-right tabular-nums text-warn-fg"
+                        : "px-4 py-2.5 text-right tabular-nums text-muted"
+                    }
+                  >
+                    {money(f.comisionSinClasificar)}
+                  </td>
                   <td className="px-4 py-2.5 text-right tabular-nums font-medium">{money(f.aPagar)}</td>
                 </tr>
               ))}
@@ -264,7 +290,17 @@ function LiquidacionContent() {
                   <td className="px-4 py-2.5 font-semibold" colSpan={4}>
                     Total {etiquetaPeriodo(periodo)} · {filas.length} agente{filas.length === 1 ? "" : "s"}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{money(totalRecibido)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{money(totalNuevo)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-muted">{money(totalRenovacion)}</td>
+                  <td
+                    className={
+                      totalSinClasificar !== 0
+                        ? "px-4 py-2.5 text-right tabular-nums font-semibold text-warn-fg"
+                        : "px-4 py-2.5 text-right tabular-nums text-muted"
+                    }
+                  >
+                    {money(totalSinClasificar)}
+                  </td>
                   <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{money(totalAPagar)}</td>
                 </tr>
               </tfoot>

@@ -287,7 +287,27 @@ function coerceTipoTransaccion(v: unknown): TipoTransaccion {
   if (["nueva", "renovacion", "endoso", "cancelacion", "ajuste", "otro"].includes(s.toLowerCase())) {
     return s.toLowerCase() as TipoTransaccion;
   }
-  return TIPO_TRANSACCION_CODES[s] ?? "otro";
+  const exacto = TIPO_TRANSACCION_CODES[s];
+  if (exacto) return exacto;
+
+  // La tabla de arriba busca por código exacto, y eso alcanza para las compañías que mandan
+  // abreviaturas ("NB", "RWL", "CAN"). Progressive escribe la frase entera y por eso no
+  // encontraba nada: de sus 178 líneas de agosto, 108 entraban como "otro" — las 63 de
+  // "New Business", las 28 de "Credit Endorsement", las 15 de "Cancel Pro Rate" y las 2 de
+  // "Reinstatement". "Endorsement" y "Renewal" sí estaban, por eso esas sí se clasificaban.
+  //
+  // Una comisión que no se reconoce como cancelación no dispara el paso que la empareja con su
+  // línea original, y una que no se reconoce como nueva no se puede separar de las renovaciones
+  // para liquidarle al agente. Así que acá se busca por la palabra que la nombra.
+  //
+  // El orden importa: "Cancel Pro Rate" tiene que caer en cancelación antes de que algo más la
+  // agarre, y "Credit Endorsement" en endoso.
+  if (/\bnew\b|nuevo|nueva/.test(s.toLowerCase())) return "nueva";
+  if (/cancel|cnx|\bcxl\b/.test(s.toLowerCase())) return "cancelacion";
+  if (/endors|endoso/.test(s.toLowerCase())) return "endoso";
+  if (/renew|renov/.test(s.toLowerCase())) return "renovacion";
+  if (/reinstat|reactiva|write.?off|adjust|ajuste/.test(s.toLowerCase())) return "ajuste";
+  return "otro";
 }
 
 // Cuando el statement no trae columna de tipo de transacción, el rótulo de la sección es la
