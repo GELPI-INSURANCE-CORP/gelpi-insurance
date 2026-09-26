@@ -67,6 +67,7 @@ const en = {
   "col.uploaded": "Uploaded",
   "col.office": "Office",
   "col.agent": "Agent",
+  "col.policies": "Policies",
 
   // Estados de un statement, dichos en plata y no en jerga del sistema
   "status.reading": "Reading file…",
@@ -194,6 +195,7 @@ const es: Partial<Record<ClaveTexto, string>> = {
   "col.uploaded": "Subido",
   "col.office": "Oficina",
   "col.agent": "Agente",
+  "col.policies": "Pólizas",
 
   "status.reading": "Leyendo el archivo…",
   "status.readyToPay": "Listo para pagar",

@@ -24,9 +24,13 @@
 create or replace function ranking_oficinas(p_desde date, p_hasta date, p_limite int default 10)
 returns table (oficina_id uuid, oficina text, polizas bigint, prima numeric, comision numeric)
 language sql stable as $$
+  -- count(*) contaba LÍNEAS, no pólizas: una misma póliza puede traer varias líneas en el
+  -- período (la nueva, un endoso, una cancelación), así que inflaba el número. count(distinct
+  -- v.numero_normalizado) cuenta pólizas de verdad. Las líneas sin número de póliza (fees,
+  -- ajustes) tienen numero_normalizado null, y count(distinct) ya las ignora solo.
   select o.id as oficina_id,
          coalesce(o.nombre, 'Sin oficina') as oficina,
-         count(*) as polizas,
+         count(distinct v.numero_normalizado) as polizas,
          coalesce(sum(v.prima), 0) as prima,
          coalesce(sum(v.monto), 0) as comision
   from v_lineas_negocio v

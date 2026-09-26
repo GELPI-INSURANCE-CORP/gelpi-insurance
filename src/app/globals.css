@@ -10,6 +10,12 @@
   --brand-tint: #eef3fb;
   --silver: #e6e8ec;
   --muted: #6b7280;
+  /* Copas del ranking de oficinas (Top-producing offices): 1er, 2do y 3er puesto. Metálicos a
+     propósito, para distinguirse tanto del --brand (azul) como del --silver de arriba, que es un
+     fondo pálido para badges y no sirve para pintar un ícono. */
+  --trophy-gold: #ca8a04;
+  --trophy-silver: #94a3b8;
+  --trophy-bronze: #b5651d;
   --ok-bg: #ecfdf5; --ok-fg: #047857;
   --warn-bg: #fffbeb; --warn-fg: #b45309;
   --bad-bg: #fef2f2; --bad-fg: #b91c1c;
@@ -26,6 +32,9 @@
   --color-brand-dark: var(--brand-dark);
   --color-brand-tint: var(--brand-tint);
   --color-silver: var(--silver);
+  --color-trophy-gold: var(--trophy-gold);
+  --color-trophy-silver: var(--trophy-silver);
+  --color-trophy-bronze: var(--trophy-bronze);
   --color-muted: var(--muted);
   --color-ok-bg: var(--ok-bg); --color-ok-fg: var(--ok-fg);
   --color-warn-bg: var(--warn-bg); --color-warn-fg: var(--warn-fg);
