@@ -237,3 +237,50 @@ export async function reabrirLiquidacion(periodo: string): Promise<void> {
   const { error } = await supabase.from("liquidaciones").delete().eq("periodo", periodo);
   if (error) throw error;
 }
+
+// ---------------------------------------------------------------------------
+// De dónde sale lo que se le paga a un agente
+// ---------------------------------------------------------------------------
+// En Liquidación se ve un número por agente y nada más. Para saber de dónde sale había que ir
+// statement por statement filtrando por esa persona, y una venta del mismo mes puede estar
+// repartida entre GEICO, Progressive y Kemper.
+//
+// Esto trae todas sus líneas de todas las compañías juntas. Usa el mismo criterio de mes que el
+// total de arriba (ver detalle_liquidacion_agente en la migración): si usara otro, el detalle no
+// sumaría el total y no se podría confiar en ninguno de los dos.
+
+export interface LineaDeAgente {
+  fecha: string | null;
+  compania: string;
+  numeroPoliza: string;
+  cliente: string;
+  tipo: string;
+  negocioNuevo: boolean | null;
+  prima: number | null;
+  comision: number;
+  statement: string | null;
+}
+
+export async function getDetalleAgente(
+  agenteId: string,
+  periodo: string
+): Promise<LineaDeAgente[]> {
+  const { desde, hasta } = rangoDePeriodo(periodo);
+  const { data, error } = await supabase.rpc("detalle_liquidacion_agente", {
+    p_agente: agenteId,
+    p_desde: desde,
+    p_hasta: hasta,
+  });
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((d) => ({
+    fecha: (d.fecha as string) ?? null,
+    compania: (d.compania as string) ?? "—",
+    numeroPoliza: (d.numero_poliza as string) ?? "—",
+    cliente: (d.cliente as string) ?? "—",
+    tipo: (d.tipo as string) ?? "otro",
+    negocioNuevo: (d.negocio_nuevo as boolean | null) ?? null,
+    prima: d.prima == null ? null : Number(d.prima),
+    comision: Number(d.comision ?? 0),
+    statement: (d.statement as string) ?? null,
+  }));
+}

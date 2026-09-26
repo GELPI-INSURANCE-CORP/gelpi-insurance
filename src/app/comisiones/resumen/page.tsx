@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
@@ -11,6 +12,7 @@ import {
   Copy,
   Loader2,
   ShieldAlert,
+  Trophy,
 } from "lucide-react";
 import clsx from "clsx";
 import { Badge, Button, Card, CardHead, Chip, EmptyState } from "@/components/ui";
@@ -35,6 +37,15 @@ import {
 } from "@/lib/queries/resumen";
 
 const UMBRAL_ATRASADA_DIAS = 10;
+
+// Copa para el 1er, 2do y 3er puesto de "Top-producing offices". Clases completas y a mano (no
+// se arman con un template string) porque Tailwind purga lo que no encuentra escrito así en el
+// código.
+const COPA_POR_PUESTO: Record<0 | 1 | 2, string> = {
+  0: "text-trophy-gold",
+  1: "text-trophy-silver",
+  2: "text-trophy-bronze",
+};
 
 function primerDiaDelMes(offsetMeses: number): Date {
   const hoy = new Date();
@@ -280,7 +291,7 @@ export default function ResumenPage() {
                 <span className="text-[13px] text-bad-fg">{t("dash.totalInDispute")}</span>
                 <ArrowRight size={14} className="text-bad-fg" />
               </div>
-              <div className="text-[28px] font-semibold tracking-tight text-bad-fg">
+              <div className="text-[28px] font-semibold tracking-tight tabular-nums text-bad-fg">
                 {money(kpis?.total_disputa.monto ?? 0)}
               </div>
               <div className="mt-2 text-xs font-medium text-bad-fg">
@@ -292,8 +303,8 @@ export default function ResumenPage() {
           {/* Producción y ranking: las dos preguntas que el dashboard no contestaba. Van antes que
               las excepciones porque una es cómo viene el negocio y la otra es trabajo pendiente —
               y el trabajo pendiente ya está resumido arriba en un número. */}
-          <div className="grid grid-cols-1 gap-6 items-start lg:grid-cols-2">
-            <Card>
+          <div className="grid grid-cols-1 gap-6 items-stretch lg:grid-cols-2">
+            <Card className="flex flex-col">
               <CardHead
                 title={t("dash.newPolicies")}
                 action={
@@ -365,30 +376,46 @@ export default function ResumenPage() {
                   {t("dash.noOfficePremium", { mes: etiquetaMes(mes, idioma) })}
                 </p>
               ) : (
-                <table className="w-full text-[13px]">
-                  <thead>
-                    <tr className="border-b border-border bg-background">
-                      <th className="px-5 py-2.5 text-left font-medium text-muted">{t("col.office")}</th>
-                      <th className="px-5 py-2.5 text-right font-medium text-muted">{t("col.lines")}</th>
-                      <th className="px-5 py-2.5 text-right font-medium text-muted">{t("dash.newBusinessPremium")}</th>
-                      <th className="px-5 py-2.5 text-right font-medium text-muted">{t("dash.commission")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ranking.map((o) => (
-                      <tr key={o.oficina_id ?? "sin-oficina"} className="border-b border-border last:border-b-0">
-                        <td className="px-5 py-3 font-medium text-foreground">{o.oficina}</td>
-                        <td className="px-5 py-3 text-right tabular-nums text-muted">{o.polizas}</td>
-                        <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">
-                          {money(Number(o.prima))}
-                        </td>
-                        <td className="px-5 py-3 text-right tabular-nums text-muted">
-                          {money(Number(o.comision))}
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr className="border-b border-border bg-background">
+                        <th className="px-5 py-2.5 text-left font-medium text-muted">{t("col.office")}</th>
+                        <th className="px-5 py-2.5 text-right font-medium text-muted">{t("col.policies")}</th>
+                        <th className="px-5 py-2.5 text-right font-medium text-muted">{t("dash.newBusinessPremium")}</th>
+                        <th className="px-5 py-2.5 text-right font-medium text-muted">{t("dash.commission")}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {ranking.map((o, i) => {
+                        const copaClase = i === 0 || i === 1 || i === 2 ? COPA_POR_PUESTO[i] : null;
+                        return (
+                          <tr key={o.oficina_id ?? "sin-oficina"} className="border-b border-border last:border-b-0">
+                            <td className="px-5 py-3 font-medium text-foreground">
+                              <div className="flex items-center gap-2">
+                                <span className="flex w-5 flex-shrink-0 items-center justify-center">
+                                  {copaClase ? (
+                                    <Trophy size={16} className={copaClase} aria-hidden />
+                                  ) : (
+                                    <span className="text-xs tabular-nums text-muted">{i + 1}</span>
+                                  )}
+                                </span>
+                                <span className="truncate">{o.oficina}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3 text-right tabular-nums text-muted">{o.polizas}</td>
+                            <td className="px-5 py-3 text-right font-medium tabular-nums text-foreground">
+                              {money(Number(o.prima))}
+                            </td>
+                            <td className="px-5 py-3 text-right tabular-nums text-muted">
+                              {money(Number(o.comision))}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
               {primaSinClasificar > 0 && (
                 <div className="px-5 pb-4 pt-2 text-xs text-muted">
@@ -416,15 +443,25 @@ export default function ResumenPage() {
                     />
                   ) : (
                     <div className="flex flex-col">
+                      {/* Cada renglón es un link directo al panel de esa excepción en Conciliación
+                          (mismo deep-link ?excepcion=<id> que ya usa AgenteFicha). Arturo las veía
+                          pero no podía hacer nada con ellas — ahora un clic lo deja parado en la
+                          pantalla donde se resuelve. Se muestran más compactas (menos padding,
+                          sugerencia en una sola línea con truncate) porque el detalle completo ya
+                          está a un clic de distancia. */}
                       {excepciones.map((e, i) => {
                         const badge = e.atrasada
                           ? { texto: t("dash.overdue"), tone: "bad" as Tone, icon: <AlertTriangle size={12} /> }
                           : etiquetaTipoExcepcion(e.tipo, t);
                         const sugerencia = sugerenciaTexto(e, t);
                         return (
-                          <div
+                          <Link
                             key={e.id}
-                            className={clsx("flex flex-col gap-1 py-2.5", i < excepciones.length - 1 && "border-b border-border")}
+                            href={`/comisiones/conciliacion/?excepcion=${e.id}`}
+                            className={clsx(
+                              "group flex flex-col gap-0.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-background",
+                              i < excepciones.length - 1 && "border-b border-border"
+                            )}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex min-w-0 items-center gap-2">
@@ -436,15 +473,22 @@ export default function ResumenPage() {
                                 )}
                                 <span className="truncate text-sm font-medium text-foreground">{nombreExcepcion(e, t)}</span>
                               </div>
-                              <div className="flex flex-shrink-0 items-center gap-4">
-                                <span className="text-sm font-medium text-foreground">{money(e.monto)}</span>
-                                <span className="w-14 text-right text-xs text-muted">
+                              <div className="flex flex-shrink-0 items-center gap-3">
+                                <span className="min-w-[5rem] whitespace-nowrap text-right text-sm font-medium tabular-nums text-foreground">
+                                  {money(e.monto)}
+                                </span>
+                                <span className="w-14 text-right text-xs tabular-nums text-muted">
                                   {t("dash.daysCount", { n: e.antiguedad_dias, s: e.antiguedad_dias === 1 ? "" : "s" })}
                                 </span>
+                                <ArrowRight
+                                  size={14}
+                                  className="flex-shrink-0 text-muted transition-colors group-hover:text-foreground"
+                                  aria-hidden
+                                />
                               </div>
                             </div>
-                            {sugerencia && <div className="pl-[76px] text-xs leading-relaxed text-muted">{sugerencia}</div>}
-                          </div>
+                            {sugerencia && <div className="truncate pl-[76px] text-xs text-muted">{sugerencia}</div>}
+                          </Link>
                         );
                       })}
                     </div>
@@ -463,7 +507,7 @@ export default function ResumenPage() {
             </div>
 
             <div className="lg:col-span-2">
-              <Card>
+              <Card className="overflow-hidden">
                 <CardHead
                   title={t("dash.commissionsExceptionsByOffice")}
                   action={
@@ -545,7 +589,7 @@ function KpiCard({
   return (
     <div className="flex flex-col gap-1 rounded-xl border border-border bg-surface p-5">
       <span className="text-[13px] text-muted">{label}</span>
-      <div className="text-[26px] font-semibold tracking-tight text-foreground">{value}</div>
+      <div className="text-[26px] font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
       <div className={clsx("mt-2 text-xs font-medium", toneClass[subTone])}>{sub}</div>
     </div>
   );

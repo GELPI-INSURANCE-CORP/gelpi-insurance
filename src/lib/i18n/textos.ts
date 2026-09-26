@@ -67,6 +67,7 @@ const en = {
   "col.uploaded": "Uploaded",
   "col.office": "Office",
   "col.agent": "Agent",
+  "col.policies": "Policies",
 
   // Estados de un statement, dichos en plata y no en jerga del sistema
   "status.reading": "Reading file…",
@@ -119,7 +120,7 @@ const en = {
   "dash.byReconciledCommission": "By reconciled commission for the selected month",
   "dash.noAgentCommission": "No agent has reconciled commission in {mes}.",
   "dash.commission": "Commission",
-  "dash.topOffices": "Top-producing offices",
+  "dash.topOffices": "TOP AGENCIES",
   "dash.byNewBusinessPremium": "By new business premium for the selected month",
   "dash.noOfficePremium": "No office has new business premium in {mes}.",
   "dash.newBusinessPremium": "New business premium",
@@ -194,6 +195,7 @@ const es: Partial<Record<ClaveTexto, string>> = {
   "col.uploaded": "Subido",
   "col.office": "Oficina",
   "col.agent": "Agente",
+  "col.policies": "Pólizas",
 
   "status.reading": "Leyendo el archivo…",
   "status.readyToPay": "Listo para pagar",
@@ -242,7 +244,7 @@ const es: Partial<Record<ClaveTexto, string>> = {
   "dash.byReconciledCommission": "Por comisión conciliada del mes elegido",
   "dash.noAgentCommission": "Ningún agente tiene comisión conciliada en {mes}.",
   "dash.commission": "Comisión",
-  "dash.topOffices": "Oficinas que más produjeron",
+  "dash.topOffices": "AGENCIAS TOP",
   "dash.byNewBusinessPremium": "Por prima de negocio nuevo del mes elegido",
   "dash.noOfficePremium": "Ninguna oficina tiene prima de negocio nuevo en {mes}.",
   "dash.newBusinessPremium": "Prima de negocio nuevo",
