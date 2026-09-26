@@ -132,6 +132,24 @@ function coerceNumber(v: unknown): number | null {
 // el armado del lote, más abajo.
 const COL_SECCION = "_seccion_del_reporte";
 
+// La fila de totales del pie. Kemper cierra su statement con "Grand Total:" y ahí repite la suma
+// de cada columna: 16 celdas llenas, así que ningún filtro por "fila casi vacía" la agarra. Entró
+// como una transacción más y el statement quedó EXACTAMENTE al doble — $10.734,34 en vez de
+// $5.367,17, y la prima en $109.568,16 en vez de $54.784,08.
+//
+// Se exige que la celda sea SOLO la palabra (con dos puntos opcionales) y que esté en las primeras
+// columnas: un asegurado que se llame "Total Quality Corp" no tiene por qué desaparecer.
+// El plural inglés "Totals:" faltaba y se coló: National General cierra el bloque de CADA
+// productor con esa fila, y las cuatro que tiene sumaron el statement entero otra vez —
+// $2.104,86 en vez de $1.052,43. Kemper había pasado de casualidad, porque escribe "Grand
+// Total:" en singular.
+const PATRON_FILA_TOTAL = /^(grand\s+)?(sub\s*-?\s*)?total(s|es)?(\s+general)?\s*:?$/i;
+
+function esFilaDeTotales(fila: unknown[] | undefined): boolean {
+  const primeras = (fila ?? []).slice(0, 3);
+  return primeras.some((c) => PATRON_FILA_TOTAL.test(String(c ?? "").trim()));
+}
+
 function tituloDeSeccion(fila: unknown[] | undefined): string | null {
   const vals = (fila ?? []).map((c) => String(c ?? "").trim()).filter((s) => s !== "");
   if (vals.length !== 1) return null;
@@ -568,6 +586,7 @@ function parseCsv(text: string): Record<string, string>[] {
     const r = rows[i];
     const rotulo = tituloDeSeccion(r);
     if (rotulo) { seccion = rotulo; continue; }
+    if (esFilaDeTotales(r)) continue; // el pie que repite la suma de cada columna
     if (contarNoVacias(r) < MIN_CELDAS_FILA) continue; // fila vacía o separador
     if (r.map((h) => h.trim()).join("|") === firmaEncabezado) continue; // encabezado repetido por sección
     const obj: Record<string, string> = {};
@@ -628,6 +647,7 @@ function parseXlsx(bytes: Uint8Array): Record<string, unknown>[] {
       const fila = matriz[i];
       const rotulo = tituloDeSeccion(fila);
       if (rotulo) { seccion = rotulo; continue; }
+      if (esFilaDeTotales(fila)) continue; // el pie que repite la suma de cada columna
       if (contarNoVacias(fila) < MIN_CELDAS_FILA) continue; // fila vacía o separador
       // Cada sección vuelve a repetir el encabezado. Sin esto entraría como una fila de datos
       // cuyos valores son los nombres de las columnas: una línea de comisión en cero por
