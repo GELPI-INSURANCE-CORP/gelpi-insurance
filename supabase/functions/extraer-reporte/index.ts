@@ -203,14 +203,64 @@ const TIPO_TRANSACCION_CODES: Record<string, TipoTransaccion> = {
   CAN: "cancelacion", CNL: "cancelacion", CXL: "cancelacion", CANCEL: "cancelacion", CANCELLATION: "cancelacion",
   CANCELACION: "cancelacion", CB: "cancelacion", CHARGEBACK: "cancelacion",
   ADJ: "ajuste", ADJUSTMENT: "ajuste", AJUSTE: "ajuste",
+  // Kemper. Escribe los códigos con su propia forma y ninguno estaba en la tabla, así que las 14
+  // cancelaciones y los 24 endosos de su statement de agosto entraban como "otro" — y una
+  // cancelación que no se reconoce como tal no dispara el paso que la empareja con su original.
+  ENDORSE: "endoso", CNXFINAL: "cancelacion", CNX: "cancelacion", CANC: "cancelacion",
+  WRITEOFF: "ajuste", "WRITE OFF": "ajuste", REINSTATE: "ajuste", REISSUE: "ajuste",
 };
+
+// Cargos que la compañía le descuenta a la agencia: MVR, informes de suscripción, inspecciones.
+// No son de ningún agente — los paga la agencia — pero sí son plata de este mes y tienen que
+// restar del total.
+//
+// Cada compañía los llama distinto: Progressive manda "MVR FEE", Kemper manda "Fee-UWReports".
+// Por eso se reconocen por patrón y, sobre todo, se guarda LA ETIQUETA ORIGINAL: saber que hubo
+// un cargo de $142,35 no sirve de nada si no se puede ver de qué era.
+const PATRON_CARGO_AGENCIA = /\bfees?\b|\bmvr\b|uw\s*report|underwrit|inspecci|inspection|motor\s*vehicle/i;
+
+function etiquetaDeCargo(f: Record<string, unknown>): string | null {
+  const candidatos: unknown[] = [f.tipo_transaccion, f.nombre_asegurado, f.ramo];
+  const extra = (f.campos_extra as Record<string, unknown>) ?? {};
+  candidatos.push(...Object.values(extra));
+  for (const v of candidatos) {
+    const t = String(v ?? "").trim();
+    if (t && PATRON_CARGO_AGENCIA.test(t)) return t;
+  }
+  return null;
+}
+
+// El saldo que viene arrastrado del mes anterior y el pago con que se cancela. Kemper los manda
+// como "Bal Forward" (+$6.920,64) y "EFT-Disburse" (−$6.920,64): se anulan entre sí, pero ninguno
+// de los dos es plata producida este mes. United hace lo mismo con otra redacción.
+const PATRON_SALDO_ANTERIOR =
+  /bal(ance)?\s*forward|saldo\s*(anterior|arrastrado)|per[ií]odo\s+anterior|previous\s+(period|balance)|prior\s+(period|balance)|eft[\s-]*disburse|disbursement/i;
 
 // La fila de referencia del período anterior. Se reconoce SOLO por el nombre que el prompt le pide
 // a la IA que le ponga ("Pago período anterior (referencia)"), y no por "no tiene número de póliza"
 // — porque los cargos de MVR tampoco lo tienen y esos SÍ son plata de este mes que hay que restar.
 function esReferenciaPeriodoAnterior(f: Record<string, unknown>): boolean {
   const nombre = String(f.nombre_asegurado ?? "");
-  return /per[ií]odo\s+anterior|previous\s+period|prior\s+period/i.test(nombre);
+  if (/per[ií]odo\s+anterior|previous\s+period|prior\s+period/i.test(nombre)) return true;
+  // Kemper no le pone nombre a esas filas: lo dice en el código de transacción ("Bal Forward",
+  // "EFT-Disburse") y deja el asegurado en "-". Se mira ahí también, pero solo cuando la fila no
+  // trae póliza: una póliza real con un código raro no es un saldo arrastrado.
+  const sinPoliza = String(f.numero_poliza ?? "").replace(/[^A-Za-z0-9]/g, "") === "";
+  if (!sinPoliza) return false;
+  return PATRON_SALDO_ANTERIOR.test(String(f.tipo_transaccion ?? "")) ||
+         PATRON_SALDO_ANTERIOR.test(nombre);
+}
+
+// Cómo entra cada fila al statement. Son tres destinos y no dos, porque un cargo de la compañía no
+// es ni una comisión de alguien ni un saldo del mes pasado: es plata de este mes que no tiene
+// dueño. Va a la cuenta de la casa ya resuelta, para que no aparezca como algo pendiente de
+// decidir cuando no hay nada que decidir.
+function clasificacionInicial(f: Record<string, unknown>): { estado: string; regla: string | null } {
+  if (esReferenciaPeriodoAnterior(f)) return { estado: "descartado", regla: "no_es_de_este_mes" };
+  const cargo = etiquetaDeCargo(f);
+  const sinPoliza = String(f.numero_poliza ?? "").replace(/[^A-Za-z0-9]/g, "") === "";
+  if (cargo && sinPoliza) return { estado: "cuenta_casa", regla: "cargo_de_la_compania" };
+  return { estado: "pendiente", regla: null };
 }
 
 function coerceTipoTransaccion(v: unknown): TipoTransaccion {
@@ -792,6 +842,8 @@ Reglas:
 - Montos como número; los chargebacks/cancelaciones son montos NEGATIVOS.
 - tipo_transaccion: traducí códigos de aseguradora (NB/NBS/NEW->nueva, RWL/REN->renovacion, END/ENDT/XLC->endoso, CAN/CNL/CXL/CB->cancelacion, ADJ->ajuste) o dejá "otro".
 - monto cuando hay VARIAS columnas de comisión (ej. Progressive trae "Gross Comm" y "Net Due Agent", o "Agency Due"): elegí SIEMPRE la NETA, la que la aseguradora realmente deposita después de sus descuentos, porque es la que tiene que cuadrar contra el cheque. En la mayoría de las filas las dos coinciden; donde difieren, la neta es la correcta. Caso real: la fila "MVR FEE" de Progressive tiene Gross Comm = 0 y Net Due Agent = -1534, que es el cargo que la aseguradora le descuenta a la agencia — tomando la bruta ese descuento desaparecía y el total no cuadraba con el depósito.
+- Kemper manda "Current Com." (la comisión de la fila) y "Total Net Amount" (esa comisión más los cargos que la compañía descuenta). La neta es "Total Net Amount": es la que incluye los fees y la que cuadra con el depósito. Su "Com. Pct." viene como fracción (0.1 = 10%): devolvela tal cual está en la celda, el sistema la convierte.
+- Filas que NO son una transacción de póliza y vienen sin número de póliza: los saldos arrastrados ("Bal Forward", "Balance Forward") y los pagos con que se cancelan ("EFT-Disburse", "Disbursement") no son plata producida este mes; los cargos de la compañía ("MVR FEE", "Fee-UWReports", inspecciones) SÍ lo son y tienen que restar. En los dos casos copiá el texto del código de transacción TAL CUAL viene en tipo_transaccion, sin traducirlo ni inventarle un nombre: el sistema lo usa para clasificarlas y para mostrar de qué era el cargo.
 - Algunas aseguradoras (ej. United Automobile) incluyen en el statement una fila de referencia con el total ya pagado en el período anterior, sin póliza real asociada (número de póliza en ceros como "00000000000", o vacío). Esa fila no es una transacción nueva de este período: clasificala como tipo_transaccion="ajuste" y poné en nombre_asegurado EXACTAMENTE "Pago período anterior (referencia)" — ese texto es la señal que usa el sistema para dejarla fuera del total, porque no es plata de este período. No inventes un número de póliza. OJO: esto NO aplica a cargos como "MVR FEE" o fees administrativos, que sí son plata que la aseguradora descuenta este mes y tienen que sumar.
 - numero_poliza: incluí SIEMPRE el prefijo de letras del número de póliza. Si la referencia viene como "01 UAD -610794900", el número de póliza es "UAD-610794900" (el "01" inicial es un código de línea, no parte de la póliza); nunca devuelvas solo "-610794900".
 - fecha_vigencia vs fecha_statement: fecha_vigencia es cuándo la PÓLIZA empieza a cubrir ("Policy Effective Date", "Eff Date", "Vigencia"); fecha_statement es cuándo la aseguradora PROCESÓ ese movimiento ("Transaction Date", "Processed Date", "Paid Date"). Si el archivo trae las dos, mapeá cada una a la suya y no las mezcles: el sistema usa la de transacción para distinguir dos comisiones iguales de la misma póliza pagadas en días distintos, que son legítimas, de un duplicado real.
@@ -1495,8 +1547,13 @@ Deno.serve(async (req: Request) => {
         monto: coerceNumber(f.monto) ?? 0,
         fecha_vigencia: coerceDate(f.fecha_vigencia),
         fecha_statement: coerceDate(f.fecha_statement) ?? coerceDate(reporte.periodo),
+        // La etiqueta del cargo se guarda tal cual la escribió la compañía. Sin eso, en la
+        // pantalla queda un renglón de "-$142,35" sin decir de qué era, y cada compañía lo llama
+        // distinto: no hay forma de deducirlo después.
         campos_extra: esReferenciaPeriodoAnterior(f)
           ? { ...((f.campos_extra as Record<string, unknown>) ?? {}), categoria_ajuste: "referencia" }
+          : etiquetaDeCargo(f) && clasificacionInicial(f).regla === "cargo_de_la_compania"
+          ? { ...((f.campos_extra as Record<string, unknown>) ?? {}), cargo: etiquetaDeCargo(f) }
           : f.campos_extra ?? {},
         confianza: f.confianza ?? extraccion.confianza_promedio ?? null,
         // United pone arriba del statement cuánto pagó el mes ANTERIOR. No es plata de este mes,
@@ -1508,8 +1565,8 @@ Deno.serve(async (req: Request) => {
         // de las claves de todo el lote: si una sola fila trae `estado` y las demas no, a esas les
         // manda NULL en vez de dejar correr el default, y la columna es NOT NULL. El lote entero se
         // cae. Paso tal cual con United: una sola fila de referencia tumbo las 189.
-        estado: esReferenciaPeriodoAnterior(f) ? "descartado" : "pendiente",
-        regla_match: esReferenciaPeriodoAnterior(f) ? "no_es_de_este_mes" : null,
+        estado: clasificacionInicial(f).estado,
+        regla_match: clasificacionInicial(f).regla,
       }));
 
       await limpiarLineasPrevias(admin, reporteId!);
