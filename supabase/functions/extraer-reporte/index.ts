@@ -139,7 +139,11 @@ const COL_SECCION = "_seccion_del_reporte";
 //
 // Se exige que la celda sea SOLO la palabra (con dos puntos opcionales) y que esté en las primeras
 // columnas: un asegurado que se llame "Total Quality Corp" no tiene por qué desaparecer.
-const PATRON_FILA_TOTAL = /^(grand\s+total|total(es)?|sub\s*-?\s*total|total\s+general)\s*:?$/i;
+// El plural inglés "Totals:" faltaba y se coló: National General cierra el bloque de CADA
+// productor con esa fila, y las cuatro que tiene sumaron el statement entero otra vez —
+// $2.104,86 en vez de $1.052,43. Kemper había pasado de casualidad, porque escribe "Grand
+// Total:" en singular.
+const PATRON_FILA_TOTAL = /^(grand\s+)?(sub\s*-?\s*)?total(s|es)?(\s+general)?\s*:?$/i;
 
 function esFilaDeTotales(fila: unknown[] | undefined): boolean {
   const primeras = (fila ?? []).slice(0, 3);
