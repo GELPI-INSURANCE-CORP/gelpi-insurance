@@ -682,14 +682,17 @@ export default function ResumenPage() {
                       <tbody>
                         {totalOficinas.map((o) => (
                           <tr key={o.oficina_id} className="border-t border-border">
-                            <td className="px-5 py-3 font-medium text-foreground">{o.oficina}</td>
+                            {/* whitespace-nowrap: en la columna angosta del dashboard "GELPI INSURANCE CORP" se
+                                partia en tres renglones y la tabla quedaba de tres alturas distintas.
+                                La tabla ya scrollea de lado sola cuando no entra. */}
+                            <td className="whitespace-nowrap px-5 py-3 font-medium text-foreground">{o.oficina}</td>
                             {/* Misma razón que el KPI de arriba: si el Book casi no trae primas,
                                 el número por oficina tampoco significa nada. */}
-                            <td className="px-5 py-3 text-right tabular-nums text-foreground">
+                            <td className="whitespace-nowrap px-5 py-3 text-right tabular-nums text-foreground">
                               {primaIncompleta ? "—" : money(primaPorOficina.get(o.oficina_id) ?? 0)}
                             </td>
-                            <td className="px-5 py-3 text-right tabular-nums text-foreground">{money(o.comision)}</td>
-                            <td className="px-5 py-3 text-right tabular-nums text-foreground">{o.excepciones}</td>
+                            <td className="whitespace-nowrap px-5 py-3 text-right tabular-nums text-foreground">{money(o.comision)}</td>
+                            <td className="whitespace-nowrap px-5 py-3 text-right tabular-nums text-foreground">{o.excepciones}</td>
                             <td className="px-5 py-3 text-muted">
                               <span className="mr-2">{t("dash.daysCount", { n: o.antiguedad, s: o.antiguedad === 1 ? "" : "s" })}</span>
                               {o.antiguedad >= UMBRAL_ATRASADA_DIAS && o.excepciones > 0 && <Badge tone="bad">{t("dash.overdueOffice")}</Badge>}
