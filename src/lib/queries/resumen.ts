@@ -217,3 +217,56 @@ export async function getBookResumen(): Promise<BookResumen> {
   }
   return { primaPorOficina, premiumActivo, polizasActivas, premiumCancelado, polizasCanceladas, activasConPrima };
 }
+
+// =========================================================
+// Datos para las gráficas del dashboard
+// =========================================================
+
+export interface PuntoSerie {
+  mes: string;
+  polizas: number;
+  prima: number;
+}
+
+// Cómo venía el Book mes a mes, reconstruido desde las fechas de vigencia y vencimiento de cada
+// póliza (ver 20260926000013). Es la serie real: las tarjetas del dashboard dibujan esto y no
+// una curva de adorno.
+//
+// Ojo con el último punto: las pólizas sin fecha de vigencia no se pueden ubicar en el tiempo y
+// quedan fuera de la serie, así que puede no coincidir exactamente con el total de hoy. La línea
+// muestra la forma de la curva, no el total — ese lo da el número grande de la tarjeta.
+export async function getSerieBook(meses = 12): Promise<PuntoSerie[]> {
+  const { data, error } = await supabase.rpc("serie_mensual_book", { p_meses: meses });
+  if (error) throw error;
+  return (data ?? []).map((d: Record<string, unknown>) => ({
+    mes: String(d.mes),
+    polizas: Number(d.polizas ?? 0),
+    prima: Number(d.prima ?? 0),
+  }));
+}
+
+export interface RamoPrima {
+  ramo: string;
+  polizas: number;
+  prima: number;
+}
+
+export async function getPrimaPorRamo(): Promise<RamoPrima[]> {
+  const { data, error } = await supabase.rpc("prima_por_ramo");
+  if (error) throw error;
+  return (data ?? []).map((d: Record<string, unknown>) => ({
+    ramo: String(d.ramo ?? "—"),
+    polizas: Number(d.polizas ?? 0),
+    prima: Number(d.prima ?? 0),
+  }));
+}
+
+// Cuánto cambió el último punto contra el anterior. Devuelve null cuando no hay con qué comparar
+// o cuando el punto anterior es cero: un "subió infinito" no le dice nada a nadie.
+export function variacion(serie: number[]): number | null {
+  if (serie.length < 2) return null;
+  const antes = serie[serie.length - 2];
+  const ahora = serie[serie.length - 1];
+  if (!antes) return null;
+  return ((ahora - antes) / Math.abs(antes)) * 100;
+}
