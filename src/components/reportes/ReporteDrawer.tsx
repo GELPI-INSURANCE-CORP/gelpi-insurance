@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Info, ArrowRight, Eye, X, Pencil, RotateCcw } from "lucide-react";
 import { SidePanel, Button, Badge, TextInput, Loading, type Tone } from "@/components/agentes/ui";
 import BorrarStatement from "@/components/reportes/BorrarStatement";
-import { money, pct, fechaHora, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
+import { money, pct, fechaHora, etiquetaPeriodo, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
 import {
   actualizarPeriodoReporte,
   reprocesarReporte,
@@ -164,7 +164,7 @@ export default function ReporteDrawer({
           <BorrarStatement
             reporteId={reporte.id}
             nombreArchivo={reporte.nombre_archivo}
-            periodo={reporte.periodo}
+            periodo={etiquetaPeriodo(reporte.periodo)}
             totalLineas={reporte.total_lineas || 0}
             onBorrado={onClose}
           />
@@ -228,7 +228,7 @@ function PeriodoEditor({ reporte, onActualizado }: { reporte: Reporte; onActuali
         }}
         className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-brand"
       >
-        {reporte.periodo ?? "Sin período — click para asignar uno"}
+        {etiquetaPeriodo(reporte.periodo) ?? "Sin período — click para asignar uno"}
         <Pencil size={12} />
       </button>
     );

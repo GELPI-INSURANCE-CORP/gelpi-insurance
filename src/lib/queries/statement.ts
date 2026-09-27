@@ -53,6 +53,7 @@ export interface LineaStatement {
   excepcionTipo: string | null;
   explicacion: string | null;
   agenteSugeridoId: string | null;
+  scoreSugerencia: number | null;
   agenteSugerido: string | null;
   oficinaSugeridaId: string | null;
 }
@@ -114,7 +115,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
     ),
     fetchTodo<Record<string, unknown>>(
       "v_excepciones",
-      "id, tipo, linea_comision_id, explicacion, estado, agente_sugerido_id, agente_sugerido, oficina_sugerida_id",
+      "id, tipo, linea_comision_id, explicacion, estado, agente_sugerido_id, agente_sugerido, oficina_sugerida_id, score",
       reporteId
     ),
   ]);
@@ -158,6 +159,10 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       excepcionTipo: (exc?.tipo as string) ?? null,
       explicacion: (exc?.explicacion as string) ?? null,
       agenteSugeridoId: (exc?.agente_sugerido_id as string) ?? null,
+      // El score de la EXCEPCION y no el de la linea: son dos numeros distintos. El de la linea
+      // es que tan bien matcheo ella sola; este es la confianza del agente que se esta
+      // sugiriendo, que es lo unico que puede decidir si vale la pena ofrecer "Confirmar".
+      scoreSugerencia: exc?.score == null ? null : Number(exc.score),
       agenteSugerido: (exc?.agente_sugerido as string) ?? null,
       oficinaSugeridaId: (exc?.oficina_sugerida_id as string) ?? null,
     };
