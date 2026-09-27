@@ -22,7 +22,7 @@ import {
   TextArea,
   TextInput,
 } from "@/components/agentes/ui";
-import { money, fechaHora, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
+import { money, fecha, fechaHora, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
 import {
   getStatementDetalle,
   finalizarStatement,
@@ -889,6 +889,10 @@ function StatementContent() {
                 <th className="px-4 py-2.5 font-medium">Fila</th>
                 <th className="px-4 py-2.5 font-medium">Póliza</th>
                 <th className="px-4 py-2.5 font-medium">Cliente</th>
+                {/* De cuando es la poliza que se esta pagando. Un statement de agosto puede traer
+                    comision de una poliza que empezo en marzo, y sin esta columna no habia forma de
+                    saberlo sin ir al Book poliza por poliza. */}
+                <th className="px-4 py-2.5 font-medium">Vigencia</th>
                 <th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 font-medium text-right">Prima</th>
                 <th className="px-4 py-2.5 font-medium text-right">%</th>
@@ -1173,6 +1177,9 @@ function FilaLinea({
           la casa" no dicen nada, y el nombre del agente de la casa es peor que nada: hace parecer
           que Arturo se ganó -$180 personalmente. Lo que se eligió al marcarla (MVR, fee, ajuste)
           es el dato verdadero, y es el que hay que ver para poder desglosarlo después. */}
+      <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-muted">
+        {l.fechaVigencia ? fecha(l.fechaVigencia) : "—"}
+      </td>
       <td className="px-4 py-2.5 text-muted">
         {etiquetaAjuste ?? TIPOS_TRANSACCION[l.tipoTransaccion] ?? l.tipoTransaccion}
       </td>
