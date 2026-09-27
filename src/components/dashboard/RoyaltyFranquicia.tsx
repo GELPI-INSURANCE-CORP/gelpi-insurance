@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Crown } from "lucide-react";
+import Link from "next/link";
 import { Card, CardHead } from "@/components/ui";
 import { money } from "@/lib/format";
 import {
   getRoyaltyPorOficina,
-  actualizarPctRoyalty,
   rangoYtd,
   type RoyaltyOficina,
 } from "@/lib/queries/resumen";
@@ -27,8 +27,6 @@ export default function RoyaltyFranquicia({ mes, etiquetaMes }: { mes: Date; eti
   const [filas, setFilas] = useState<RoyaltyOficina[] | null>(null);
   const [ytd, setYtd] = useState<RoyaltyOficina[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [editado, setEditado] = useState<Record<string, string>>({});
-  const [guardando, setGuardando] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     setError(null);
@@ -44,7 +42,6 @@ export default function RoyaltyFranquicia({ mes, etiquetaMes }: { mes: Date; eti
       ]);
       setFilas(m);
       setYtd(y);
-      setEditado({});
     } catch (e) {
       setError(porQue(e));
     }
@@ -54,30 +51,6 @@ export default function RoyaltyFranquicia({ mes, etiquetaMes }: { mes: Date; eti
     void cargar();
   }, [cargar]);
 
-  async function guardar(oficinaId: string, valor: string) {
-    const texto = valor.trim();
-    const pct = texto === "" ? null : Number(texto);
-    if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct > 100)) {
-      setError("El royalty tiene que ser un número entre 0 y 100.");
-      setEditado((p) => {
-        const n = { ...p };
-        delete n[oficinaId];
-        return n;
-      });
-      return;
-    }
-    const actual = filas?.find((f) => f.oficinaId === oficinaId)?.pctRoyalty ?? null;
-    if (pct === actual) return;
-    setGuardando(oficinaId);
-    try {
-      await actualizarPctRoyalty(oficinaId, pct);
-      await cargar();
-    } catch (e) {
-      setError(porQue(e));
-    } finally {
-      setGuardando(null);
-    }
-  }
 
   const cobrables = (filas ?? []).filter((f) => !f.esCorporativa);
   const totalMes = cobrables.reduce((s, f) => s + f.royalty, 0);
@@ -88,7 +61,7 @@ export default function RoyaltyFranquicia({ mes, etiquetaMes }: { mes: Date; eti
     <Card>
       <CardHead
         title="Franquicia — lo que te dejan las oficinas"
-        subtitle="Un % de la comisión que genera cada oficina. No es la cuenta de los agentes: esa va sobre la prima."
+        subtitle="Un % de la comisión que cobra cada oficina en el mes del statement. No es la cuenta de los agentes: esa va sobre la prima vendida."
       />
 
       <div className="px-5 pb-5 pt-1">
@@ -118,8 +91,11 @@ export default function RoyaltyFranquicia({ mes, etiquetaMes }: { mes: Date; eti
           <div className="mb-3 flex items-center gap-2 rounded-lg border border-warn-fg/30 bg-warn-bg px-3 py-2 text-[12px] text-warn-fg">
             <AlertTriangle size={14} className="flex-shrink-0" />
             {faltaPct === 1
-              ? "Hay 1 oficina generando comisión sin royalty definido. No entra en los totales de arriba."
-              : `Hay ${faltaPct} oficinas generando comisión sin royalty definido. No entran en los totales de arriba.`}
+              ? "Hay 1 oficina generando comisión sin royalty definido; no entra en los totales de arriba."
+              : `Hay ${faltaPct} oficinas generando comisión sin royalty definido; no entran en los totales de arriba.`}{" "}
+            <Link href="/comisiones/oficinas/" className="font-semibold underline underline-offset-2">
+              Ponérselo en Oficinas
+            </Link>
           </div>
         )}
 
@@ -162,36 +138,11 @@ export default function RoyaltyFranquicia({ mes, etiquetaMes }: { mes: Date; eti
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted">
                         {money(f.comisionGenerada)}
                       </td>
-                      <td className="px-3 py-2.5">
-                        {/* La corporativa no lleva campo: dejarlo editable invitaría a ponerle un
-                            número que el cálculo va a ignorar igual. */}
-                        {f.esCorporativa ? (
-                          <span className="text-muted">—</span>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              placeholder="—"
-                              className="h-8 w-16 rounded-lg border border-border bg-surface px-2 text-[13px] tabular-nums outline-none focus:border-brand"
-                              value={editado[f.oficinaId] ?? (f.pctRoyalty == null ? "" : String(f.pctRoyalty))}
-                              onChange={(e) =>
-                                setEditado((p) => ({ ...p, [f.oficinaId]: e.target.value }))
-                              }
-                              onBlur={() =>
-                                guardar(
-                                  f.oficinaId,
-                                  editado[f.oficinaId] ?? (f.pctRoyalty == null ? "" : String(f.pctRoyalty))
-                                )
-                              }
-                              aria-label={`Royalty de ${f.oficina}`}
-                            />
-                            <span className="text-muted">%</span>
-                            {guardando === f.oficinaId && (
-                              <span className="text-[11px] text-muted">guardando…</span>
-                            )}
-                          </div>
-                        )}
+                      {/* Solo lectura a propósito. El royalty es un número de contrato que se
+                          pacta una vez; tenerlo editable en la pantalla que se mira todos los días
+                          es una invitación a moverlo sin querer. Se cambia en Oficinas. */}
+                      <td className="px-3 py-2.5 tabular-nums text-muted">
+                        {f.esCorporativa ? "—" : f.pctRoyalty == null ? "sin definir" : `${f.pctRoyalty}%`}
                       </td>
                       {/* Sin % definido no se muestra $0.00: eso se leería como "esta oficina no
                           te deja nada" cuando lo que pasa es que falta ponerle el número. */}

@@ -528,3 +528,30 @@ export function subscribeReporteUpdates(
     .subscribe();
   return channel;
 }
+
+export interface ResultadoBorrado {
+  lineasBorradas: number;
+  excepcionesBorradas: number;
+  polizasPreservadas: number;
+}
+
+// Borra un statement mal subido y todo lo que colgaba de él. Exige un motivo, que queda
+// guardado en auditoría junto con el resumen de lo que se llevó.
+//
+// Antes de borrar, la función de la base guarda en las pólizas los agentes que se habían
+// asignado a mano, para que volver a subir el archivo no empiece de cero. Y al irse el registro
+// se libera el hash, así que el mismo archivo se puede resubir — sin eso el sistema lo
+// rechazaría por duplicado. Ver 20260927000003.
+export async function borrarReporte(reporteId: string, motivo: string): Promise<ResultadoBorrado> {
+  const { data, error } = await supabase.rpc("borrar_reporte", {
+    p_reporte_id: reporteId,
+    p_motivo: motivo,
+  });
+  if (error) throw error;
+  const r = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
+  return {
+    lineasBorradas: Number(r?.lineas_borradas ?? 0),
+    excepcionesBorradas: Number(r?.excepciones_borradas ?? 0),
+    polizasPreservadas: Number(r?.polizas_preservadas ?? 0),
+  };
+}

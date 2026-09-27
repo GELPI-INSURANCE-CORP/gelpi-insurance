@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Info, ArrowRight, Eye, X, Pencil, RotateCcw } from "lucide-react";
-import { SidePanel, Button, Badge, TextInput, Loading, type Tone } from "@/components/agentes/ui";
+import { Info, ArrowRight, Eye, X, Pencil, RotateCcw, Trash2, AlertTriangle } from "lucide-react";
+import { SidePanel, Modal, Button, Badge, TextInput, TextArea, Loading, type Tone } from "@/components/agentes/ui";
 import { money, pct, fechaHora, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
 import {
   actualizarPeriodoReporte,
   reprocesarReporte,
+  borrarReporte,
   type BonoResumen,
   type LineaComision,
   type LineaVenta,
@@ -49,6 +50,13 @@ export default function ReporteDrawer({
   const [rawModal, setRawModal] = useState<{ titulo: string; datos: Record<string, unknown> | null } | null>(null);
   const verCrudo = (titulo: string, datos: Record<string, unknown> | null) => setRawModal({ titulo, datos });
   const [reprocesando, setReprocesando] = useState(false);
+  // Borrar un statement es distinto de reprocesarlo: reprocesar vuelve a leer el mismo
+  // archivo, borrar lo saca del sistema para poder subir otro. Por eso pide motivo y va
+  // aparte, en rojo y al final del panel.
+  const [borrando, setBorrando] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  const [confirmarBorrado, setConfirmarBorrado] = useState(false);
+  const [errorBorrado, setErrorBorrado] = useState<string | null>(null);
 
   const conflictosVenta = lineasVenta.filter((l) => l.estado_en_abb === "conflicto");
 
@@ -69,6 +77,33 @@ export default function ReporteDrawer({
       alert(e instanceof Error ? e.message : "No se pudo reprocesar el reporte.");
     } finally {
       setReprocesando(false);
+    }
+  }
+
+  async function borrar() {
+    if (!motivo.trim()) {
+      setErrorBorrado("Escribí por qué lo estás borrando. Queda guardado.");
+      return;
+    }
+    setBorrando(true);
+    setErrorBorrado(null);
+    try {
+      const r = await borrarReporte(reporte.id, motivo.trim());
+      setConfirmarBorrado(false);
+      // Se avisa cuántas asignaciones manuales quedaron guardadas en el Book, porque es
+      // justo lo que uno teme perder al borrar y no se ve por ningún lado.
+      alert(
+        `Statement borrado. Se fueron ${r.lineasBorradas} línea(s) y ${r.excepcionesBorradas} excepción(es).` +
+          (r.polizasPreservadas > 0
+            ? ` Las ${r.polizasPreservadas} asignación(es) de agente que habías hecho a mano quedaron guardadas en el Book, así que al volver a subir el archivo se reencuentran solas.`
+            : "") +
+          " El archivo se puede volver a subir."
+      );
+      onClose();
+    } catch (e) {
+      setErrorBorrado(e instanceof Error ? e.message : "No se pudo borrar el statement.");
+    } finally {
+      setBorrando(false);
     }
   }
 
@@ -150,8 +185,60 @@ export default function ReporteDrawer({
               <ConflictosTabla lineas={conflictosVenta} />
             </div>
           )}
+
+        {/* Al final y separado: no es una acción más de la barra de arriba. Se llega acá
+            después de haber mirado el contenido y haber decidido que el archivo está mal. */}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-bad-fg/25 bg-bad-bg px-4 py-3">
+          <div className="text-[12px] leading-relaxed text-bad-fg">
+            <strong>Borrar este statement</strong> lo saca del sistema con todas sus líneas. Se usa
+            cuando el archivo se subió mal y hay que rehacerlo — después se puede volver a subir el
+            mismo archivo. Lo que asignaste a mano se guarda en el Book antes de borrar.
+          </div>
+          <Button size="sm" variant="secondary" onClick={() => { setMotivo(""); setErrorBorrado(null); setConfirmarBorrado(true); }}>
+            <Trash2 className="w-3.5 h-3.5" />
+            Borrar statement
+          </Button>
+        </div>
         </div>
       </SidePanel>
+      <Modal
+        open={confirmarBorrado}
+        onClose={() => setConfirmarBorrado(false)}
+        title="Borrar el statement"
+      >
+        <div className="flex flex-col gap-3 text-[13px]">
+          <div className="flex items-start gap-2 rounded-lg border border-bad-fg/30 bg-bad-bg px-3 py-2.5 text-bad-fg">
+            <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+            <span>
+              Se van <strong>{reporte.total_lineas || 0} línea(s)</strong> de{" "}
+              <strong>{reporte.nombre_archivo}</strong>
+              {reporte.periodo ? <> (período {reporte.periodo})</> : null}. Esto no se puede deshacer.
+            </span>
+          </div>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-muted">¿Por qué lo estás borrando?</span>
+            <TextArea
+              rows={3}
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ej.: se subió el archivo equivocado, el statement venía incompleto, la aseguradora lo reemplazó…"
+            />
+          </label>
+          <p className="text-[11px] text-muted">
+            El motivo queda guardado con la fecha y quién lo borró. Dentro de un mes, cuando falte
+            un statement, esa nota es la única forma de saber qué pasó.
+          </p>
+          {errorBorrado && <p className="text-xs text-bad-fg">{errorBorrado}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setConfirmarBorrado(false)} disabled={borrando}>
+              Cancelar
+            </Button>
+            <Button variant="primary" onClick={borrar} disabled={borrando || !motivo.trim()}>
+              {borrando ? "Borrando…" : "Borrar statement"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {rawModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4" onClick={() => setRawModal(null)}>
