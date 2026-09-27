@@ -22,8 +22,9 @@ import {
   TextArea,
   TextInput,
 } from "@/components/agentes/ui";
-import { money, fecha, fechaHora, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
+import { money, fecha, fechaHora, etiquetaPeriodo, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
 import BorrarStatement from "@/components/reportes/BorrarStatement";
+import { hayQueOfrecerSugerencia } from "@/lib/sugerencias";
 import {
   getStatementDetalle,
   finalizarStatement,
@@ -240,7 +241,12 @@ function StatementContent() {
   const descripcionFiltro = [nombreOficinaFiltro, nombreAgenteFiltro].filter(Boolean).join(" · ");
 
   const puedeConfirmarLote = useMemo(
-    () => (data ? data.lineas.some((l) => selectedIds.has(l.id) && l.excepcionId && l.agenteSugeridoId) : false),
+    () =>
+      data
+        ? data.lineas.some(
+            (l) => selectedIds.has(l.id) && l.excepcionId && hayQueOfrecerSugerencia(l.agenteSugeridoId, l.scoreSugerencia)
+          )
+        : false,
     [data, selectedIds]
   );
 
@@ -324,7 +330,11 @@ function StatementContent() {
 
   async function confirmarSeleccionadas() {
     if (!data) return;
-    const objetivo = data.lineas.filter((l) => selectedIds.has(l.id) && l.excepcionId && l.agenteSugeridoId);
+    // El lote es lo mas peligroso de los tres: confirma todo lo seleccionado de una vez, asi
+    // que una sugerencia sin fundamento que se cuele acá se aplica sin que nadie la lea.
+    const objetivo = data.lineas.filter(
+      (l) => selectedIds.has(l.id) && l.excepcionId && hayQueOfrecerSugerencia(l.agenteSugeridoId, l.scoreSugerencia)
+    );
     if (objetivo.length === 0) return;
     setBulkBusy(true);
     let ok = 0;
@@ -501,7 +511,7 @@ function StatementContent() {
     a.href = url;
     // El nombre lleva la oficina o el agente filtrado: si el CSV es para mandárselo a Miami Lakes,
     // el archivo tiene que decirlo solo, sin que haya que renombrarlo a mano.
-    const nombreBase = [data.reporte.periodo ?? data.reporte.nombre_archivo, descripcionFiltro]
+    const nombreBase = [etiquetaPeriodo(data.reporte.periodo) ?? data.reporte.nombre_archivo, descripcionFiltro]
       .filter(Boolean)
       .join("-")
       .replace(/[^A-Za-z0-9._-]+/g, "-");
@@ -607,7 +617,7 @@ function StatementContent() {
           <BorrarStatement
             reporteId={reporte.id}
             nombreArchivo={reporte.nombre_archivo}
-            periodo={reporte.periodo}
+            periodo={etiquetaPeriodo(reporte.periodo)}
             totalLineas={reporte.total_lineas || 0}
             onBorrado={() => router.push("/comisiones/subir/")}
           />
@@ -1095,7 +1105,7 @@ function PeriodoInline({ reporte, onActualizado }: { reporte: Reporte; onActuali
         }}
         className="inline-flex items-center gap-1.5 font-medium text-foreground hover:text-brand"
       >
-        {reporte.periodo ?? "Sin período"}
+        {etiquetaPeriodo(reporte.periodo) ?? "Sin período"}
         <Pencil className="w-3 h-3" />
       </button>
     );
@@ -1223,13 +1233,16 @@ function FilaLinea({
             justamente lo único que hace falta para resolverlas. */}
         {l.grupo !== "aprobado" && l.grupo !== "excluida" ? (
           <div className="flex flex-wrap items-center gap-1.5">
-            {l.agenteSugeridoId && (
+            {/* Sin score no hay botón: el motor no encontró a nadie y ofrecer "Confirmar"
+                sería invitar a aceptar un nombre que él mismo no respalda. El selector de
+                asignar sigue estando, que es lo que de verdad resuelve esos casos. */}
+            {hayQueOfrecerSugerencia(l.agenteSugeridoId, l.scoreSugerencia) && (
               <Button
                 size="sm"
                 variant="primary"
                 disabled={enCurso}
                 onClick={() => onConfirmar(l)}
-                title={`Confirmar a ${l.agenteSugerido ?? "agente sugerido"}`}
+                title={`Confirmar a ${l.agenteSugerido ?? "agente sugerido"} (${Math.round(l.scoreSugerencia ?? 0)}% de confianza)`}
               >
                 Confirmar
               </Button>

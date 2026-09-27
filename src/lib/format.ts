@@ -45,3 +45,23 @@ export const ESTADOS_LINEA: Record<string, { label: string; tone: "ok" | "warn" 
   descartado: { label: "Fuera del statement", tone: "neutral" },
   cuenta_casa: { label: "Cuenta de la casa", tone: "brand" },
 };
+
+// El período de un statement se guarda como YYYY-MM (ver 20260927000005), que es lo correcto
+// para ordenar y comparar pero se lee mal en pantalla. Esto lo pasa a "Agosto 2026".
+//
+// Cualquier cosa que no tenga esa forma se devuelve tal cual: quedan los pocos reportes viejos
+// con un período que el parser no supo reconocer, y mostrarlos como vinieron es lo único honesto
+// — inventarles un mes sería peor que dejarlos raros a la vista.
+const MESES_LARGOS = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+
+export function etiquetaPeriodo(periodo: string | null | undefined): string | null {
+  if (!periodo) return null;
+  const m = /^(\d{4})-(\d{2})$/.exec(periodo.trim());
+  if (!m) return periodo;
+  const mes = Number(m[2]);
+  if (mes < 1 || mes > 12) return periodo;
+  return `${MESES_LARGOS[mes - 1]} ${m[1]}`;
+}

@@ -47,6 +47,7 @@ import {
   type RamoPrima,
 } from "@/lib/queries/resumen";
 import { Sparkline, Dona, Cascada, COLORES_GRAFICA, type PorcionDona } from "@/components/dashboard/charts";
+import { hayQueOfrecerSugerencia } from "@/lib/sugerencias";
 import RoyaltyFranquicia from "@/components/dashboard/RoyaltyFranquicia";
 
 const UMBRAL_ATRASADA_DIAS = 10;
@@ -111,7 +112,13 @@ function nombreExcepcion(e: ExcepcionRow, t: TFunc): string {
   return e.aseguradora ? `${e.aseguradora} · ${quien}` : quien;
 }
 
+// Con score 0 no se nombra a nadie: el motor no encontró candidato, y decir "Sugerencia:
+// Fulano (0%) — No se encontró ningún candidato" es contradecirse en la misma línea. Queda
+// la explicación, que sí dice algo útil sobre por qué no se pudo.
 function sugerenciaTexto(e: ExcepcionRow, t: TFunc): string | null {
+  if (!hayQueOfrecerSugerencia(e.agente_sugerido_id, e.score)) {
+    return e.explicacion ? e.explicacion : null;
+  }
   if (!e.agente_sugerido) return null;
   const partes = [e.agente_sugerido, e.oficina_sugerida].filter(Boolean).join(", ");
   const score = e.score != null ? ` (${Math.round(e.score)}%)` : "";

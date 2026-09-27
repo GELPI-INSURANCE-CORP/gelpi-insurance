@@ -28,6 +28,7 @@ import {
   type TabItem,
 } from "@/components/ui";
 import SinClasificarPanel from "@/components/conciliacion/SinClasificarPanel";
+import { hayQueOfrecerSugerencia } from "@/lib/sugerencias";
 import { money, fecha, pct, RAMOS } from "@/lib/format";
 import {
   buscarPolizas,
@@ -365,7 +366,9 @@ function ConciliacionContent() {
   }
 
   async function resolverMasivo() {
-    const idsAConfirmar = rows.filter((r) => selectedIds.has(r.id) && r.tipo === "mismatch" && r.agente_sugerido_id);
+    const idsAConfirmar = rows.filter(
+      (r) => selectedIds.has(r.id) && r.tipo === "mismatch" && hayQueOfrecerSugerencia(r.agente_sugerido_id, r.score)
+    );
     if (idsAConfirmar.length === 0) {
       showToast("No hay mismatch con sugerencia entre las filas seleccionadas.");
       return;
