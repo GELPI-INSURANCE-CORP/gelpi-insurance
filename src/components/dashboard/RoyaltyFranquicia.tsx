@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Crown } from "lucide-react";
+import { AlertTriangle, Crown, FileText } from "lucide-react";
 import Link from "next/link";
 import { Card, CardHead } from "@/components/ui";
 import { money } from "@/lib/format";
@@ -24,6 +24,7 @@ import { COLORES_GRAFICA } from "@/components/dashboard/charts";
 // corporativa y no paga: cobrarse a sí mismo inflaría el total con plata que no entra de nadie.
 
 export default function RoyaltyFranquicia({ mes, etiquetaMes }: { mes: Date; etiquetaMes: string }) {
+  const periodoUrl = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, "0")}`;
   const [filas, setFilas] = useState<RoyaltyOficina[] | null>(null);
   const [ytd, setYtd] = useState<RoyaltyOficina[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +112,7 @@ export default function RoyaltyFranquicia({ mes, etiquetaMes }: { mes: Date; eti
                   <th className="px-3 py-2 font-medium w-28">Royalty %</th>
                   <th className="px-3 py-2 font-medium text-right">Te deja</th>
                   <th className="px-3 py-2 font-medium text-right">De tu total</th>
+                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -158,6 +160,20 @@ export default function RoyaltyFranquicia({ mes, etiquetaMes }: { mes: Date; eti
                       <td className="px-3 py-2.5 text-right tabular-nums text-muted">
                         {f.esCorporativa || f.royalty === 0 ? "—" : `${parte.toFixed(1)}%`}
                       </td>
+                      {/* El estado de cuenta se puede sacar aunque falte el %: el desglose por
+                          compañía sirve igual, y el royalty saldrá en cero hasta que se defina. */}
+                      <td className="px-3 py-2.5 text-right">
+                        {f.esCorporativa ? null : (
+                          <Link
+                            href={`/comisiones/estado-cuenta/?oficina=${f.oficinaId}&mes=${periodoUrl}`}
+                            className="inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-medium text-brand hover:underline"
+                            title={`Estado de cuenta de ${f.oficina} para ${etiquetaMes}`}
+                          >
+                            <FileText size={13} />
+                            Estado de cuenta
+                          </Link>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -171,6 +187,7 @@ export default function RoyaltyFranquicia({ mes, etiquetaMes }: { mes: Date; eti
                   <td className="px-3 py-2.5 text-right tabular-nums text-muted">
                     {totalMes > 0 ? "100%" : "—"}
                   </td>
+                  <td />
                 </tr>
               </tfoot>
             </table>

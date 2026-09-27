@@ -318,3 +318,92 @@ export async function actualizarPctRoyalty(oficinaId: string, pct: number | null
   const { error } = await supabase.from("oficinas").update({ pct_royalty: pct }).eq("id", oficinaId);
   if (error) throw error;
 }
+
+// =========================================================
+// El estado de cuenta que se le manda a cada oficina
+// =========================================================
+// Un documento por oficina y por mes: lo que generó con cada compañía, el royalty que se le
+// cobra, y lo que le queda. Es lo que Arturo les envía; la oficina después le paga a su gente
+// como quiera — eso ya no es cuenta de la casa matriz.
+
+export interface LineaCompania {
+  compania: string;
+  polizas: number;
+  prima: number;
+  comision: number;
+  // Lo mismo en el mes anterior, para ver si subió o bajó. Nulo cuando esa compañía no aparece
+  // en el mes anterior: eso es "no había", que no es lo mismo que "dio cero".
+  comisionMesAnterior: number | null;
+}
+
+export interface EstadoCuentaOficina {
+  oficinaId: string;
+  oficina: string;
+  esCorporativa: boolean;
+  pctRoyalty: number | null;
+  companias: LineaCompania[];
+  totalPolizas: number;
+  totalPrima: number;
+  comisionGenerada: number;
+  royalty: number;
+  neto: number;
+  comisionMesAnterior: number;
+}
+
+function rangoDeMes(mes: Date): { desde: string; hasta: string } {
+  const a = mes.getFullYear();
+  const m = mes.getMonth();
+  const ultimo = new Date(a, m + 1, 0).getDate();
+  const mm = String(m + 1).padStart(2, "0");
+  return { desde: `${a}-${mm}-01`, hasta: `${a}-${mm}-${String(ultimo).padStart(2, "0")}` };
+}
+
+export async function getEstadoCuentaOficina(
+  oficinaId: string,
+  mes: Date
+): Promise<EstadoCuentaOficina | null> {
+  const actual = rangoDeMes(mes);
+  const anterior = rangoDeMes(new Date(mes.getFullYear(), mes.getMonth() - 1, 1));
+
+  const [resumen, detalle, detalleAnterior] = await Promise.all([
+    getRoyaltyPorOficina(actual.desde, actual.hasta),
+    supabase.rpc("royalty_detalle_por_compania", { p_desde: actual.desde, p_hasta: actual.hasta }),
+    supabase.rpc("royalty_detalle_por_compania", { p_desde: anterior.desde, p_hasta: anterior.hasta }),
+  ]);
+  if (detalle.error) throw detalle.error;
+  if (detalleAnterior.error) throw detalleAnterior.error;
+
+  const ofi = resumen.find((o) => o.oficinaId === oficinaId);
+  if (!ofi) return null;
+
+  type Fila = Record<string, unknown>;
+  const mias = ((detalle.data ?? []) as Fila[]).filter((d) => String(d.oficina_id) === oficinaId);
+  const antes = new Map(
+    ((detalleAnterior.data ?? []) as Fila[])
+      .filter((d) => String(d.oficina_id) === oficinaId)
+      .map((d) => [String(d.compania), Number(d.comision ?? 0)])
+  );
+
+  const companias: LineaCompania[] = mias.map((d) => ({
+    compania: String(d.compania ?? "—"),
+    polizas: Number(d.polizas ?? 0),
+    prima: Number(d.prima ?? 0),
+    comision: Number(d.comision ?? 0),
+    comisionMesAnterior: antes.has(String(d.compania)) ? antes.get(String(d.compania))! : null,
+  }));
+
+  return {
+    oficinaId,
+    oficina: ofi.oficina,
+    esCorporativa: ofi.esCorporativa,
+    pctRoyalty: ofi.pctRoyalty,
+    companias,
+    totalPolizas: companias.reduce((s, c) => s + c.polizas, 0),
+    totalPrima: companias.reduce((s, c) => s + c.prima, 0),
+    comisionGenerada: ofi.comisionGenerada,
+    royalty: ofi.royalty,
+    // Lo que de verdad le entra a su cuenta. Es el número que la oficina va a mirar primero.
+    neto: ofi.comisionGenerada - ofi.royalty,
+    comisionMesAnterior: [...antes.values()].reduce((s, v) => s + v, 0),
+  };
+}
