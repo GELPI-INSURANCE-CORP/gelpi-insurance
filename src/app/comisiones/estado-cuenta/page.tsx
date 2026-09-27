@@ -15,19 +15,25 @@ import { getEstadoCuentaOficina, type EstadoCuentaOficina } from "@/lib/queries/
 // le cobra de royalty, y cuánto le entra a su cuenta. La oficina después le paga a su gente como
 // quiera — eso ya no sale acá.
 //
-// Se guarda en PDF con el botón de imprimir del navegador. No se usa librería de PDF a propósito:
-// el proyecto exporta estático, y una tabla con tipografía de verdad impresa por el navegador se
-// ve mejor que una dibujada a mano con jsPDF, sin sumar nada al bundle. Lo que hace que salga
+// VA SIEMPRE EN INGLÉS, aunque la app esté en español y aunque mañana se agregue otro idioma.
+// No es una pantalla del sistema: es un papel que sale de la agencia y llega a manos de un
+// franquiciado. Si siguiera el selector de idioma de la interfaz, el documento que recibe una
+// oficina dependería de cómo tenía configurada la pantalla el que le dio a imprimir, y dos
+// oficinas podrían recibir el mismo mes en idiomas distintos. Por eso los textos están acá y no
+// en textos.ts.
+//
+// El PDF sale con el botón de imprimir del navegador. No se usa librería a propósito: el
+// proyecto exporta estático, y una tabla con tipografía de verdad impresa por el navegador se ve
+// mejor que una dibujada a mano con jsPDF, sin sumar nada al bundle. Lo que hace que salga
 // limpio es la hoja de impresión de globals.css, que esconde todo lo que no sea [data-imprimible].
 
-const MESES = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+const MESES_EN = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
 ];
 
 function etiquetaMes(d: Date): string {
-  const n = MESES[d.getMonth()];
-  return `${n.charAt(0).toUpperCase()}${n.slice(1)} ${d.getFullYear()}`;
+  return `${MESES_EN[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 function periodosDisponibles(): { value: string; label: string }[] {
@@ -35,8 +41,10 @@ function periodosDisponibles(): { value: string; label: string }[] {
   const hoy = new Date();
   for (let i = 0; i < 18; i++) {
     const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
-    const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    out.push({ value: v, label: etiquetaMes(d) });
+    out.push({
+      value: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      label: etiquetaMes(d),
+    });
   }
   return out;
 }
@@ -63,10 +71,9 @@ function Contenido() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const mes = (() => {
-    const [a, m] = periodo.split("-").map(Number);
-    return new Date(a, m - 1, 1);
-  })();
+  const [anio, numMes] = periodo.split("-").map(Number);
+  const mes = new Date(anio, numMes - 1, 1);
+  const mesAnterior = etiquetaMes(new Date(anio, numMes - 2, 1));
 
   const cargar = useCallback(async () => {
     if (!oficinaId) {
@@ -92,11 +99,10 @@ function Contenido() {
     void cargar();
   }, [cargar]);
 
-  const mesAnterior = etiquetaMes(new Date(mes.getFullYear(), mes.getMonth() - 1, 1));
-
   return (
     <div className="flex flex-col gap-4">
-      {/* Nada de esto sale impreso: la hoja de impresión solo deja pasar [data-imprimible]. */}
+      {/* La barra de control es de la app, no del documento: va en español como el resto del
+          sistema, y la hoja de impresión no la deja pasar al PDF. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/comisiones/resumen/"
@@ -122,50 +128,72 @@ function Contenido() {
       {datos && !cargando && (
         <div
           data-imprimible
-          className="mx-auto w-full max-w-[860px] rounded-xl border border-border bg-surface px-10 py-9 print:max-w-none print:rounded-none print:border-0 print:px-0 print:py-0"
+          className="mx-auto w-full max-w-[880px] rounded-xl border border-border bg-surface px-12 py-10 print:max-w-none print:rounded-none print:border-0 print:px-0 print:py-0"
         >
-          <div className="flex items-start justify-between gap-6 border-b border-border pb-6">
+          <header className="flex items-start justify-between gap-8 border-b-2 border-brand-dark pb-6">
             <div>
               <Image
                 src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo-gelpi-oficial.webp`}
                 alt="Gelpi Insurance"
                 width={2000}
                 height={699}
-                className="h-11 w-auto"
+                className="h-12 w-auto"
               />
-              <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-muted">Estado de cuenta</p>
+              <p className="mt-4 text-[12px] font-semibold uppercase tracking-[0.22em] text-brand-dark">
+                Commission Statement
+              </p>
             </div>
             <div className="text-right">
-              <h1 className="text-[19px] font-semibold leading-tight text-foreground">{datos.oficina}</h1>
-              <p className="mt-0.5 text-[13px] text-muted">{etiquetaMes(mes)}</p>
+              <p className="text-[10px] uppercase tracking-[0.16em] text-muted">Office</p>
+              <h1 className="mt-0.5 text-[20px] font-semibold leading-tight text-foreground">{datos.oficina}</h1>
+              <p className="mt-3 text-[10px] uppercase tracking-[0.16em] text-muted">Statement period</p>
+              <p className="text-[15px] font-medium text-foreground">{etiquetaMes(mes)}</p>
             </div>
-          </div>
+          </header>
 
           {/* El número que la oficina viene a ver. Va grande y arriba; el desglose lo justifica
               después, no al revés. */}
-          <div className="my-7 flex flex-wrap items-end justify-between gap-6 rounded-xl bg-brand-tint px-6 py-5 print:bg-transparent print:px-0 print:ring-1 print:ring-border">
+          <section className="my-8 flex flex-wrap items-end justify-between gap-6 rounded-xl bg-brand-tint px-7 py-6 print:bg-transparent print:px-5 print:ring-1 print:ring-brand-dark/25">
             <div>
-              <p className="text-[11px] uppercase tracking-wide text-muted">Le corresponde a la oficina</p>
-              <p className="text-[34px] font-semibold leading-tight tabular-nums text-brand-dark">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Office payout</p>
+              <p className="mt-1 text-[38px] font-semibold leading-none tabular-nums text-brand-dark">
                 {money(datos.neto)}
               </p>
             </div>
-            <div className="text-right text-[13px] text-muted">
-              <p>
-                {datos.totalPolizas.toLocaleString("en-US")} pólizas · {money(datos.totalPrima)} de prima
-              </p>
-              <p>{datos.companias.length} compañías</p>
-            </div>
-          </div>
+            <dl className="text-right text-[12px] leading-relaxed text-muted">
+              <div>
+                <dt className="inline">Policies&nbsp;</dt>
+                <dd className="inline font-medium tabular-nums text-foreground">
+                  {datos.totalPolizas.toLocaleString("en-US")}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline">Premium written&nbsp;</dt>
+                <dd className="inline font-medium tabular-nums text-foreground">{money(datos.totalPrima)}</dd>
+              </div>
+              <div>
+                <dt className="inline">Carriers&nbsp;</dt>
+                <dd className="inline font-medium tabular-nums text-foreground">{datos.companias.length}</dd>
+              </div>
+            </dl>
+          </section>
 
           <table className="w-full text-[13px]">
             <thead>
-              <tr className="border-b border-border text-left text-muted">
-                <th className="pb-2 font-medium">Compañía</th>
-                <th className="pb-2 text-right font-medium">Pólizas</th>
-                <th className="pb-2 text-right font-medium">Prima</th>
-                <th className="pb-2 text-right font-medium">Comisión</th>
-                <th className="pb-2 text-right font-medium">{mesAnterior}</th>
+              <tr className="border-b border-foreground/25 text-left">
+                <th className="pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Carrier</th>
+                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+                  Policies
+                </th>
+                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+                  Premium
+                </th>
+                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+                  Commission
+                </th>
+                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+                  {mesAnterior}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -175,25 +203,25 @@ function Contenido() {
                     ? ((c.comision - c.comisionMesAnterior) / Math.abs(c.comisionMesAnterior)) * 100
                     : null;
                 return (
-                  <tr key={c.compania} className="border-b border-border/60">
-                    <td className="py-2.5 font-medium text-foreground">{c.compania}</td>
-                    <td className="py-2.5 text-right tabular-nums text-muted">{c.polizas}</td>
-                    <td className="py-2.5 text-right tabular-nums text-muted">{money(c.prima)}</td>
-                    <td className="py-2.5 text-right font-medium tabular-nums text-foreground">
+                  <tr key={c.compania} className="border-b border-border">
+                    <td className="py-3 font-medium text-foreground">{c.compania}</td>
+                    <td className="py-3 text-right tabular-nums text-muted">{c.polizas}</td>
+                    <td className="py-3 text-right tabular-nums text-muted">{money(c.prima)}</td>
+                    <td className="py-3 text-right font-semibold tabular-nums text-foreground">
                       {money(c.comision)}
                     </td>
-                    {/* Raya y no 0%, y tampoco "nueva": que no haya dato del mes anterior casi
-                        siempre significa que ese statement todavía no se cargó, no que la
-                        compañía sea nueva para la oficina. Decir "nueva" en un documento que va
-                        al franquiciado sería afirmar algo que no sabemos. */}
-                    <td className="py-2.5 text-right tabular-nums text-muted">
+                    {/* Una compañía sin dato del mes anterior lleva raya y no 0%: casi siempre
+                        significa que ese statement todavía no se cargó, no que la compañía sea
+                        nueva. En un papel que va al franquiciado, decir "new" sería afirmar algo
+                        que no sabemos. */}
+                    <td className="py-3 text-right tabular-nums text-muted">
                       {c.comisionMesAnterior == null ? (
-                        <span className="text-[12px]">—</span>
+                        "—"
                       ) : (
                         <>
                           {money(c.comisionMesAnterior)}
                           {dif != null && (
-                            <span className={dif >= 0 ? "ml-1.5 text-ok-fg" : "ml-1.5 text-bad-fg"}>
+                            <span className={dif >= 0 ? "ml-2 text-ok-fg" : "ml-2 text-bad-fg"}>
                               {dif >= 0 ? "▲" : "▼"} {Math.abs(dif).toFixed(0)}%
                             </span>
                           )}
@@ -204,35 +232,60 @@ function Contenido() {
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr className="border-b-2 border-foreground/25">
+                <td className="py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">Total</td>
+                <td className="py-3 text-right font-semibold tabular-nums text-foreground">{datos.totalPolizas}</td>
+                <td className="py-3 text-right font-semibold tabular-nums text-foreground">
+                  {money(datos.totalPrima)}
+                </td>
+                <td className="py-3 text-right font-semibold tabular-nums text-foreground">
+                  {money(datos.comisionGenerada)}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
           </table>
 
-          <div className="mt-7 ml-auto w-full max-w-[380px] text-[13px]">
-            <div className="flex justify-between border-b border-border py-2">
-              <span className="text-muted">Comisión generada</span>
+          <div className="mt-8 ml-auto w-full max-w-[400px] text-[13px]">
+            <div className="flex justify-between border-b border-border py-2.5">
+              <span className="text-muted">Commission generated</span>
               <span className="tabular-nums text-foreground">{money(datos.comisionGenerada)}</span>
             </div>
-            <div className="flex justify-between border-b border-border py-2">
+            <div className="flex justify-between border-b border-border py-2.5">
               <span className="text-muted">
-                Royalty de franquicia{datos.pctRoyalty != null ? ` (${datos.pctRoyalty}%)` : ""}
+                Franchise royalty{datos.pctRoyalty != null ? ` (${datos.pctRoyalty}%)` : ""}
               </span>
               <span className="tabular-nums text-bad-fg">−{money(datos.royalty)}</span>
             </div>
-            <div className="flex justify-between py-3">
-              <span className="font-semibold text-foreground">Neto a la oficina</span>
-              <span className="text-[17px] font-semibold tabular-nums text-foreground">{money(datos.neto)}</span>
+            <div className="mt-1 flex items-baseline justify-between border-t-2 border-brand-dark py-3">
+              <span className="text-[14px] font-semibold text-foreground">Net to Office</span>
+              <span className="text-[20px] font-semibold tabular-nums text-brand-dark">{money(datos.neto)}</span>
             </div>
           </div>
 
-          {/* Explicar la cuenta al pie evita la llamada preguntando de dónde salió el número. */}
-          <p className="mt-8 border-t border-border pt-4 text-[11px] leading-relaxed text-muted">
-            El royalty se calcula sobre la comisión total que generó la oficina en el mes — negocio
-            nuevo y renovación — según los statements recibidos de cada compañía en {etiquetaMes(mes)}.
-            Una raya en la columna de {mesAnterior} significa que no hay statement de esa compañía
-            cargado para ese mes.
-            El neto es lo que se le transfiere a la oficina; el reparto entre sus agentes lo hace cada
-            oficina. Documento generado el{" "}
-            {new Date().toLocaleDateString("es-US", { day: "numeric", month: "long", year: "numeric" })}.
-          </p>
+          {/* Explicar la cuenta al pie evita la llamada preguntando de dónde salió el número, y el
+              aviso de confidencialidad porque este papel lleva la producción completa de una
+              oficina: cuánto vende, con qué compañías y cuánto se le retiene. */}
+          <footer className="mt-10 border-t border-border pt-5 text-[10px] leading-relaxed text-muted">
+            <p>
+              The franchise royalty is calculated on the total commission generated by the office
+              during the period — new business and renewals alike — based on the carrier statements
+              received for {etiquetaMes(mes)}. The net amount shown is what is remitted to the
+              office; the distribution among its agents is handled by the office. A dash in the{" "}
+              {mesAnterior} column means no statement from that carrier has been posted for that
+              month.
+            </p>
+            <p className="mt-2">
+              Statement issued on{" "}
+              {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.
+            </p>
+            <p className="mt-3 font-medium text-foreground">
+              Confidential. This statement is the property of Gelpi Insurance Corp and is intended
+              solely for the office named above. Any reproduction, distribution or disclosure to
+              third parties without written authorization is prohibited. All rights reserved.
+            </p>
+          </footer>
         </div>
       )}
     </div>
