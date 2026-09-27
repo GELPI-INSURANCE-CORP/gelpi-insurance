@@ -72,3 +72,50 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* =========================================================
+   Impresión: el estado de cuenta de la oficina
+   =========================================================
+   Este documento se guarda en PDF con el botón de imprimir del navegador, así que la hoja de
+   impresión ES el formato del PDF. No hay librería que lo dibuje.
+
+   La técnica es esconder todo y volver a mostrar solo lo que cuelga de [data-imprimible]. Se
+   hace con visibility y no con display:none porque un padre con display:none se lleva a sus
+   hijos sin importar lo que digan: habría que ir escondiendo la barra lateral, el encabezado y
+   cada contenedor uno por uno, y cualquier pantalla nueva rompería el truco. Con visibility los
+   padres siguen existiendo (por eso el reposicionado de abajo) pero no pintan nada. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  [data-imprimible],
+  [data-imprimible] * {
+    visibility: visible;
+  }
+  /* Los contenedores invisibles conservan su tamaño y su posición, así que el documento saldría
+     corrido hacia la derecha por el ancho de la barra lateral. Se saca del flujo y se ancla. */
+  [data-imprimible] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  /* Fondos y colores: por defecto el navegador no imprime fondos, y el encabezado y los totales
+     dependen de ellos para leerse como un documento y no como texto suelto. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Que una compañía no quede partida entre dos hojas. */
+  tr,
+  img {
+    break-inside: avoid;
+  }
+  thead {
+    display: table-header-group;
+  }
+  @page {
+    size: letter portrait;
+    margin: 14mm;
+  }
+}
