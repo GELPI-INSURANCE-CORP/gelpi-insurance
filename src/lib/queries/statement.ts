@@ -34,6 +34,10 @@ export interface LineaStatement {
   tasa: number | null;
   monto: number;
   fechaStatement: string | null;
+  // La fecha en que la poliza entro en vigencia, que es distinta de la fecha de la
+  // transaccion. Arturo la necesita para saber de cuando es la poliza que se esta pagando:
+  // un statement de agosto puede traer comision de una poliza que empezo en marzo.
+  fechaVigencia: string | null;
   estadoLinea: string;
   grupo: GrupoLinea;
   // Con qué regla la resolvió el motor, o por qué no pudo. El estado dice "pendiente"; esto dice
@@ -105,7 +109,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       .single(),
     fetchTodo<Record<string, unknown>>(
       "v_lineas_comision",
-      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, estado, regla_match, score, agente_id, agente, oficina_id, oficina, cliente, poliza_abb, poliza_id, campos_extra",
+      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, fecha_vigencia, estado, regla_match, score, agente_id, agente, oficina_id, oficina, cliente, poliza_abb, poliza_id, campos_extra",
       reporteId
     ),
     fetchTodo<Record<string, unknown>>(
@@ -141,6 +145,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       tasa: (l.tasa as number) ?? null,
       monto: Number(l.monto ?? 0),
       fechaStatement: (l.fecha_statement as string) ?? null,
+      fechaVigencia: (l.fecha_vigencia as string) ?? null,
       estadoLinea,
       grupo: grupoDeEstado(estadoLinea),
       regla: (l.regla_match as string) ?? null,

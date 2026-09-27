@@ -270,3 +270,51 @@ export function variacion(serie: number[]): number | null {
   if (!antes) return null;
   return ((ahora - antes) / Math.abs(antes)) * 100;
 }
+
+// =========================================================
+// El royalty de la franquicia
+// =========================================================
+// Cada oficina le paga a la casa matriz un porcentaje de la COMISIÓN que genera. Ojo que no es
+// la misma cuenta que el pago a los agentes: a ellos se les paga sobre la PRIMA y solo del
+// negocio nuevo; el royalty va sobre la comisión bruta, nueva y renovación. Ver
+// 20260927000001.
+
+export interface RoyaltyOficina {
+  oficinaId: string;
+  oficina: string;
+  esCorporativa: boolean;
+  comisionGenerada: number;
+  // Nulo = todavía no se le definió el porcentaje a esa oficina. No es lo mismo que 0, y la
+  // pantalla los muestra distinto: uno es "falta configurarlo" y el otro "no paga".
+  pctRoyalty: number | null;
+  royalty: number;
+}
+
+export async function getRoyaltyPorOficina(desde: string, hasta: string): Promise<RoyaltyOficina[]> {
+  const { data, error } = await supabase.rpc("royalty_por_oficina", { p_desde: desde, p_hasta: hasta });
+  if (error) throw error;
+  return (data ?? []).map((d: Record<string, unknown>) => ({
+    oficinaId: String(d.oficina_id),
+    oficina: String(d.oficina ?? "—"),
+    esCorporativa: Boolean(d.es_corporativa),
+    comisionGenerada: Number(d.comision_generada ?? 0),
+    pctRoyalty: d.pct_royalty == null ? null : Number(d.pct_royalty),
+    royalty: Number(d.royalty ?? 0),
+  }));
+}
+
+// Del 1 de enero de ese año hasta el final del mes que se está mirando. No hasta hoy: si se mira
+// un mes pasado, el acumulado tiene que llegar hasta ese mes y no incluir lo que vino después,
+// porque si no el "year to date" de marzo mostraría plata de septiembre.
+export function rangoYtd(mes: Date): { desde: string; hasta: string } {
+  const anio = mes.getFullYear();
+  const finDeMes = new Date(anio, mes.getMonth() + 1, 0);
+  const dd = String(finDeMes.getDate()).padStart(2, "0");
+  const mm = String(mes.getMonth() + 1).padStart(2, "0");
+  return { desde: `${anio}-01-01`, hasta: `${anio}-${mm}-${dd}` };
+}
+
+export async function actualizarPctRoyalty(oficinaId: string, pct: number | null): Promise<void> {
+  const { error } = await supabase.from("oficinas").update({ pct_royalty: pct }).eq("id", oficinaId);
+  if (error) throw error;
+}

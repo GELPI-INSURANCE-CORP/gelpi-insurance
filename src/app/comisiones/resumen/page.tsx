@@ -47,6 +47,7 @@ import {
   type RamoPrima,
 } from "@/lib/queries/resumen";
 import { Sparkline, Dona, Cascada, COLORES_GRAFICA, type PorcionDona } from "@/components/dashboard/charts";
+import RoyaltyFranquicia from "@/components/dashboard/RoyaltyFranquicia";
 
 const UMBRAL_ATRASADA_DIAS = 10;
 
@@ -554,6 +555,10 @@ export default function ResumenPage() {
               )}
             </Card>
           </div>
+
+          {/* Lo que Arturo gana como franquiciante. Va antes de las excepciones y la cascada
+              porque es ingreso suyo, no trabajo pendiente. */}
+          <RoyaltyFranquicia mes={mes} etiquetaMes={etiquetaMes(mes, idioma)} />
 
           {/* Cómo se llega de lo conciliado a lo que está en disputa. Los mismos números de las
               tarjetas de arriba, pero encadenados: se ve cuál de los tres se está comiendo el
