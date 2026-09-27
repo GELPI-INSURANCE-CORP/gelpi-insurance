@@ -23,6 +23,7 @@ import {
   TextInput,
 } from "@/components/agentes/ui";
 import { money, fecha, fechaHora, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
+import BorrarStatement from "@/components/reportes/BorrarStatement";
 import {
   getStatementDetalle,
   finalizarStatement,
@@ -599,6 +600,17 @@ function StatementContent() {
             <RotateCcw className="w-3.5 h-3.5" />
             {reprocesando ? "Reprocesando…" : "Reprocesar"}
           </Button>
+          {/* Al lado de Reprocesar porque son las dos salidas cuando un archivo salió mal, pero
+              hacen cosas distintas: reprocesar vuelve a leer el mismo archivo, borrar lo saca
+              del sistema para poder subir otro. Volver a la lista después de borrar, porque
+              esta pantalla se queda sin reporte que mostrar. */}
+          <BorrarStatement
+            reporteId={reporte.id}
+            nombreArchivo={reporte.nombre_archivo}
+            periodo={reporte.periodo}
+            totalLineas={reporte.total_lineas || 0}
+            onBorrado={() => router.push("/comisiones/subir/")}
+          />
         </div>
       </div>
 
