@@ -7,6 +7,10 @@ export interface OficinaRow {
   direccion: string | null;
   gerente_agente_id: string | null;
   pct_override: number;
+  // El royalty de la franquicia: el % que esta oficina le paga a la casa matriz sobre la
+  // comision que genera. Nulo = todavia no se definio. Ver 20260927000001.
+  pct_royalty: number | null;
+  es_corporativa: boolean;
   activa: boolean;
   created_at: string;
 }
@@ -138,6 +142,8 @@ export interface NuevaOficina {
   direccion: string;
   gerente_agente_id: string | null;
   pct_override: number;
+  pct_royalty: number | null;
+  es_corporativa: boolean;
 }
 
 export async function crearOficina(input: NuevaOficina) {
