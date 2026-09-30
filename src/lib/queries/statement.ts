@@ -425,8 +425,10 @@ export interface StatementConsolidado {
 export async function getStatementsConsolidados(reporteIds: string[]): Promise<StatementConsolidado> {
   if (reporteIds.length === 0) return { reportes: [], lineas: [], periodosDistintos: [] };
 
+  // v_reportes y no la tabla reportes: monto_total es una columna calculada de la vista, no
+  // existe en la tabla base. Pedirsela a reportes devuelve 400 y el consolidado no carga.
   const { data: cabeceras, error: errCab } = await supabase
-    .from("reportes")
+    .from("v_reportes")
     .select("id, periodo, monto_total, aseguradora:aseguradoras(nombre)")
     .in("id", reporteIds);
   if (errCab) throw errCab;
