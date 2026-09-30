@@ -128,70 +128,78 @@ function Contenido() {
       {datos && !cargando && (
         <div
           data-imprimible
-          className="mx-auto w-full max-w-[880px] rounded-xl border border-border bg-surface px-12 py-10 print:max-w-none print:rounded-none print:border-0 print:px-0 print:py-0"
+          className="mx-auto w-full max-w-[880px] rounded-2xl border border-border bg-surface px-14 py-12 shadow-sm print:max-w-none print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none"
         >
-          <header className="flex items-start justify-between gap-8 border-b-2 border-brand-dark pb-6">
-            <div>
-              <Image
-                src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo-gelpi-oficial.webp`}
-                alt="Gelpi Insurance"
-                width={2000}
-                height={699}
-                className="h-12 w-auto"
-              />
-              <p className="mt-4 text-[12px] font-semibold uppercase tracking-[0.22em] text-brand-dark">
-                Commission Statement
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-muted">Office</p>
-              <h1 className="mt-0.5 text-[20px] font-semibold leading-tight text-foreground">{datos.oficina}</h1>
-              <p className="mt-3 text-[10px] uppercase tracking-[0.16em] text-muted">Statement period</p>
-              <p className="text-[15px] font-medium text-foreground">{etiquetaMes(mes)}</p>
-            </div>
+          <header className="flex items-center justify-between gap-8 border-b border-border pb-6 print:pb-5">
+            <Image
+              src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo-gelpi-oficial.webp`}
+              alt="Gelpi Insurance"
+              width={2000}
+              height={699}
+              className="h-11 w-auto"
+            />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-brand-dark">
+              Commission Statement
+            </p>
           </header>
 
-          {/* El número que la oficina viene a ver. Va grande y arriba; el desglose lo justifica
-              después, no al revés. */}
-          <section className="my-8 flex flex-wrap items-end justify-between gap-6 rounded-xl bg-brand-tint px-7 py-6 print:bg-transparent print:px-5 print:ring-1 print:ring-brand-dark/25">
+          <div className="mt-7 flex items-start justify-between gap-8 print:mt-5">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Office payout</p>
-              <p className="mt-1 text-[38px] font-semibold leading-none tabular-nums text-brand-dark">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Office</p>
+              <h1 className="mt-1.5 text-[24px] font-semibold leading-tight tracking-tight text-foreground">
+                {datos.oficina}
+              </h1>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Statement period</p>
+              <p className="mt-1.5 text-[24px] font-medium leading-tight tracking-tight text-foreground">
+                {etiquetaMes(mes)}
+              </p>
+            </div>
+          </div>
+
+          {/* El número que la oficina viene a ver. Va grande y arriba; el desglose lo justifica
+              después, no al revés. En pantalla lleva fondo; en papel, un filo fino, porque un
+              bloque de color lleno se ve pesado impreso. */}
+          <section className="my-9 flex flex-wrap items-center justify-between gap-x-10 gap-y-6 rounded-2xl bg-brand-tint px-8 py-7 print:my-4 print:py-4 print:break-inside-avoid print:bg-transparent print:ring-1 print:ring-brand-dark/25">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Office payout</p>
+              <p className="mt-3 text-[56px] font-semibold leading-none tracking-tight tabular-nums text-brand-dark">
                 {money(datos.neto)}
               </p>
             </div>
-            <dl className="text-right text-[12px] leading-relaxed text-muted">
-              <div>
-                <dt className="inline">Policies&nbsp;</dt>
-                <dd className="inline font-medium tabular-nums text-foreground">
+            <dl className="w-full min-w-[220px] text-[12px] sm:w-auto">
+              <div className="flex items-baseline justify-between gap-8 border-b border-brand-dark/10 pb-2">
+                <dt className="text-muted">Policies</dt>
+                <dd className="font-medium tabular-nums text-foreground">
                   {datos.totalPolizas.toLocaleString("en-US")}
                 </dd>
               </div>
-              <div>
-                <dt className="inline">Premium written&nbsp;</dt>
-                <dd className="inline font-medium tabular-nums text-foreground">{money(datos.totalPrima)}</dd>
+              <div className="flex items-baseline justify-between gap-8 border-b border-brand-dark/10 py-2">
+                <dt className="text-muted">Premium written</dt>
+                <dd className="font-medium tabular-nums text-foreground">{money(datos.totalPrima)}</dd>
               </div>
-              <div>
-                <dt className="inline">Carriers&nbsp;</dt>
-                <dd className="inline font-medium tabular-nums text-foreground">{datos.companias.length}</dd>
+              <div className="flex items-baseline justify-between gap-8 pt-2">
+                <dt className="text-muted">Carriers</dt>
+                <dd className="font-medium tabular-nums text-foreground">{datos.companias.length}</dd>
               </div>
             </dl>
           </section>
 
           <table className="w-full text-[13px]">
             <thead>
-              <tr className="border-b border-foreground/25 text-left">
-                <th className="pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Carrier</th>
-                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+              <tr className="border-b border-foreground/70 text-left">
+                <th className="pb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">Carrier</th>
+                <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
                   Policies
                 </th>
-                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+                <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
                   Premium
                 </th>
-                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+                <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
                   Commission
                 </th>
-                <th className="pb-2 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+                <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
                   {mesAnterior}
                 </th>
               </tr>
@@ -204,26 +212,38 @@ function Contenido() {
                     : null;
                 return (
                   <tr key={c.compania} className="border-b border-border">
-                    <td className="py-3 font-medium text-foreground">{c.compania}</td>
-                    <td className="py-3 text-right tabular-nums text-muted">{c.polizas}</td>
-                    <td className="py-3 text-right tabular-nums text-muted">{money(c.prima)}</td>
-                    <td className="py-3 text-right font-semibold tabular-nums text-foreground">
+                    <td className="py-3.5 font-medium text-foreground print:py-[7px]">{c.compania}</td>
+                    <td className="py-3.5 text-right tabular-nums text-foreground print:py-[7px]">{c.polizas}</td>
+                    <td className="py-3.5 text-right tabular-nums text-foreground print:py-[7px]">{money(c.prima)}</td>
+                    <td className="py-3.5 text-right font-semibold tabular-nums text-foreground print:py-[7px]">
                       {money(c.comision)}
                     </td>
                     {/* Una compañía sin dato del mes anterior lleva raya y no 0%: casi siempre
                         significa que ese statement todavía no se cargó, no que la compañía sea
                         nueva. En un papel que va al franquiciado, decir "new" sería afirmar algo
                         que no sabemos. */}
-                    <td className="py-3 text-right tabular-nums text-muted">
+                    <td className="py-3.5 text-right tabular-nums text-muted print:py-[7px]">
                       {c.comisionMesAnterior == null ? (
-                        "—"
+                        <>
+                          —<span className="ml-2 inline-block w-14" />
+                        </>
                       ) : (
                         <>
                           {money(c.comisionMesAnterior)}
-                          {dif != null && (
-                            <span className={dif >= 0 ? "ml-2 text-ok-fg" : "ml-2 text-bad-fg"}>
+                          {/* El lugar del porcentaje se reserva siempre, para que los montos de
+                              esta columna queden alineados aunque a alguna fila no le toque uno. */}
+                          {dif != null ? (
+                            <span
+                              className={
+                                dif >= 0
+                                  ? "ml-2 inline-block w-14 text-[11px] font-medium text-ok-fg"
+                                  : "ml-2 inline-block w-14 text-[11px] font-medium text-bad-fg"
+                              }
+                            >
                               {dif >= 0 ? "▲" : "▼"} {Math.abs(dif).toFixed(0)}%
                             </span>
+                          ) : (
+                            <span className="ml-2 inline-block w-14" />
                           )}
                         </>
                       )}
@@ -233,13 +253,15 @@ function Contenido() {
               })}
             </tbody>
             <tfoot>
-              <tr className="border-b-2 border-foreground/25">
-                <td className="py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">Total</td>
-                <td className="py-3 text-right font-semibold tabular-nums text-foreground">{datos.totalPolizas}</td>
-                <td className="py-3 text-right font-semibold tabular-nums text-foreground">
+              <tr className="border-t-2 border-foreground">
+                <td className="pt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pt-3">Total</td>
+                <td className="pt-4 text-right text-[14px] font-semibold tabular-nums text-foreground print:pt-3">
+                  {datos.totalPolizas}
+                </td>
+                <td className="pt-4 text-right text-[14px] font-semibold tabular-nums text-foreground print:pt-3">
                   {money(datos.totalPrima)}
                 </td>
-                <td className="py-3 text-right font-semibold tabular-nums text-foreground">
+                <td className="pt-4 text-right text-[14px] font-semibold tabular-nums text-foreground print:pt-3">
                   {money(datos.comisionGenerada)}
                 </td>
                 <td />
@@ -247,27 +269,29 @@ function Contenido() {
             </tfoot>
           </table>
 
-          <div className="mt-8 ml-auto w-full max-w-[400px] text-[13px]">
-            <div className="flex justify-between border-b border-border py-2.5">
+          <div className="mt-10 ml-auto w-full max-w-[360px] text-[13px] print:mt-6 print:break-inside-avoid">
+            <div className="flex justify-between border-b border-border py-2.5 print:py-2">
               <span className="text-muted">Commission generated</span>
               <span className="tabular-nums text-foreground">{money(datos.comisionGenerada)}</span>
             </div>
-            <div className="flex justify-between border-b border-border py-2.5">
+            <div className="flex justify-between py-2.5 print:py-2">
               <span className="text-muted">
                 Franchise royalty{datos.pctRoyalty != null ? ` (${datos.pctRoyalty}%)` : ""}
               </span>
-              <span className="tabular-nums text-bad-fg">−{money(datos.royalty)}</span>
+              <span className="tabular-nums text-foreground">−{money(datos.royalty)}</span>
             </div>
-            <div className="mt-1 flex items-baseline justify-between border-t-2 border-brand-dark py-3">
+            <div className="mt-1 flex items-baseline justify-between border-t-2 border-brand-dark pt-3.5">
               <span className="text-[14px] font-semibold text-foreground">Net to Office</span>
-              <span className="text-[20px] font-semibold tabular-nums text-brand-dark">{money(datos.neto)}</span>
+              <span className="text-[22px] font-semibold tracking-tight tabular-nums text-brand-dark">
+                {money(datos.neto)}
+              </span>
             </div>
           </div>
 
           {/* Explicar la cuenta al pie evita la llamada preguntando de dónde salió el número, y el
               aviso de confidencialidad porque este papel lleva la producción completa de una
               oficina: cuánto vende, con qué compañías y cuánto se le retiene. */}
-          <footer className="mt-10 border-t border-border pt-5 text-[10px] leading-relaxed text-muted">
+          <footer className="mt-12 border-t border-border pt-5 text-[10px] leading-relaxed text-muted print:mt-6 print:pt-4 print:leading-snug print:break-inside-avoid">
             <p>
               The franchise royalty is calculated on the total commission generated by the office
               during the period — new business and renewals alike — based on the carrier statements
@@ -280,7 +304,7 @@ function Contenido() {
               Statement issued on{" "}
               {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.
             </p>
-            <p className="mt-3 font-medium text-foreground">
+            <p className="mt-4 border-t border-border pt-3 font-medium text-foreground/70">
               Confidential. This statement is the property of Gelpi Insurance Corp and is intended
               solely for the office named above. Any reproduction, distribution or disclosure to
               third parties without written authorization is prohibited. All rights reserved.
