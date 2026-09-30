@@ -131,6 +131,10 @@ export default function SubirPage() {
   const [modalAbierto, setModalAbierto] = useState(false);
 
   const [selectedReporte, setSelectedReporte] = useState<Reporte | null>(null);
+  // Statements marcados para consolidar. Solo entran los finalizados: un statement abierto
+  // todavía puede cambiar de total mientras se resuelven sus excepciones, así que meterlo en
+  // un consolidado daría un número que mañana es otro.
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [lineasComision, setLineasComision] = useState<LineaComision[]>([]);
   const [lineasVenta, setLineasVenta] = useState<LineaVenta[]>([]);
   const [bonoResumen, setBonoResumen] = useState<BonoResumen | null>(null);
@@ -241,6 +245,31 @@ export default function SubirPage() {
     }
   }
 
+
+  // La regla que puso Arturo: "la única condición que puede tener es que el statement tiene
+  // que estar finalizado". Finalizado es estado "cerrado", que es lo que deja el botón
+  // Finalizar de la pantalla del statement. Y solo statements de comisión: el Book y los
+  // reportes de ventas internas no son plata de una compañía y no tienen nada que hacer en un
+  // consolidado de comisiones.
+  // Lo que suman los statements marcados. Se calcula sobre la lista ya cargada y no con otra
+  // consulta: si saliera de la base podria no coincidir con los montos que se estan viendo en
+  // la misma pantalla.
+  const montoSeleccionado = reportes
+    .filter((r) => seleccionados.has(r.id))
+    .reduce((suma, r) => suma + Number(r.monto_total ?? 0), 0);
+
+  function esConsolidable(r: Reporte): boolean {
+    return r.estado === "cerrado" && r.tipo === "comision_aseguradora";
+  }
+
+  function alternarSeleccion(id: string) {
+    setSeleccionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   function onFilaClick(reporte: Reporte) {
     if (!isPreviewable(reporte.estado)) return;
     if (TIPOS_PANTALLA_STATEMENT.has(reporte.tipo)) {
@@ -402,6 +431,26 @@ export default function SubirPage() {
       <Card className="flex flex-col overflow-hidden rounded-2xl!">
         <CardHead title={t("statements.title")} subtitle={t("statements.subtitle")} />
 
+        {/* La barra solo existe cuando hay algo marcado. Una barra permanente que casi siempre
+            dice "0 seleccionados" se vuelve parte del fondo y despues nadie la ve cuando importa. */}
+        {seleccionados.size > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-brand-tint px-5 py-3">
+            <div className="text-[13px]">
+              <span className="font-semibold text-brand-dark">
+                {seleccionados.size} statement{seleccionados.size === 1 ? "" : "s"} seleccionado{seleccionados.size === 1 ? "" : "s"}
+              </span>
+              <span className="text-muted"> · {money(montoSeleccionado)}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSeleccionados(new Set())}
+              className="text-[12px] text-muted underline underline-offset-2 hover:text-foreground"
+            >
+              Limpiar selección
+            </button>
+          </div>
+        )}
+
         {/* El total va arriba de todo y en grande, como en Nextere: es lo primero que se busca y
             hasta ahora había que entrar archivo por archivo para saberlo. Sigue al filtro de mes,
             porque un total que no cambia cuando cambiás el mes no se puede usar para nada. */}
@@ -490,6 +539,7 @@ export default function SubirPage() {
                       Con el conteo, agregar Amount corrió todo: los encabezados seguían marcando
                       como numéricas las columnas 4 a 6 cuando ya eran la 2 a la 5, y los títulos
                       quedaron alineados al revés que sus propios números. */}
+                  <th className="w-10 border-b border-border px-5 py-3" />
                   {[
                     { texto: t("col.carrier"), numerica: false },
                     { texto: t("col.statement"), numerica: false },
@@ -516,7 +566,7 @@ export default function SubirPage() {
                   <Fragment key={grupo.clave}>
                     <tr className="bg-background">
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="border-t border-border px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted"
                       >
                         {grupo.clave} ·{" "}
@@ -544,6 +594,21 @@ export default function SubirPage() {
                             selected && "bg-brand-tint"
                           )}
                         >
+                          {/* La casilla solo aparece si el statement está finalizado. No se dibuja
+                              deshabilitada: una casilla gris que no se puede tocar hace pensar que
+                              algo está roto, mientras que su ausencia con el estado al lado
+                              diciendo "Abierto" ya explica por qué. El clic no se propaga a la
+                              fila, que navega al statement. */}
+                          <td className="px-5 py-2.5" onClick={(e) => e.stopPropagation()}>
+                            {esConsolidable(r) && (
+                              <input
+                                type="checkbox"
+                                checked={seleccionados.has(r.id)}
+                                onChange={() => alternarSeleccion(r.id)}
+                                aria-label={`Seleccionar ${r.aseguradora?.nombre ?? "statement"}`}
+                              />
+                            )}
+                          </td>
                           {/* La compañía es lo primero que se busca con el ojo al barrer la lista,
                               así que va primera y en negrita. Debajo, el tipo de papel, que casi
                               siempre dice "Statement de comisiones" y por eso no merece una columna
