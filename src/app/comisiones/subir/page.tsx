@@ -3,10 +3,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, CheckCircle2, X, Inbox, GitCompare, Wallet, ChevronDown, Download } from "lucide-react";
+import { UploadCloud, FileText, AlertTriangle, RefreshCw, Ban, CheckCircle2, X, Inbox, GitCompare, Wallet, ChevronDown, Download, Layers } from "lucide-react";
 import SubirReporteModal from "@/components/reportes/SubirReporteModal";
 import clsx from "clsx";
-import { Badge, Card, CardHead, EmptyState, Select, type Tone } from "@/components/ui";
+import { Badge, Button, Card, CardHead, EmptyState, Select, type Tone } from "@/components/ui";
 import { fechaHora, money, TIPOS_REPORTE } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import type { ClaveTexto, Idioma } from "@/lib/i18n/textos";
@@ -441,13 +441,28 @@ export default function SubirPage() {
               </span>
               <span className="text-muted"> · {money(montoSeleccionado)}</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setSeleccionados(new Set())}
-              className="text-[12px] text-muted underline underline-offset-2 hover:text-foreground"
-            >
-              Limpiar selección
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setSeleccionados(new Set())}
+                className="text-[12px] text-muted underline underline-offset-2 hover:text-foreground"
+              >
+                Limpiar selección
+              </button>
+              {/* Consolidar y no "fusionar": no se toca ningún statement, se abren juntos en una
+                  vista. Los ids van en la URL para que el consolidado se pueda compartir o volver
+                  a abrir tal como quedó. */}
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() =>
+                  router.push(`/comisiones/consolidado/?reportes=${[...seleccionados].join(",")}`)
+                }
+              >
+                <Layers className="h-3.5 w-3.5" />
+                Ver los {seleccionados.size} juntos
+              </Button>
+            </div>
           </div>
         )}
 
