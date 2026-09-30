@@ -445,6 +445,13 @@ export async function getStatementsConsolidados(reporteIds: string[]): Promise<S
         "id, reporte_id, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, monto, fecha_vigencia, estado, agente, oficina, cliente"
       )
       .in("reporte_id", reporteIds)
+      // Fuera las descartadas. Son las que alguien marco como que no pertenecen al statement,
+      // y monto_total de v_reportes tampoco las cuenta: incluirlas hacia que el total del
+      // consolidado no diera la suma de los chips que tiene encima. Medido sobre los cuatro
+      // statements de agosto: 0,471.34 contra 4,971.66, exactamente las 3 lineas
+      // descartadas (-,500.32). Un total que no cuadra con su propio encabezado es peor que
+      // no tenerlo.
+      .neq("estado", "descartado")
       .order("id", { ascending: true })
       .range(from, from + pageSize - 1);
     if (error) throw error;
