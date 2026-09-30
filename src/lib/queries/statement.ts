@@ -387,3 +387,104 @@ export async function asignarLineaCreandoPoliza(
   if (error) throw error;
   return data as ResultadoAsignacion;
 }
+
+// =========================================================
+// Varios statements mirados como uno
+// =========================================================
+// Arturo quiere seleccionar los statements finalizados de un mes y verlos juntos, como hace
+// Apizeal. NO se fusiona nada: los reportes siguen existiendo enteros y por separado, que es lo
+// único que deja cuadrar contra el total que declaró cada compañía. Esto es una lectura a través
+// de varios, y los ids viajan en la URL.
+
+export interface LineaConsolidada {
+  id: string;
+  reporteId: string;
+  compania: string;
+  periodo: string | null;
+  numeroPoliza: string | null;
+  cliente: string | null;
+  fechaVigencia: string | null;
+  tipoTransaccion: string;
+  prima: number | null;
+  monto: number;
+  agente: string | null;
+  oficina: string | null;
+  estadoLinea: string;
+  grupo: GrupoLinea;
+}
+
+export interface StatementConsolidado {
+  reportes: { id: string; compania: string; periodo: string | null; monto: number }[];
+  lineas: LineaConsolidada[];
+  // Si los statements elegidos no son todos del mismo mes hay que decirlo: los totales por mes
+  // son los que alimentan el royalty, y un consolidado a caballo entre dos meses se lee como si
+  // fuera uno solo si nadie avisa.
+  periodosDistintos: string[];
+}
+
+export async function getStatementsConsolidados(reporteIds: string[]): Promise<StatementConsolidado> {
+  if (reporteIds.length === 0) return { reportes: [], lineas: [], periodosDistintos: [] };
+
+  const { data: cabeceras, error: errCab } = await supabase
+    .from("reportes")
+    .select("id, periodo, monto_total, aseguradora:aseguradoras(nombre)")
+    .in("id", reporteIds);
+  if (errCab) throw errCab;
+
+  // Una sola consulta para todas las líneas de todos los reportes. Paginada igual que la de un
+  // statement solo: con seis compañías de un mes se pasan los mil registros sin esfuerzo, y sin
+  // paginar Supabase corta en silencio y el total queda corto sin que nadie lo note.
+  const lineasRaw: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("v_lineas_comision")
+      .select(
+        "id, reporte_id, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, monto, fecha_vigencia, estado, agente, oficina, cliente"
+      )
+      .in("reporte_id", reporteIds)
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = (data ?? []) as Record<string, unknown>[];
+    lineasRaw.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  type Cab = { id: string; periodo: string | null; monto_total: number | null; aseguradora: { nombre: string } | null };
+  const porId = new Map<string, Cab>(((cabeceras ?? []) as unknown as Cab[]).map((c) => [c.id, c]));
+
+  const lineas: LineaConsolidada[] = lineasRaw.map((l) => {
+    const cab = porId.get(String(l.reporte_id));
+    const estadoLinea = (l.estado as string) ?? "pendiente";
+    return {
+      id: String(l.id),
+      reporteId: String(l.reporte_id),
+      compania: cab?.aseguradora?.nombre ?? "Sin compañía",
+      periodo: cab?.periodo ?? null,
+      numeroPoliza: (l.numero_poliza_crudo as string) ?? null,
+      cliente: (l.cliente as string) ?? (l.nombre_asegurado_crudo as string) ?? null,
+      fechaVigencia: (l.fecha_vigencia as string) ?? null,
+      tipoTransaccion: (l.tipo_transaccion as string) ?? "otro",
+      prima: l.prima == null ? null : Number(l.prima),
+      monto: Number(l.monto ?? 0),
+      agente: (l.agente as string) ?? null,
+      oficina: (l.oficina as string) ?? null,
+      estadoLinea,
+      grupo: grupoDeEstado(estadoLinea),
+    };
+  });
+
+  const reportes = ((cabeceras ?? []) as unknown as Cab[]).map((c) => ({
+    id: c.id,
+    compania: c.aseguradora?.nombre ?? "Sin compañía",
+    periodo: c.periodo,
+    monto: Number(c.monto_total ?? 0),
+  }));
+
+  return {
+    reportes,
+    lineas,
+    periodosDistintos: [...new Set(reportes.map((r) => r.periodo).filter((p): p is string => Boolean(p)))],
+  };
+}
