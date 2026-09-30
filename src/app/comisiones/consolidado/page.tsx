@@ -53,7 +53,7 @@ function Contenido() {
     try {
       setDatos(await getStatementsConsolidados(ids));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo armar el consolidado.");
+      setError(porQue(e));
     } finally {
       setCargando(false);
     }
@@ -333,4 +333,18 @@ function Kpi({ label, valor, sub, tono }: { label: string; valor: string; sub: s
       </div>
     </div>
   );
+}
+
+// Los errores de Supabase no son Error: son objetos con message/hint/details. Tragarselos y
+// mostrar "no se pudo" deja al usuario -y a quien lo depura- mirando una pared. Esta pantalla
+// fallo la primera vez porque pedia una columna que no existe, y el mensaje generico escondio
+// exactamente eso.
+function porQue(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    const partes = [o.message, o.details, o.hint].filter((x) => typeof x === "string" && x);
+    if (partes.length) return partes.join(" — ");
+  }
+  return "No se pudo armar el consolidado.";
 }
