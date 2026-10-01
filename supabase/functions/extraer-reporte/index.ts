@@ -131,6 +131,10 @@ function coerceNumber(v: unknown): number | null {
 // archivo es de comisiones o de ventas, así que acá solo se conserva; quien lo interpreta es
 // el armado del lote, más abajo.
 const COL_SECCION = "_seccion_del_reporte";
+// Marca interna, igual que COL_SECCION: no es una columna del archivo sino una nota del
+// parser sobre qué hojas entraron y cuáles no. Viaja en la primera fila y se saca antes de
+// guardar nada.
+const COL_HOJAS = "_hojas_del_archivo";
 
 // La fila de totales del pie. Kemper cierra su statement con "Grand Total:" y ahí repite la suma
 // de cada columna: 16 celdas llenas, así que ningún filtro por "fila casi vacía" la agarra. Entró
@@ -707,18 +711,50 @@ function parseXlsx(bytes: Uint8Array): Record<string, unknown>[] {
 
   // Muchos statements traen una hoja de resumen junto a la de detalle. El de Progressive tiene
   // "Detailed" (178 transacciones) y "Summary" (14 filas: AGENT TOTAL, AUTO, BOAT…). Juntarlas
-  // mete 14 filas basura con columnas que no significan nada, que terminan como lineas de
-  // comision en cero. Se toma la hoja con mas datos como la buena, y de las otras solo se suman
-  // las que tengan EXACTAMENTE los mismos encabezados — ese es el caso legitimo de un libro
-  // partido en varias hojas (enero, febrero...), y deja afuera los resumenes, que por definicion
-  // tienen otras columnas.
+  // mete 14 filas basura con columnas que no significan nada.
+  //
+  // La regla anterior era: se queda la hoja con más datos, y de las otras solo entran las que
+  // tengan EXACTAMENTE los mismos encabezados. Eso dejaba fuera el resumen, pero también dejaba
+  // fuera hojas de detalle de verdad. El statement de Progressive de julio de Miami Lakes tiene
+  // "AUTO" (70 líneas) y "RENTERS" (5 líneas, \$28.85) con columnas distintas: entró AUTO y
+  // RENTERS se perdió en silencio. Las cuatro pólizas de esa hoja no existen en todo el sistema.
+  //
+  // Perder plata sin avisar es peor que colar unas filas de resumen, que se ven como excepciones
+  // en cero y alguien las descarta. Así que ahora el criterio es al revés: entra toda hoja que
+  // parezca de detalle, y de detalle significa que tiene una columna de número de póliza con
+  // algún valor. El resumen de Progressive no la tiene; RENTERS sí ("Policy #").
   if (porHoja.length === 0) return [];
   porHoja.sort((a, b) => b.filas.length - a.filas.length);
   const principal = porHoja[0];
   const firma = (h: string[]) => h.join("|").toLowerCase();
+  const PATRON_COL_POLIZA = /p[oó]liza|policy|contract|certificado|certificate/i;
+
+  const pareceDetalle = (hoja: { headers: string[]; filas: Record<string, unknown>[] }) => {
+    const col = hoja.headers.find((h) => PATRON_COL_POLIZA.test(h));
+    if (!col) return false;
+    return hoja.filas.some((f) => String(f[col] ?? "").trim() !== "");
+  };
+
   const out = [...principal.filas];
+  const incluidas: string[] = [];
+  const salteadas: string[] = [];
   for (const hoja of porHoja.slice(1)) {
-    if (firma(hoja.headers) === firma(principal.headers)) out.push(...hoja.filas);
+    if (firma(hoja.headers) === firma(principal.headers) || pareceDetalle(hoja)) {
+      out.push(...hoja.filas);
+      incluidas.push(`${hoja.nombre} (${hoja.filas.length})`);
+    } else {
+      salteadas.push(`${hoja.nombre} (${hoja.filas.length})`);
+    }
+  }
+
+  // Queda anotado en la primera fila para que el resumen del reporte lo pueda contar. Una hoja
+  // que se descarta sin decirlo es exactamente como se perdieron los \$28.85 de RENTERS.
+  if (out.length > 0 && (incluidas.length > 0 || salteadas.length > 0)) {
+    out[0][COL_HOJAS] = JSON.stringify({
+      principal: `${principal.nombre} (${principal.filas.length})`,
+      incluidas,
+      salteadas,
+    });
   }
   return out;
 }
@@ -1230,8 +1266,26 @@ Deno.serve(async (req: Request) => {
       if (filasCrudas.length === 0) {
         throw new ReporteError("El archivo no tiene filas de datos.");
       }
-      headers = Object.keys(filasCrudas[0]);
+      // La union de las claves de TODAS las filas, no las de la primera. Un archivo con dos
+      // hojas de detalle (el Progressive de Miami Lakes trae AUTO y RENTERS) tiene dos juegos de
+      // columnas, y con los de la primera hoja el modelo nunca se entera de que existe el otro:
+      // mapea bien AUTO y deja RENTERS sin mapear, que es como no haberla leido.
+      const clavesVistas = new Set<string>();
+      for (const f of filasCrudas) for (const k of Object.keys(f)) clavesVistas.add(k);
+      headers = [...clavesVistas].filter((h) => h !== COL_HOJAS);
+
+      // La muestra tambien tiene que tener filas de cada juego de columnas. Las primeras 30 son
+      // todas de la hoja mas grande; se agregan ejemplos de las filas cuyas claves el modelo
+      // todavia no vio.
       const muestra = filasCrudas.slice(0, 30);
+      const yaEnMuestra = new Set(muestra.flatMap((f) => Object.keys(f)));
+      for (const f of filasCrudas.slice(30)) {
+        if (Object.keys(f).some((k) => !yaEnMuestra.has(k))) {
+          muestra.push(f);
+          for (const k of Object.keys(f)) yaEnMuestra.add(k);
+          if (muestra.length >= 40) break;
+        }
+      }
       const textoMuestra =
         `Encabezados (${headers.length}): ${JSON.stringify(headers)}\n\n` +
         `Primeras ${muestra.length} filas (de ${filasCrudas.length} totales) en JSON:\n` +
@@ -1426,11 +1480,30 @@ Deno.serve(async (req: Request) => {
     }
 
     // Actualización base de metadatos del reporte (se termina de completar según el tipo)
+    // Que hojas entraron y cuales no, al principio del resumen. Una hoja descartada sin decirlo
+    // es como se perdieron los $28.85 de RENTERS en el Progressive de julio: el total daba
+    // "bien" porque nadie sabia que faltaba una hoja.
+    let notaHojas = "";
+    {
+      const marca = filasCrudas.find((f) => f[COL_HOJAS])?.[COL_HOJAS];
+      if (typeof marca === "string") {
+        try {
+          const h = JSON.parse(marca) as { principal: string; incluidas: string[]; salteadas: string[] };
+          const partes = ["Hoja principal: " + h.principal];
+          if (h.incluidas.length) partes.push("también se leyeron: " + h.incluidas.join(", "));
+          if (h.salteadas.length) {
+            partes.push("SE SALTEARON por no parecer de detalle: " + h.salteadas.join(", "));
+          }
+          notaHojas = partes.join(" · ") + ". ";
+        } catch { /* la marca es nuestra; si no parsea, no vale la pena romper por eso */ }
+      }
+      for (const f of filasCrudas) delete f[COL_HOJAS];
+    }
     const metaUpdate: Record<string, unknown> = {
       mapeo_columnas: extraccion.mapeo_columnas ?? null,
       columnas_detectadas: headers.length ? headers : extraccion.columnas_sin_mapeo ?? null,
       confianza_promedio: extraccion.confianza_promedio ?? null,
-      resumen_ia: extraccion.resumen ?? null,
+      resumen_ia: (notaHojas + (extraccion.resumen ?? "")).trim() || null,
       periodo: reporte.periodo ?? extraccion.periodo ?? null,
     };
     if (aseguradoraId && !reporte.aseguradora_id) metaUpdate.aseguradora_id = aseguradoraId;
