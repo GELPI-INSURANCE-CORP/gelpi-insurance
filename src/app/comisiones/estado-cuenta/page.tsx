@@ -4,10 +4,15 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Printer } from "lucide-react";
-import { Select, Button, Loading } from "@/components/agentes/ui";
+import { ArrowLeft, Plus, Printer, Trash2 } from "lucide-react";
+import { Select, Button, TextInput, Loading } from "@/components/agentes/ui";
 import { money } from "@/lib/format";
-import { getEstadoCuentaOficina, type EstadoCuentaOficina } from "@/lib/queries/resumen";
+import {
+  getEstadoCuentaOficina,
+  crearAjusteOficina,
+  borrarAjusteOficina,
+  type EstadoCuentaOficina,
+} from "@/lib/queries/resumen";
 
 // El estado de cuenta que la casa matriz le manda a cada oficina.
 //
@@ -68,6 +73,13 @@ function Contenido() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
   const [datos, setDatos] = useState<EstadoCuentaOficina | null>(null);
+  // El formulario de ajustes vive en la pantalla y no sale impreso: se mira el statement, se
+  // agrega el ajuste, se ve aparecer en el documento, y recién entonces se imprime.
+  const [abriendoAjuste, setAbriendoAjuste] = useState(false);
+  const [concepto, setConcepto] = useState("");
+  const [montoTxt, setMontoTxt] = useState("");
+  const [aplicaRoyalty, setAplicaRoyalty] = useState<"" | "si" | "no">("");
+  const [guardandoAjuste, setGuardandoAjuste] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,6 +110,48 @@ function Contenido() {
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  async function guardarAjuste() {
+    const monto = Number(montoTxt.replace(/[^0-9.-]/g, ""));
+    if (!concepto.trim()) return setError("Ponele un concepto al ajuste.");
+    if (!Number.isFinite(monto) || monto === 0) {
+      return setError("El monto tiene que ser un número distinto de cero. Negativo descuenta, positivo suma.");
+    }
+    // Sin default a propósito: con un fee de -$397.80 en una oficina al 12%, que lleve royalty o
+    // no son $47.74 de diferencia. Eso lo decide quien carga el ajuste, no el sistema.
+    if (aplicaRoyalty === "") return setError("Decí si el ajuste lleva royalty o no.");
+    setGuardandoAjuste(true);
+    setError(null);
+    try {
+      await crearAjusteOficina({
+        oficinaId,
+        periodo,
+        concepto,
+        monto,
+        aplicaRoyalty: aplicaRoyalty === "si",
+      });
+      setConcepto("");
+      setMontoTxt("");
+      setAplicaRoyalty("");
+      setAbriendoAjuste(false);
+      await cargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar el ajuste.");
+    } finally {
+      setGuardandoAjuste(false);
+    }
+  }
+
+  async function quitarAjuste(id: string, concepto: string) {
+    if (!window.confirm(`Borrar el ajuste "${concepto}"? Se va del estado de cuenta y del cálculo del royalty.`)) return;
+    try {
+      await borrarAjusteOficina(id);
+      await cargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo borrar el ajuste.");
+    }
+  }
+
 
   return (
     <div className="flex flex-col gap-4">
@@ -274,6 +328,31 @@ function Contenido() {
               <span className="text-muted">Commission generated</span>
               <span className="tabular-nums text-foreground">{money(datos.comisionGenerada)}</span>
             </div>
+
+            {/* Cada ajuste va con su nombre y su monto, uno por renglón. Un total de "ajustes"
+                sin desglosar obliga al franquiciado a llamar para preguntar qué le descontaron,
+                que es exactamente la llamada que este documento tiene que evitar. */}
+            {datos.ajustes.map((a) => (
+              <div key={a.id} className="flex items-baseline justify-between border-b border-border py-2.5 print:py-2">
+                <span className="flex items-center gap-1.5 text-muted">
+                  {a.concepto}
+                  {/* El botón de borrar es de la pantalla, no del documento. */}
+                  <button
+                    type="button"
+                    onClick={() => quitarAjuste(a.id, a.concepto)}
+                    className="text-muted/60 transition-colors hover:text-bad-fg print:hidden"
+                    aria-label={`Borrar el ajuste ${a.concepto}`}
+                    title="Borrar este ajuste"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </span>
+                <span className="tabular-nums text-foreground">
+                  {a.monto < 0 ? "−" : "+"}
+                  {money(Math.abs(a.monto))}
+                </span>
+              </div>
+            ))}
             <div className="flex justify-between py-2.5 print:py-2">
               <span className="text-muted">
                 Franchise royalty{datos.pctRoyalty != null ? ` (${datos.pctRoyalty}%)` : ""}
@@ -286,6 +365,75 @@ function Contenido() {
                 {money(datos.neto)}
               </span>
             </div>
+          </div>
+
+          {/* Fuera del papel: esto es para armar el documento, no parte de él. print:hidden lo
+              saca del PDF, así el franquiciado recibe el estado de cuenta y no el formulario con
+              el que se hizo. */}
+          <div className="mt-6 rounded-xl border border-dashed border-border bg-background/40 px-5 py-4 print:hidden">
+            {!abriendoAjuste ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-[12px] leading-relaxed text-muted">
+                  ¿Hay que descontarle o sumarle algo a esta oficina este mes? Un fee de la agencia,
+                  una devolución, un acuerdo. Sale en el estado de cuenta con su nombre.
+                </p>
+                <Button size="sm" variant="secondary" onClick={() => { setError(null); setAbriendoAjuste(true); }}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Agregar ajuste
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_140px_200px]">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-muted">Concepto</span>
+                    <TextInput
+                      value={concepto}
+                      onChange={(e) => setConcepto(e.target.value)}
+                      placeholder="Ej.: Fee UW Reports Kemper"
+                      className="h-9"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-muted">Monto</span>
+                    <TextInput
+                      value={montoTxt}
+                      onChange={(e) => setMontoTxt(e.target.value)}
+                      placeholder="-397.80"
+                      inputMode="decimal"
+                      className="h-9"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-muted">¿Lleva royalty?</span>
+                    <Select
+                      value={aplicaRoyalty}
+                      onChange={(v) => setAplicaRoyalty(v as "" | "si" | "no")}
+                      options={[
+                        { value: "", label: "Elegir…" },
+                        { value: "si", label: "Sí — cambia la base" },
+                        { value: "no", label: "No — se descuenta después" },
+                      ]}
+                      className="h-9"
+                    />
+                  </label>
+                </div>
+                <p className="text-[11px] leading-relaxed text-muted">
+                  El monto va con signo: <strong>negativo descuenta</strong> de lo que se le manda a
+                  la oficina, positivo suma. Si lleva royalty, el porcentaje se calcula sobre el total
+                  ya ajustado; si no, el ajuste se descuenta después de cobrarlo. En los dos casos la
+                  oficina recibe lo mismo de menos — cambia cuánto royalty cobrás vos.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setAbriendoAjuste(false)} disabled={guardandoAjuste}>
+                    Cancelar
+                  </Button>
+                  <Button size="sm" variant="primary" onClick={guardarAjuste} disabled={guardandoAjuste}>
+                    {guardandoAjuste ? "Guardando…" : "Agregar al estado de cuenta"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Explicar la cuenta al pie evita la llamada preguntando de dónde salió el número, y el

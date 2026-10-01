@@ -287,6 +287,9 @@ export interface RoyaltyOficina {
   // Nulo = todavía no se le definió el porcentaje a esa oficina. No es lo mismo que 0, y la
   // pantalla los muestra distinto: uno es "falta configurarlo" y el otro "no paga".
   pctRoyalty: number | null;
+  // Los ajustes marcados como que llevan royalty, ya sumados. Va aparte de la comisión para que
+  // el estado de cuenta pueda mostrar la cuenta completa y no solo el resultado.
+  ajustesEnBase: number;
   royalty: number;
 }
 
@@ -298,6 +301,7 @@ export async function getRoyaltyPorOficina(desde: string, hasta: string): Promis
     oficina: String(d.oficina ?? "—"),
     esCorporativa: Boolean(d.es_corporativa),
     comisionGenerada: Number(d.comision_generada ?? 0),
+    ajustesEnBase: Number(d.ajustes_en_base ?? 0),
     pctRoyalty: d.pct_royalty == null ? null : Number(d.pct_royalty),
     royalty: Number(d.royalty ?? 0),
   }));
@@ -336,6 +340,76 @@ export interface LineaCompania {
   comisionMesAnterior: number | null;
 }
 
+// =========================================================
+// Ajustes manuales del estado de cuenta
+// =========================================================
+// Plata que el statement de la compañía no explica y que igual hay que pasarle a la oficina:
+// fees de la agencia, devoluciones, acuerdos. El caso que lo destapó fueron los tres cargos
+// "Fee-UWReports" de Kemper de septiembre (-$397.80), que no traen oficina y por eso no se
+// pueden repartir solos. Ver 20261001000001.
+//
+// El monto va FIRMADO: negativo descuenta de lo que se le manda a la oficina, positivo suma.
+// Un solo campo con signo en vez de un "tipo" más un monto siempre positivo, porque con dos
+// campos siempre llega el día en que alguien guarda "cargo" con monto negativo y se resta dos
+// veces.
+
+export interface AjusteOficina {
+  id: string;
+  oficinaId: string;
+  periodo: string;
+  concepto: string;
+  monto: number;
+  // Si cambia la base sobre la que se calcula el royalty, o si se descuenta después. Con un fee
+  // de -$397.80 en una oficina al 12% son $47.74 de diferencia, así que no tiene default.
+  aplicaRoyalty: boolean;
+  nota: string | null;
+}
+
+export async function getAjustesOficina(oficinaId: string, periodo: string): Promise<AjusteOficina[]> {
+  const { data, error } = await supabase
+    .from("ajustes_oficina")
+    .select("id, oficina_id, periodo, concepto, monto, aplica_royalty, nota")
+    .eq("oficina_id", oficinaId)
+    .eq("periodo", periodo)
+    .order("creado_en", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((d: Record<string, unknown>) => ({
+    id: String(d.id),
+    oficinaId: String(d.oficina_id),
+    periodo: String(d.periodo),
+    concepto: String(d.concepto ?? ""),
+    monto: Number(d.monto ?? 0),
+    aplicaRoyalty: Boolean(d.aplica_royalty),
+    nota: (d.nota as string) ?? null,
+  }));
+}
+
+export async function crearAjusteOficina(a: {
+  oficinaId: string;
+  periodo: string;
+  concepto: string;
+  monto: number;
+  aplicaRoyalty: boolean;
+  nota?: string | null;
+}): Promise<void> {
+  const { data: usuario } = await supabase.auth.getUser();
+  const { error } = await supabase.from("ajustes_oficina").insert({
+    oficina_id: a.oficinaId,
+    periodo: a.periodo,
+    concepto: a.concepto.trim(),
+    monto: a.monto,
+    aplica_royalty: a.aplicaRoyalty,
+    nota: a.nota?.trim() || null,
+    creado_por: usuario?.user?.id ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function borrarAjusteOficina(id: string): Promise<void> {
+  const { error } = await supabase.from("ajustes_oficina").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export interface EstadoCuentaOficina {
   oficinaId: string;
   oficina: string;
@@ -345,6 +419,7 @@ export interface EstadoCuentaOficina {
   totalPolizas: number;
   totalPrima: number;
   comisionGenerada: number;
+  ajustes: AjusteOficina[];
   royalty: number;
   neto: number;
   comisionMesAnterior: number;
@@ -365,10 +440,15 @@ export async function getEstadoCuentaOficina(
   const actual = rangoDeMes(mes);
   const anterior = rangoDeMes(new Date(mes.getFullYear(), mes.getMonth() - 1, 1));
 
-  const [resumen, detalle, detalleAnterior] = await Promise.all([
+  // El período de los ajustes se arma del mes pedido, en el mismo formato canónico YYYY-MM en
+  // que se guardan los períodos de los statements (ver 20260927000005).
+  const periodoTxt = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, "0")}`;
+
+  const [resumen, detalle, detalleAnterior, ajustes] = await Promise.all([
     getRoyaltyPorOficina(actual.desde, actual.hasta),
     supabase.rpc("royalty_detalle_por_compania", { p_desde: actual.desde, p_hasta: actual.hasta }),
     supabase.rpc("royalty_detalle_por_compania", { p_desde: anterior.desde, p_hasta: anterior.hasta }),
+    getAjustesOficina(oficinaId, periodoTxt),
   ]);
   if (detalle.error) throw detalle.error;
   if (detalleAnterior.error) throw detalleAnterior.error;
@@ -401,9 +481,15 @@ export async function getEstadoCuentaOficina(
     totalPolizas: companias.reduce((s, c) => s + c.polizas, 0),
     totalPrima: companias.reduce((s, c) => s + c.prima, 0),
     comisionGenerada: ofi.comisionGenerada,
+    ajustes,
     royalty: ofi.royalty,
     // Lo que de verdad le entra a su cuenta. Es el número que la oficina va a mirar primero.
-    neto: ofi.comisionGenerada - ofi.royalty,
+    //
+    // Entran TODOS los ajustes, lleven royalty o no: la diferencia entre unos y otros no es si
+    // se descuentan sino cuándo. Los que llevan royalty ya movieron la base (y por eso el
+    // royalty que viene de la base ya salió más chico); los que no, se descuentan acá al final.
+    // En los dos casos la oficina recibe lo mismo de menos.
+    neto: ofi.comisionGenerada + ajustes.reduce((t, x) => t + x.monto, 0) - ofi.royalty,
     comisionMesAnterior: [...antes.values()].reduce((s, v) => s + v, 0),
   };
 }
