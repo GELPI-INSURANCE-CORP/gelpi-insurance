@@ -89,6 +89,10 @@ begin
    where l.id = e.linea_relacionada_id
      and l.reporte_id = p_reporte_id;
 
+  -- La tabla es bonos, no bono_reparto. Lo primero que escribi fue bono_reparto, leyendo mal el
+  -- esquema, y la funcion reventaba justo aca: no se podia borrar NINGUN statement. El error
+  -- decia "column reporte_id does not exist", que suena a otra cosa — la columna existe, la que
+  -- no existe es la tabla, y Postgres lo reporta por la columna.
   update bonos set reporte_id = null where reporte_id = p_reporte_id;
 
   -- Las líneas y sus excepciones se van en cascada con el reporte.
@@ -104,3 +108,14 @@ comment on function borrar_reporte is
   'cero. Al irse el registro se libera hash_archivo y el mismo archivo se puede resubir.';
 
 notify pgrst, 'reload schema';
+
+-- ---------------------------------------------------------
+-- Ojo al correr esto a mano
+-- ---------------------------------------------------------
+-- Si se prueba la funcion con la tecnica de "llamarla y despues raise exception para que se
+-- revierta", NO se puede poner el create or replace en el mismo script. El rollback se lleva
+-- tambien la definicion de la funcion, asi que el arreglo parece haber funcionado (la prueba
+-- pasa) y en la base queda la version vieja. Paso exactamente eso: la prueba en seco dijo
+-- "AHORA SI CORRE" y al borrar de verdad volvio a fallar con el mismo error.
+--
+-- Primero se corre el create or replace solo. Despues, en otra corrida, la prueba.
