@@ -110,11 +110,17 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
             <div className="flex min-w-0 flex-col gap-3">
               {grupos.map((g) => (
                 <div key={g.clave} className="min-w-0 overflow-hidden rounded-xl border border-border">
-                  <div className="border-b border-border bg-background/60 px-4 py-2 text-[13px] font-medium tabular-nums">
-                    {g.clave}
+                  {/* Agente y oficina van en el encabezado y no en cada fila: son los mismos
+                      en las dos mitades del par, asi que repetirlos era ruido -- y dos columnas
+                      de ancho que hacian que la tabla no entrara en el panel. */}
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border bg-background/60 px-4 py-2">
+                    <span className="text-[13px] font-medium tabular-nums">{g.clave}</span>
+                    <span className="text-[11px] text-muted">
+                      {g.filas[0]?.agente} · {g.filas[0]?.oficina}
+                    </span>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[900px] text-[12.5px]">
+                    <table className="w-full table-auto text-[12.5px]">
                       <thead>
                         <tr className="text-left text-muted">
                           <th className="px-3 py-1.5 font-medium">Compañía</th>
@@ -124,8 +130,6 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                           <th className="px-3 py-1.5 font-medium">Vigencia</th>
                           <th className="px-3 py-1.5 font-medium text-right">Prima</th>
                           <th className="px-3 py-1.5 font-medium text-right">Comisión</th>
-                          <th className="px-3 py-1.5 font-medium">Agente</th>
-                          <th className="px-3 py-1.5 font-medium">Oficina</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -147,7 +151,7 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                             <td className="px-3 py-2 text-muted">
                               {f.origen === "import" ? "el Book" : f.origen === "alta_manual" ? "carga a mano" : f.origen}
                             </td>
-                            <td className="px-3 py-2">{f.cliente}</td>
+                            <td className="px-3 py-2 break-words">{f.cliente}</td>
                             <td className="px-3 py-2 text-muted">{f.ramo}</td>
                             <td className="px-3 py-2 tabular-nums whitespace-nowrap">
                               {f.fechaVigencia ? (
@@ -171,8 +175,6 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                                 </>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-muted">{f.agente}</td>
-                            <td className="px-3 py-2 text-muted">{f.oficina}</td>
                           </tr>
                         ))}
                       </tbody>
