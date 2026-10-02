@@ -73,7 +73,23 @@ export function initials(user: User | null | undefined): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
+// Arturo, viendo "arturo@gelpiinsurance.com" en el menu de su cuenta: *"tienes que arreglar el
+// nombre al usuario tambien"*. Tenia razon: una direccion de correo no es el nombre de nadie, y
+// mostrarla ahi hacia que la aplicacion se viera como una pantalla de administracion y no como
+// la suya.
+//
+// Si el usuario tiene nombre cargado se usa ese. Si no, se arma uno legible con la parte de
+// antes del arroba: "arturo.gelpi" o "arturo_gelpi" se vuelven "Arturo Gelpi". El correo
+// completo sigue estando en el menu, debajo, que para saber con que cuenta uno entro sirve.
 export function displayName(user: User | null | undefined): string {
   if (!user) return "";
-  return (user.user_metadata?.full_name as string | undefined) || user.email || "";
+  const cargado = (user.user_metadata?.full_name as string | undefined)?.trim();
+  if (cargado) return cargado;
+  const local = (user.email ?? "").split("@")[0];
+  if (!local) return "";
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .join(" ");
 }
