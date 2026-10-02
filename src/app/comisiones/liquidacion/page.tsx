@@ -53,7 +53,12 @@ function LiquidacionContent() {
   const [oficinasAbiertas, setOficinasAbiertas] = useState<Set<string>>(new Set());
   // Qué agente está abierto en el panel de detalle. Se guarda el id y el nombre juntos para no
   // tener que buscarlo de nuevo en la lista cuando el panel se dibuja.
-  const [verDetalle, setVerDetalle] = useState<{ id: string; nombre: string } | null>(null);
+  // "foco" es en qué caja abre el panel. Desde el premium se entra a ver todo; desde la columna
+  // de sin clasificar se entra directo a lo que hay que resolver, que es la diferencia entre
+  // "acá hay un problema" y "acá está el problema, resolvelo".
+  const [verDetalle, setVerDetalle] = useState<
+    { id: string; nombre: string; foco: "todas" | "sin_clasificar" } | null
+  >(null);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [cerrandoMes, setCerrandoMes] = useState(false);
 
@@ -187,14 +192,17 @@ function LiquidacionContent() {
         aPagarPrima: agentes.reduce((s, a) => s + a.aPagarPrima, 0),
         comisionNuevo: agentes.reduce((s, a) => s + a.comisionNuevo, 0),
         aPagar: agentes.reduce((s, a) => s + a.aPagar, 0),
-        sinClasificar: agentes.reduce((s, a) => s + a.comisionSinClasificar, 0),
+        sinClasificar: agentes.reduce((s, a) => s + a.primaSinClasificar, 0),
         sinPct: agentes.filter((a) => a.pctPrima == null && a.primaNuevo !== 0).length,
       }))
       .sort((a, b) => b.primaNuevo - a.primaNuevo);
   }, [filas]);
 
   const totalNuevo = filas.reduce((s, f) => s + f.comisionNuevo, 0);
-  const totalSinClasificar = filas.reduce((s, f) => s + f.comisionSinClasificar, 0);
+  // En PRIMA y no en comisión. Esta pantalla paga sobre prima: mostrar acá la comisión sin
+  // clasificar contesta una pregunta que nadie está haciendo, y hace que la columna no se pueda
+  // comparar con la de al lado.
+  const totalSinClasificar = filas.reduce((s, f) => s + f.primaSinClasificar, 0);
   const totalAPagar = filas.reduce((s, f) => s + f.aPagar, 0);
   const totalPrimaNuevo = filas.reduce((s, f) => s + f.primaNuevo, 0);
   const totalAPagarPrima = filas.reduce((s, f) => s + f.aPagarPrima, 0);
@@ -214,7 +222,7 @@ function LiquidacionContent() {
         f.primaNuevo.toFixed(2), f.pctPrima == null ? "" : f.pctPrima, f.aPagarPrima.toFixed(2),
         f.pct,
         f.comisionNuevo.toFixed(2), f.comisionRenovacion.toFixed(2),
-        f.comisionSinClasificar.toFixed(2), f.comisionRecibida.toFixed(2), f.aPagar.toFixed(2),
+        f.primaSinClasificar.toFixed(2), f.comisionRecibida.toFixed(2), f.aPagar.toFixed(2),
       ]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`)
         .join(",")
@@ -322,7 +330,7 @@ function LiquidacionContent() {
                 <th className="border-l border-border px-4 py-2.5 font-medium text-right text-muted">Comisión nuevo</th>
                 <th className="px-4 py-2.5 font-medium text-muted w-24">% com.</th>
                 <th className="px-4 py-2.5 font-medium text-right text-muted">A pagar (viejo)</th>
-                <th className="px-4 py-2.5 font-medium text-right">Sin clasificar</th>
+                <th className="px-4 py-2.5 font-medium text-right">Prima sin clasificar</th>
               </tr>
             </thead>
             <tbody>
@@ -394,7 +402,7 @@ function LiquidacionContent() {
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => setVerDetalle({ id: f.agenteId, nombre: f.nombre })}
+                                onClick={() => setVerDetalle({ id: f.agenteId, nombre: f.nombre, foco: "todas" })}
                                 className="tabular-nums font-medium underline decoration-dotted underline-offset-4 hover:text-brand"
                                 title={`Ver todo lo que vendió ${f.nombre} en ${etiquetaPeriodo(periodo)}`}
                               >
@@ -462,16 +470,28 @@ function LiquidacionContent() {
                           </td>
                           <td className="px-4 py-2.5 text-right tabular-nums text-muted">{money(f.aPagar)}</td>
 
-                          {/* Solo se pinta cuando hay algo que revisar: un cero en amarillo en
-                              todas las filas entrena a ignorar el color justo cuando importa. */}
-                          <td
-                            className={
-                              f.comisionSinClasificar !== 0
-                                ? "px-4 py-2.5 text-right tabular-nums text-warn-fg"
-                                : "px-4 py-2.5 text-right tabular-nums text-muted"
-                            }
-                          >
-                            {money(f.comisionSinClasificar)}
+                          {/* Se entra acá. Ver que a Heidi le faltan $16.380,91 por decidir no
+                              sirve de nada si después hay que ir a buscarla a mano entre cientos
+                              de líneas en otra pantalla — que es exactamente por lo que en seis
+                              meses nadie clasificó nunca nada.
+
+                              Solo se pinta cuando hay algo: un cero en amarillo en todas las
+                              filas entrena a ignorar el color justo cuando importa. */}
+                          <td className="px-4 py-2.5 text-right tabular-nums">
+                            {f.primaSinClasificar === 0 ? (
+                              <span className="text-muted">{money(0)}</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setVerDetalle({ id: f.agenteId, nombre: f.nombre, foco: "sin_clasificar" })
+                                }
+                                className="tabular-nums font-medium text-warn-fg underline decoration-dotted underline-offset-4 hover:text-foreground"
+                                title={`Revisar y clasificar lo que falta de ${f.nombre}`}
+                              >
+                                {money(f.primaSinClasificar)}
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -520,7 +540,11 @@ function LiquidacionContent() {
           nombre={verDetalle.nombre}
           periodo={periodo}
           etiquetaPeriodo={etiquetaPeriodo(periodo)}
+          focoInicial={verDetalle.foco}
           onClose={() => setVerDetalle(null)}
+          // Clasificar cambia cuánto se le paga: la tabla de atrás tiene que reflejarlo sin que
+          // haya que recargar la página a mano.
+          onCambio={() => void cargar()}
         />
       )}
     </div>

@@ -347,7 +347,19 @@ export async function reabrirLiquidacion(periodo: string): Promise<void> {
 // total de arriba (ver detalle_liquidacion_agente en la migración): si usara otro, el detalle no
 // sumaría el total y no se podría confiar en ninguno de los dos.
 
+// De donde salio el veredicto de cada linea. No es decoracion: cuando el pago depende de que
+// una linea este de un lado y no del otro, hay que poder contestar "y esto por que se paga?"
+// sin abrir el Excel de la compania.
+export type OrigenVeredicto =
+  | "archivo"           // lo dice la propia linea del statement
+  | "mismo_statement"   // lo dicen sus hermanas dentro del mismo archivo
+  | "a_mano"            // lo decidio una persona
+  | "otros_statements"  // la misma poliza esta clasificada en otro statement
+  | "sin_clasificar";
+
 export interface LineaDeAgente {
+  // Hace falta para poder clasificarla desde el panel, sin ir a buscarla a otra pantalla.
+  id: string;
   fecha: string | null;
   compania: string;
   numeroPoliza: string;
@@ -357,6 +369,9 @@ export interface LineaDeAgente {
   prima: number | null;
   comision: number;
   statement: string | null;
+  origen: OrigenVeredicto;
+  // Solo para las que siguen sin clasificar: por que no se pudo saber.
+  motivo: string | null;
 }
 
 export async function getDetalleAgente(
@@ -371,6 +386,7 @@ export async function getDetalleAgente(
   });
   if (error) throw error;
   return ((data ?? []) as Record<string, unknown>[]).map((d) => ({
+    id: String(d.linea_id ?? ""),
     fecha: (d.fecha as string) ?? null,
     compania: (d.compania as string) ?? "—",
     numeroPoliza: (d.numero_poliza as string) ?? "—",
@@ -380,5 +396,7 @@ export async function getDetalleAgente(
     prima: d.prima == null ? null : Number(d.prima),
     comision: Number(d.comision ?? 0),
     statement: (d.statement as string) ?? null,
+    origen: ((d.origen as OrigenVeredicto) ?? "sin_clasificar"),
+    motivo: (d.motivo as string) ?? null,
   }));
 }

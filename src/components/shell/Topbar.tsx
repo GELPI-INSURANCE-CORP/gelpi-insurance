@@ -103,8 +103,12 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
           </button>
           {menuOpen && (
             <div className="absolute right-0 top-11 z-20 w-56 rounded-lg border border-border bg-surface py-1 shadow-lg">
-              <div className="truncate border-b border-border px-3 py-2 text-[13px] text-foreground">
-                {displayName(user)}
+              {/* El nombre arriba y el correo abajo en chico. Antes acá sólo iba el correo, que
+                  no es el nombre de nadie; pero sacarlo del todo tampoco sirve, porque es lo
+                  único que dice con qué cuenta estás adentro. */}
+              <div className="border-b border-border px-3 py-2">
+                <div className="truncate text-[13px] text-foreground">{displayName(user)}</div>
+                <div className="truncate text-[11px] text-muted">{user?.email}</div>
               </div>
               <Link
                 href="/comisiones/cuenta/"
