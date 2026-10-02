@@ -11,7 +11,9 @@ import {
   cerrarLiquidacion,
   reabrirLiquidacion,
   periodoActual,
+  getAlertasDelLibro,
   type Liquidacion,
+  type AlertaDelLibro,
 } from "@/lib/queries/liquidacion";
 import DetalleAgenteDrawer from "@/components/liquidacion/DetalleAgenteDrawer";
 
@@ -56,9 +58,16 @@ function LiquidacionContent() {
   // "foco" es en qué caja abre el panel. Desde el premium se entra a ver todo; desde la columna
   // de sin clasificar se entra directo a lo que hay que resolver, que es la diferencia entre
   // "acá hay un problema" y "acá está el problema, resolvelo".
+  // Las contradicciones del Book se cargan aparte del periodo: no dependen del mes elegido, y
+  // si la consulta falla la pantalla de pago tiene que seguir andando igual.
+  const [alertas, setAlertas] = useState<AlertaDelLibro[]>([]);
   const [verDetalle, setVerDetalle] = useState<
     { id: string; nombre: string; foco: "todas" | "sin_clasificar" } | null
   >(null);
+
+  useEffect(() => {
+    void getAlertasDelLibro().then(setAlertas);
+  }, []);
   const [guardando, setGuardando] = useState<string | null>(null);
   const [cerrandoMes, setCerrandoMes] = useState(false);
 
@@ -297,6 +306,18 @@ function LiquidacionContent() {
           no se lo pongas, su pago sale en blanco y no entra en el total.
         </Banner>
       )}
+
+      {/* Arriba de todo y antes de cualquier numero: si el Book se contradice, lo que hay abajo
+          puede estar mal y no se nota mirandolo. El caso que lo pidio es un agente que cambia de
+          oficina y deja sus polizas viejas con la oficina anterior — ahi la plata se le va a la
+          oficina que no es, y el royalty tambien. Normalmente no se ve nada acá. */}
+      {alertas.map((a) => (
+        <Banner key={a.tipo} tone="bad">
+          <AlertTriangle className="w-3.5 h-3.5 inline mr-1.5" />
+          <strong>Revisá el Book antes de pagar.</strong> {a.titulo}: {a.detalle}
+          {a.monto !== 0 && <> · {money(a.monto)} en juego</>}
+        </Banner>
+      ))}
 
       {data && data.sinAsignar !== 0 && (
         <Banner

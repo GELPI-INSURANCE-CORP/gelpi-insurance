@@ -374,6 +374,33 @@ export interface LineaDeAgente {
   motivo: string | null;
 }
 
+// Contradicciones del Book que hay que mirar ANTES de pagar. Ver 20261002000002.
+//
+// Arturo, sobre una agente que cambio de oficina: *"si la poliza viene de la oficina Miami Lake
+// y dice Thalia, esta mal, el sistema tiene que parar, porque Thalia no pertenece a Miami
+// Lake"*. Esto es ese freno. Normalmente devuelve vacio.
+export interface AlertaDelLibro {
+  tipo: string;
+  titulo: string;
+  detalle: string;
+  n: number;
+  monto: number;
+}
+
+export async function getAlertasDelLibro(): Promise<AlertaDelLibro[]> {
+  const { data, error } = await supabase.rpc("alertas_del_libro");
+  // Si la funcion todavia no esta en la base, la pantalla de pago tiene que seguir funcionando:
+  // esto es una advertencia, no el calculo. Un error aca no puede dejar a nadie sin cobrar.
+  if (error) return [];
+  return ((data ?? []) as Record<string, unknown>[]).map((d) => ({
+    tipo: String(d.tipo ?? ""),
+    titulo: String(d.titulo ?? ""),
+    detalle: String(d.detalle ?? ""),
+    n: Number(d.n ?? 0),
+    monto: Number(d.monto ?? 0),
+  }));
+}
+
 export async function getDetalleAgente(
   agenteId: string,
   periodo: string
