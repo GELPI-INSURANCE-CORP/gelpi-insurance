@@ -302,10 +302,14 @@ export default function DetalleAgenteDrawer({
                         </td>
                         <td className="px-3 py-2">
                           {/* Para las que no se pudieron clasificar, acá va el por qué: es la
-                              diferencia entre "el sistema falló" y "la compañía no lo dijo". */}
+                              diferencia entre "el sistema falló" y "la compañía no lo dijo".
+                              Va corto, con el motivo completo en el globito: el texto entero en
+                              la celda hacía tres renglones por fila y empujaba los botones de
+                              decidir fuera de la pantalla, que es justo lo que se viene a hacer
+                              acá. */}
                           <span title={l.motivo ?? ORIGEN[l.origen].ayuda} className="cursor-help">
                             {l.negocioNuevo == null ? (
-                              <span className="text-[11px] text-muted">{l.motivo ?? "No se pudo saber"}</span>
+                              <Badge tone="warn">{motivoCorto(l.motivo)}</Badge>
                             ) : (
                               <Badge tone={ORIGEN[l.origen].tono}>{ORIGEN[l.origen].texto}</Badge>
                             )}
@@ -378,6 +382,16 @@ function Caja({
       <div className="text-[11px] text-muted">comisión {money(comision)}</div>
     </button>
   );
+}
+
+// Tres palabras en la celda, el motivo completo en el globito. Son tres casos y cada uno pide
+// algo distinto: si nadie más tiene la póliza hay que decidirla a mano, si dos statements se
+// contradicen hay que mirar cuál está mal, y si no hay número de póliza no hay nada que hacer.
+function motivoCorto(motivo: string | null): string {
+  if (!motivo) return "No se pudo saber";
+  if (motivo.includes("no trae numero")) return "Sin número de póliza";
+  if (motivo.includes("aparece como nueva")) return "Los statements se contradicen";
+  return "La compañía no lo dijo";
 }
 
 // Los errores de Supabase son objetos planos con message/hint/details, no instancias de Error,
