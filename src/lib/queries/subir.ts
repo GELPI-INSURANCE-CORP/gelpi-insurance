@@ -225,9 +225,14 @@ export async function uploadReporte({
   const nombreLimpio = file.name.replace(/[^A-Za-z0-9._-]/g, "_");
   const storagePath = `${tipo}/${yyyy}/${mm}/${hash}-${nombreLimpio}`;
 
+  // upsert true, no false. La ruta lleva el hash del archivo, así que dos archivos distintos
+  // nunca pisan la misma: si la ruta ya existe es porque es EL MISMO archivo, byte por byte.
+  // Con upsert false, un archivo que quedó colgado en el storage —porque se borró el statement y
+  // el objeto no— bloqueaba volver a subirlo para siempre, con un "ya existe" que no se podía
+  // resolver desde la aplicación. Le pasó a Arturo con el GEICO de septiembre.
   const { error: uploadError } = await supabase.storage.from("reportes").upload(storagePath, file, {
     contentType: file.type || undefined,
-    upsert: false,
+    upsert: true,
   });
   if (uploadError) throw uploadError;
 
@@ -543,11 +548,31 @@ export interface ResultadoBorrado {
 // se libera el hash, así que el mismo archivo se puede resubir — sin eso el sistema lo
 // rechazaría por duplicado. Ver 20260927000003.
 export async function borrarReporte(reporteId: string, motivo: string): Promise<ResultadoBorrado> {
+  // La ruta del archivo hay que leerla ANTES: después del borrado la fila ya no está y no queda
+  // forma de saber qué objeto limpiar.
+  const { data: previo } = await supabase
+    .from("reportes")
+    .select("storage_path")
+    .eq("id", reporteId)
+    .maybeSingle();
+
   const { data, error } = await supabase.rpc("borrar_reporte", {
     p_reporte_id: reporteId,
     p_motivo: motivo,
   });
   if (error) throw error;
+
+  // El archivo se borra DESPUÉS de que la base confirmó, y nunca antes: si se borrara primero y
+  // el RPC fallara, quedaría un statement en el sistema apuntando a un archivo que ya no existe
+  // — imposible de reprocesar y sin manera de recuperarlo.
+  //
+  // Y si esta limpieza falla no se rompe el borrado: la base ya está consistente, y lo único que
+  // queda es un archivo huérfano que no estorba a nadie porque al subir se usa upsert.
+  if (previo?.storage_path) {
+    const { error: errStorage } = await supabase.storage.from("reportes").remove([previo.storage_path]);
+    if (errStorage) console.warn("El statement se borró, pero su archivo quedó en el storage:", errStorage.message);
+  }
+
   const r = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
   return {
     lineasBorradas: Number(r?.lineas_borradas ?? 0),
