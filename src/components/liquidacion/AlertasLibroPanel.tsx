@@ -82,7 +82,7 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
       {error && <div className="mb-3 rounded-lg bg-bad-bg px-3 py-2 text-[13px] text-bad-fg">{error}</div>}
       {!error && filas === null && <Loading />}
       {filas !== null && (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           {meta.ayuda && (
             <p className="rounded-xl border border-border bg-background/50 px-4 py-3 text-[12px] leading-relaxed text-muted">
               {meta.ayuda}
@@ -107,9 +107,9 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
           {grupos.length === 0 ? (
             <div className="py-8 text-center text-[13px] text-muted">No hay nada que revisar acá.</div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-3">
               {grupos.map((g) => (
-                <div key={g.clave} className="overflow-hidden rounded-xl border border-border">
+                <div key={g.clave} className="min-w-0 overflow-hidden rounded-xl border border-border">
                   <div className="border-b border-border bg-background/60 px-4 py-2 text-[13px] font-medium tabular-nums">
                     {g.clave}
                   </div>
