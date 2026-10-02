@@ -16,15 +16,10 @@ import { getDetalleAlertaDelLibro, type FilaAlertaLibro } from "@/lib/queries/li
 // esto es lo que cada una tiene que la otra no.
 
 const TITULOS: Record<string, { titulo: string; ayuda: string }> = {
-  poliza_duplicada_grupo: {
-    titulo: "La misma póliza, cargada dos veces",
+  poliza_duplicada: {
+    titulo: "Números de póliza cargados dos veces",
     ayuda:
-      "Kemper compró Infinity, así que la misma póliza llega escrita de dos maneras: como Infinity desde el Book y como Kemper desde el statement. Son una sola. La que tiene la comisión es la que vale; la otra a veces trae la fecha de efectividad que a la primera le falta.",
-  },
-  poliza_duplicada_cruzada: {
-    titulo: "El mismo número en compañías que no tienen nada que ver",
-    ayuda:
-      "Acá no se puede fusionar a ciegas: pueden ser dos pólizas distintas que comparten número por casualidad. Hay que mirarlas de a una.",
+      "En cada caso una cobró en un statement y la otra no. Puede ser la misma póliza escrita de dos maneras —Kemper compró Infinity, así que la misma póliza llega como Infinity desde el Book y como Kemper desde el statement— o pueden ser dos pólizas distintas del mismo cliente, porque un cliente puede tener una póliza con una compañía y después otra con otra. Mirá la columna Cobró: el statement dice cuál puso la plata. La decisión es tuya; el sistema no borra nada.",
   },
   oficina_cruzada: {
     titulo: "La oficina de la póliza no es la del agente",
@@ -62,10 +57,10 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
   }
 
   function exportar() {
-    const header = ["Clave", "Compañía", "Grupo", "Origen", "Cliente", "Ramo", "Vigencia", "Prima", "Líneas", "Comisión", "Agente", "Oficina", "Se queda"];
+    const header = ["Clave", "Compañía", "Grupo", "Origen", "Cliente", "Ramo", "Vigencia", "Prima", "Líneas", "Comisión", "Cobró", "Agente", "Oficina", "Cobró en algún statement"];
     const cuerpo = (filas ?? []).map((f) =>
       [f.clave, f.compania, f.grupo, f.origen, f.cliente, f.ramo, f.fechaVigencia ?? "", f.prima ?? "",
-       f.lineas, f.comision.toFixed(2), f.agente, f.oficina, f.seQueda === true ? "Sí" : f.seQueda === false ? "No" : ""]
+       f.lineas, f.comision.toFixed(2), f.cobro, f.agente, f.oficina, f.seQueda === true ? "Sí" : f.seQueda === false ? "No" : ""]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")
     );
     const csv = [header.join(","), ...cuerpo].join("\n");
@@ -130,6 +125,7 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                           <th className="px-3 py-1.5 font-medium">Vigencia</th>
                           <th className="px-3 py-1.5 font-medium text-right">Prima</th>
                           <th className="px-3 py-1.5 font-medium text-right">Comisión</th>
+                          <th className="px-3 py-1.5 font-medium">Cobró</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -144,8 +140,8 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                                 {/* Marcar cuál se queda es lo que convierte la lista en algo
                                     accionable: sin eso hay que contar líneas de comisión a ojo
                                     para saber cuál de las dos es la buena. */}
-                                {f.seQueda === true && <Badge tone="ok">se queda</Badge>}
-                                {f.seQueda === false && <Badge tone="neutral">es la copia</Badge>}
+                                {f.seQueda === true && <Badge tone="ok">cobró</Badge>}
+                                {f.seQueda === false && <Badge tone="neutral">nunca cobró</Badge>}
                               </span>
                             </td>
                             <td className="px-3 py-2 text-muted">
@@ -165,7 +161,7 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
                               {f.lineas === 0 ? (
-                                <span className="text-muted">sin líneas</span>
+                                <span className="text-muted">—</span>
                               ) : (
                                 <>
                                   {money(f.comision)}{" "}
@@ -173,6 +169,15 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                                     ({f.lineas} lín.)
                                   </span>
                                 </>
+                              )}
+                            </td>
+                            {/* El dato que decide. Lo demás ayuda a entender, pero quién puso la
+                                plata lo dice el statement y nada más. */}
+                            <td className="px-3 py-2 text-[11px]">
+                              {f.lineas === 0 ? (
+                                <span className="text-muted">no cobró</span>
+                              ) : (
+                                <span className="text-ok-fg">{f.cobro}</span>
                               )}
                             </td>
                           </tr>

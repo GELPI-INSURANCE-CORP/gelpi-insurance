@@ -415,9 +415,13 @@ export interface FilaAlertaLibro {
   prima: number | null;
   lineas: number;
   comision: number;
+  // Que statement le pago a esta fila. Es el criterio que dio Arturo para decidir cual de las
+  // dos polizas es la de verdad: *"lo que tienes que ajustar es por el statement, que fue la
+  // que pago y la que no pago"*.
+  cobro: string;
   agente: string;
   oficina: string;
-  // true = es la fila que tiene las lineas de comision colgadas, o sea la que vale.
+  // true = es la fila que tiene las lineas de comision colgadas, o sea la que cobro.
   seQueda: boolean | null;
 }
 
@@ -437,6 +441,7 @@ export async function getDetalleAlertaDelLibro(tipo: string): Promise<FilaAlerta
     prima: d.prima == null ? null : Number(d.prima),
     lineas: Number(d.lineas ?? 0),
     comision: Number(d.comision ?? 0),
+    cobro: String(d.cobro ?? "—"),
     agente: String(d.agente ?? "—"),
     oficina: String(d.oficina ?? "—"),
     seQueda: d.se_queda == null ? null : Boolean(d.se_queda),
