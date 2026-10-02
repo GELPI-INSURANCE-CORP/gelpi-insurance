@@ -77,10 +77,24 @@ language sql stable as $fn$
   -- No parte la comision -- las lineas se cuelgan siempre de una sola de las dos filas -- pero
   -- infla la prima del Book, y deja la historia de la poliza dividida en dos, que es justo lo
   -- que la regla del endoso necesita entera.
+  -- Van SEPARADAS las del mismo grupo de las de grupos distintos, y no es un detalle: son dos
+  -- problemas con dos arreglos opuestos.
+  --
+  -- Mismo grupo (Infinity / Kemper / Response Ins Co / Response Worldwide / Warner) es una sola
+  -- poliza cargada dos veces, y se fusiona. Grupos distintos -- el caso real es Progressive y
+  -- Response Ins Co con el mismo numero y el mismo asegurado -- pueden ser dos polizas de
+  -- verdad que comparten numero por casualidad, y fusionarlas seria perder una. Esas las mira
+  -- una persona.
+  --
+  -- La primera version de esta funcion las juntaba en una sola alerta, y lo que se leia en
+  -- pantalla era "Progressive + Response Ins Co" bajo el titulo "companias del mismo grupo",
+  -- que es falso. Arturo lo vio y lo corrigio: *"Progressive es diferente [...] pero si es lo
+  -- mismo Infinity, Kemper y Response Ins Co"*. Y tambien, ojo: Responsive NO es Response Ins
+  -- Co, son dos companias distintas y asi estan cargadas.
   select
-    'poliza_duplicada'::text,
+    'poliza_duplicada_grupo'::text,
     'La misma poliza esta cargada dos veces bajo companias del mismo grupo',
-    string_agg(distinct d.companias, ' / ' order by d.companias),
+    string_agg(distinct d.companias, ' / ' order by d.companias) || '. Es una sola poliza: hay que fusionarlas',
     count(*)::int,
     round(coalesce(sum(d.prima_de_mas), 0), 2)
   from (
@@ -96,7 +110,32 @@ language sql stable as $fn$
     left join aseguradoras asg on asg.id = p.aseguradora_id
     group by p.numero_normalizado
     having count(*) > 1
+       and count(distinct coalesce(asg.grupo, asg.id::text)) = 1
   ) d
+  having count(*) > 0
+
+  union all
+
+  select
+    'poliza_duplicada_cruzada'::text,
+    'El mismo numero de poliza aparece en companias que NO tienen nada que ver',
+    string_agg(distinct d.companias, ' / ' order by d.companias) || '. Puede que sean dos polizas distintas: revisalo a mano',
+    count(*)::int,
+    round(coalesce(sum(d.prima_de_mas), 0), 2)
+  from (
+    select
+      p.numero_normalizado,
+      string_agg(distinct coalesce(asg.nombre, 'sin compania'), ' + ' order by coalesce(asg.nombre, 'sin compania')) as companias,
+      sum(coalesce(p.prima, 0)) filter (
+        where not exists (select 1 from lineas_comision l where l.poliza_id = p.id)
+      ) as prima_de_mas
+    from polizas p
+    left join aseguradoras asg on asg.id = p.aseguradora_id
+    group by p.numero_normalizado
+    having count(*) > 1
+       and count(distinct coalesce(asg.grupo, asg.id::text)) > 1
+  ) d
+  having count(*) > 0
 
   union all
 
