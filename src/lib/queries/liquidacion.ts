@@ -401,6 +401,48 @@ export async function getAlertasDelLibro(): Promise<AlertaDelLibro[]> {
   }));
 }
 
+// Las polizas detras de cada alerta, una por una. Ver 20261002000003.
+export interface FilaAlertaLibro {
+  tipo: string;
+  clave: string;
+  polizaId: string;
+  compania: string;
+  grupo: string;
+  origen: string;
+  cliente: string;
+  ramo: string;
+  fechaVigencia: string | null;
+  prima: number | null;
+  lineas: number;
+  comision: number;
+  agente: string;
+  oficina: string;
+  // true = es la fila que tiene las lineas de comision colgadas, o sea la que vale.
+  seQueda: boolean | null;
+}
+
+export async function getDetalleAlertaDelLibro(tipo: string): Promise<FilaAlertaLibro[]> {
+  const { data, error } = await supabase.rpc("detalle_alertas_del_libro", { p_tipo: tipo });
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((d) => ({
+    tipo: String(d.tipo ?? ""),
+    clave: String(d.clave ?? "—"),
+    polizaId: String(d.poliza_id ?? ""),
+    compania: String(d.compania ?? "—"),
+    grupo: String(d.grupo ?? "—"),
+    origen: String(d.origen ?? "—"),
+    cliente: String(d.cliente ?? "—"),
+    ramo: String(d.ramo ?? "—"),
+    fechaVigencia: (d.fecha_vigencia as string) ?? null,
+    prima: d.prima == null ? null : Number(d.prima),
+    lineas: Number(d.lineas ?? 0),
+    comision: Number(d.comision ?? 0),
+    agente: String(d.agente ?? "—"),
+    oficina: String(d.oficina ?? "—"),
+    seQueda: d.se_queda == null ? null : Boolean(d.se_queda),
+  }));
+}
+
 export async function getDetalleAgente(
   agenteId: string,
   periodo: string

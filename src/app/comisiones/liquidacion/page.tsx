@@ -16,6 +16,7 @@ import {
   type AlertaDelLibro,
 } from "@/lib/queries/liquidacion";
 import DetalleAgenteDrawer from "@/components/liquidacion/DetalleAgenteDrawer";
+import AlertasLibroPanel from "@/components/liquidacion/AlertasLibroPanel";
 
 const MESES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -61,6 +62,9 @@ function LiquidacionContent() {
   // Las contradicciones del Book se cargan aparte del periodo: no dependen del mes elegido, y
   // si la consulta falla la pantalla de pago tiene que seguir andando igual.
   const [alertas, setAlertas] = useState<AlertaDelLibro[]>([]);
+  // Cuál de las alertas se está mirando. Avisar de un problema sin dar dónde resolverlo no es
+  // una alerta, es una preocupación.
+  const [verAlerta, setVerAlerta] = useState<string | null>(null);
   const [verDetalle, setVerDetalle] = useState<
     { id: string; nombre: string; foco: "todas" | "sin_clasificar" } | null
   >(null);
@@ -312,7 +316,19 @@ function LiquidacionContent() {
           oficina y deja sus polizas viejas con la oficina anterior — ahi la plata se le va a la
           oficina que no es, y el royalty tambien. Normalmente no se ve nada acá. */}
       {alertas.map((a) => (
-        <Banner key={a.tipo} tone="bad">
+        <Banner
+          key={a.tipo}
+          tone="bad"
+          action={
+            <button
+              type="button"
+              onClick={() => setVerAlerta(a.tipo)}
+              className="whitespace-nowrap text-xs font-medium underline hover:no-underline"
+            >
+              Ver {a.n === 1 ? "la póliza" : `las ${a.n}`}
+            </button>
+          }
+        >
           <AlertTriangle className="w-3.5 h-3.5 inline mr-1.5" />
           <strong>Revisá el Book antes de pagar.</strong> {a.titulo}: {a.detalle}
           {a.monto !== 0 && <> · {money(a.monto)} en juego</>}
@@ -554,6 +570,8 @@ function LiquidacionContent() {
           )}
         </div>
       </Card>
+
+      {verAlerta && <AlertasLibroPanel tipo={verAlerta} onClose={() => setVerAlerta(null)} />}
 
       {verDetalle && (
         <DetalleAgenteDrawer
