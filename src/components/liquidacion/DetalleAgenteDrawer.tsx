@@ -175,7 +175,7 @@ export default function DetalleAgenteDrawer({
   const idsSel = [...sel];
 
   return (
-    <SidePanel open onClose={onClose} title={nombre} subtitle={`Lo que vendió en ${etiquetaPeriodo}`} width="1020px">
+    <SidePanel open onClose={onClose} title={nombre} subtitle={`Lo que vendió en ${etiquetaPeriodo}`} width="1180px">
       {error && <div className="mb-3 rounded-lg bg-bad-bg px-3 py-2 text-[13px] text-bad-fg">{error}</div>}
       {aviso && <div className="mb-3 rounded-lg bg-ok-bg px-3 py-2 text-[13px] text-ok-fg">{aviso}</div>}
       {!error && lineas === null && <Loading />}
@@ -246,7 +246,7 @@ export default function DetalleAgenteDrawer({
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[920px] text-[13px]">
+              <table className="w-full min-w-[1040px] text-[13px]">
                 <thead>
                   <tr className="text-left text-muted bg-background/60">
                     <th className="px-3 py-2 w-8">
@@ -267,7 +267,7 @@ export default function DetalleAgenteDrawer({
                     <th className="px-3 py-2 font-medium">Cómo se supo</th>
                     <th className="px-3 py-2 font-medium text-right">Prima</th>
                     <th className="px-3 py-2 font-medium text-right">Comisión</th>
-                    <th className="px-3 py-2 font-medium text-right w-44">Decidir</th>
+                    <th className="px-3 py-2 font-medium text-right w-36">Decidir</th>
                   </tr>
                 </thead>
                 <tbody>
