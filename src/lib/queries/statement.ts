@@ -279,7 +279,12 @@ export async function marcarLineaComoAjuste(params: {
         estado: "cuenta_casa",
         regla_match: "cuenta_casa",
         agente_id: casa?.id ?? null,
-        oficina_id: casa?.oficina_id ?? null,
+        // Sin oficina. Un cargo de la compania -- el MVR FEE de Progressive, los fees de
+        // Kemper -- no lo produjo ninguna oficina, y ponerle la del agente de la casa hacia que
+        // apareciera restandole produccion a CORP: tres meses seguidos de Progressive le
+        // sacaron ,982.80. El agente de la casa si se conserva, para poder encontrarla.
+        // La base lo fuerza igual (trigger de 20261003000003); va explicito para que se lea.
+        oficina_id: null,
       })
       .eq("id", params.lineaId);
     if (error) throw error;
