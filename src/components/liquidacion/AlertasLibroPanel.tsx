@@ -21,6 +21,11 @@ const TITULOS: Record<string, { titulo: string; ayuda: string }> = {
     ayuda:
       "En cada caso una cobró en un statement y la otra no. Puede ser la misma póliza escrita de dos maneras —Kemper compró Infinity, así que la misma póliza llega como Infinity desde el Book y como Kemper desde el statement— o pueden ser dos pólizas distintas del mismo cliente, porque un cliente puede tener una póliza con una compañía y después otra con otra. Mirá la columna Cobró: el statement dice cuál puso la plata. La decisión es tuya; el sistema no borra nada.",
   },
+  linea_vs_book: {
+    titulo: "Comisión repartida a un agente que ya no es el del Book",
+    ayuda:
+      "Se subió una versión nueva del Book después de conciliar el statement y esas pólizas cambiaron de dueño. La comisión no se movió sola, a propósito: una subida del Book no puede repagarle a nadie en silencio. Cada caso va en dos renglones — arriba dónde está hoy la comisión, abajo lo que dice el Book ahora. Y no es sólo quién cobra: si las dos personas están en oficinas distintas, también cambia el royalty.",
+  },
   oficina_cruzada: {
     titulo: "La oficina de la póliza no es la del agente",
     ayuda:
@@ -140,8 +145,21 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                                 {/* Marcar cuál se queda es lo que convierte la lista en algo
                                     accionable: sin eso hay que contar líneas de comisión a ojo
                                     para saber cuál de las dos es la buena. */}
-                                {f.seQueda === true && <Badge tone="ok">cobró</Badge>}
-                                {f.seQueda === false && <Badge tone="neutral">nunca cobró</Badge>}
+                                {/* El sello dice lo que el sistema sabe, y eso cambia según la
+                                    alerta: en los duplicados lo que decide es cuál cobró, y en
+                                    la deriva del Book lo que decide es dónde está la plata hoy
+                                    contra lo que dice el padrón ahora. */}
+                                {tipo === "linea_vs_book" ? (
+                                  <>
+                                    {f.seQueda === true && <Badge tone="ok">la comisión está acá</Badge>}
+                                    {f.seQueda === false && <Badge tone="warn">el Book dice esto</Badge>}
+                                  </>
+                                ) : (
+                                  <>
+                                    {f.seQueda === true && <Badge tone="ok">cobró</Badge>}
+                                    {f.seQueda === false && <Badge tone="neutral">nunca cobró</Badge>}
+                                  </>
+                                )}
                               </span>
                             </td>
                             <td className="px-3 py-2 text-muted">
