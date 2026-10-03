@@ -21,6 +21,11 @@ export interface FilaLiquidacion {
   comisionNuevo: number;
   comisionRenovacion: number;
   comisionSinClasificar: number;
+  // Las dueñas de oficina no cobran porcentaje: cobran lo que deja su oficina, menos el royalty.
+  // Arturo: *"olvidate del % de Heidi y Thalia porque ellas son las dueñas de cada oficina"*.
+  // Se marcan para que la pantalla no les calcule un pago que no existe — tenían el % en 100 y
+  // el sistema les mostraba $101.665 y $91.505 a pagar.
+  esDuenoOficina: boolean;
   // LA BASE DE PAGO BUENA: el premium que vendió el agente, no la comisión que cobró la agencia.
   // Con la base vieja, lo que ganaba el agente dependía de cuánto le paga la compañía a la
   // agencia — vender $100.000 de una compañía al 15% pagaba más que vender $100.000 de una al
@@ -66,6 +71,7 @@ type AgenteDeLiquidacion = {
   activo: boolean;
   pct_split_default: number | null;
   pct_sobre_prima?: number | null;
+  es_dueno_oficina?: boolean | null;
 };
 
 // El frontend se despliega con un push y las migraciones se corren a mano, así que entre las dos
@@ -77,12 +83,13 @@ type AgenteDeLiquidacion = {
 async function traerAgentes(): Promise<AgenteDeLiquidacion[]> {
   const conPrima = await supabase
     .from("agentes")
-    .select("id, nombre, oficina_id, activo, pct_split_default, pct_sobre_prima")
+    .select("id, nombre, oficina_id, activo, pct_split_default, pct_sobre_prima, es_dueno_oficina")
     .order("nombre");
   if (!conPrima.error) return (conPrima.data ?? []) as AgenteDeLiquidacion[];
 
   const faltaLaColumna =
-    conPrima.error.code === "42703" || /pct_sobre_prima/.test(conPrima.error.message ?? "");
+    conPrima.error.code === "42703" ||
+    /pct_sobre_prima|es_dueno_oficina/.test(conPrima.error.message ?? "");
   if (!faltaLaColumna) throw conPrima.error;
 
   const sinPrima = await supabase
@@ -142,6 +149,7 @@ async function getLiquidacionEnVivo(periodo: string): Promise<Liquidacion> {
       agenteId: a.id,
       nombre: a.nombre,
       oficinaNombre: (a.oficina_id && oficinaPorId.get(a.oficina_id)) || "Sin oficina",
+      esDuenoOficina: Boolean(a.es_dueno_oficina),
       activo: a.activo,
       pct,
       // Lo que entró a nombre del agente, todo junto. Se sigue mostrando para poder comparar
@@ -203,9 +211,11 @@ export async function getLiquidacion(periodo: string): Promise<Liquidacion> {
 
   // Para la oficina y el estado activo se mira el agente de hoy: son datos de presentación y no
   // cambian un centavo de lo que se pagó. Los montos y el % salen todos de la foto.
-  const [oficinas, { data: agentesHoy }] = await Promise.all([
+  const [oficinas, agentesHoy] = await Promise.all([
     listOficinasSimple(),
-    supabase.from("agentes").select("id, oficina_id, activo"),
+    // es_dueno_oficina es de presentacion igual que la oficina: no cambia un centavo de lo
+    // que ya se pago, solo evita mostrarle un cheque a quien no lo cobra.
+    traerAgentes(),
   ]);
   const oficinaPorId = new Map((oficinas ?? []).map((o) => [o.id, o.nombre]));
   const agentePorId = new Map((agentesHoy ?? []).map((a) => [a.id, a]));
@@ -231,6 +241,7 @@ export async function getLiquidacion(periodo: string): Promise<Liquidacion> {
         agenteId: d.agente_id,
         nombre: d.agente_nombre,
         oficinaNombre: (hoy?.oficina_id && oficinaPorId.get(hoy.oficina_id)) || "Sin oficina",
+        esDuenoOficina: Boolean(hoy?.es_dueno_oficina),
         activo: hoy?.activo ?? false,
         pct: Number(d.pct ?? 0),
         comisionRecibida: Number(d.comision_recibida ?? 0),

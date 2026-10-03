@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Download, AlertTriangle, ChevronRight, Lock, Unlock } from "lucide-react";
+import Link from "next/link";
+import { Download, AlertTriangle, ChevronRight, Lock, Unlock, GitCompare } from "lucide-react";
 import { Card, Select, TextInput, Button, Badge, Loading, EmptyState, Banner } from "@/components/agentes/ui";
 import { money, fechaHora } from "@/lib/format";
 import {
@@ -202,11 +203,13 @@ function LiquidacionContent() {
         oficina,
         agentes,
         primaNuevo: agentes.reduce((s, a) => s + a.primaNuevo, 0),
-        aPagarPrima: agentes.reduce((s, a) => s + a.aPagarPrima, 0),
+        // Las dueñas quedan fuera del total a pagar: su premium se sigue viendo, porque es
+        // producción de la oficina y cuenta para el royalty, pero no hay un cheque que girarles.
+        aPagarPrima: agentes.reduce((s, a) => s + (a.esDuenoOficina ? 0 : a.aPagarPrima), 0),
         comisionNuevo: agentes.reduce((s, a) => s + a.comisionNuevo, 0),
         aPagar: agentes.reduce((s, a) => s + a.aPagar, 0),
         sinClasificar: agentes.reduce((s, a) => s + a.primaSinClasificar, 0),
-        sinPct: agentes.filter((a) => a.pctPrima == null && a.primaNuevo !== 0).length,
+        sinPct: agentes.filter((a) => !a.esDuenoOficina && a.pctPrima == null && a.primaNuevo !== 0).length,
       }))
       .sort((a, b) => b.primaNuevo - a.primaNuevo);
   }, [filas]);
@@ -218,7 +221,7 @@ function LiquidacionContent() {
   const totalSinClasificar = filas.reduce((s, f) => s + f.primaSinClasificar, 0);
   const totalAPagar = filas.reduce((s, f) => s + f.aPagar, 0);
   const totalPrimaNuevo = filas.reduce((s, f) => s + f.primaNuevo, 0);
-  const totalAPagarPrima = filas.reduce((s, f) => s + f.aPagarPrima, 0);
+  const totalAPagarPrima = filas.reduce((s, f) => s + (f.esDuenoOficina ? 0 : f.aPagarPrima), 0);
   // Cuántos venden pero todavía no tienen definido el % sobre premium. Mientras ese número no
   // sea cero, el total a pagar de abajo está incompleto y hay que decirlo.
   const faltaPct = filas.filter((f) => f.pctPrima == null && f.primaNuevo !== 0).length;
@@ -235,7 +238,7 @@ function LiquidacionContent() {
         f.primaNuevo.toFixed(2), f.pctPrima == null ? "" : f.pctPrima, f.aPagarPrima.toFixed(2),
         f.pct,
         f.comisionNuevo.toFixed(2), f.comisionRenovacion.toFixed(2),
-        f.primaSinClasificar.toFixed(2), f.comisionRecibida.toFixed(2), f.aPagar.toFixed(2),
+        f.esDuenoOficina ? "dueño/a" : f.primaSinClasificar.toFixed(2), f.comisionRecibida.toFixed(2), f.aPagar.toFixed(2),
       ]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`)
         .join(",")
@@ -273,6 +276,14 @@ function LiquidacionContent() {
               {cerrandoMes ? "Cerrando…" : "Cerrar mes"}
             </Button>
           )}
+          <Link
+            href="/comisiones/cruce/"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[13px] hover:bg-background"
+            title="Comparar lo que se vendió contra lo que pagaron las compañías"
+          >
+            <GitCompare className="h-3.5 w-3.5" />
+            Cruce con ventas
+          </Link>
           <Button size="sm" variant="primary" onClick={exportarCsv} disabled={filas.length === 0}>
             <Download className="w-3.5 h-3.5" />
             Exportar CSV
@@ -451,7 +462,9 @@ function LiquidacionContent() {
                           <td className="px-4 py-2.5">
                             {/* En un mes cerrado el % es parte del recibo, no un campo: dejarlo
                                 editable daría a entender que cambiarlo corrige lo que ya se pagó. */}
-                            {data?.cerrada ? (
+                            {f.esDuenoOficina ? (
+                              <Badge tone="brand">dueño/a</Badge>
+                            ) : data?.cerrada ? (
                               <span className="tabular-nums">{f.pctPrima == null ? "—" : `${f.pctPrima}%`}</span>
                             ) : (
                               <div className="flex items-center gap-1.5">
@@ -478,8 +491,14 @@ function LiquidacionContent() {
 
                           {/* Sin % definido no se muestra $0.00: eso se leería como "no le toca
                               nada" cuando lo que pasa es que falta configurarlo. */}
+                          {/* A una dueña no se le gira un cheque por su producción: se queda con
+                              lo que deja su oficina, menos el royalty. Mostrarle un "a pagar"
+                              era invitar a pagar dos veces — y con el % en 100 que tenían, el
+                              número que salía era el premium entero. */}
                           <td className="px-4 py-2.5 text-right tabular-nums font-medium">
-                            {f.pctPrima == null && f.primaNuevo !== 0 ? (
+                            {f.esDuenoOficina ? (
+                              <span className="text-[12px] font-normal text-muted">no lleva pago</span>
+                            ) : f.pctPrima == null && f.primaNuevo !== 0 ? (
                               <span className="text-[12px] font-normal text-warn-fg">falta el %</span>
                             ) : (
                               money(f.aPagarPrima)
