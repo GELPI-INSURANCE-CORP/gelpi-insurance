@@ -25,6 +25,7 @@ import {
   type TipoReporte,
 } from "@/lib/queries/subir";
 import ReporteDrawer from "@/components/reportes/ReporteDrawer";
+import BorrarSeleccionados from "@/components/reportes/BorrarSeleccionados";
 
 const ESTADOS_REPORTE: Record<string, string> = {
   subido: "Subido",
@@ -254,9 +255,15 @@ export default function SubirPage() {
   // Lo que suman los statements marcados. Se calcula sobre la lista ya cargada y no con otra
   // consulta: si saliera de la base podria no coincidir con los montos que se estan viendo en
   // la misma pantalla.
-  const montoSeleccionado = reportes
-    .filter((r) => seleccionados.has(r.id))
-    .reduce((suma, r) => suma + Number(r.monto_total ?? 0), 0);
+  const reportesSeleccionados = reportes.filter((r) => seleccionados.has(r.id));
+  const montoSeleccionado = reportesSeleccionados.reduce(
+    (suma, r) => suma + Number(r.monto_total ?? 0),
+    0
+  );
+  // Consolidar pide que todos estén finalizados y sean de comisión. Borrar no pide nada: un
+  // archivo mal subido hay que poder sacarlo sea cual sea su estado — sobre todo si quedó roto.
+  const todosConsolidables =
+    reportesSeleccionados.length > 0 && reportesSeleccionados.every(esConsolidable);
 
   function esConsolidable(r: Reporte): boolean {
     return r.estado === "cerrado" && r.tipo === "comision_aseguradora";
@@ -449,19 +456,35 @@ export default function SubirPage() {
               >
                 Limpiar selección
               </button>
+              {/* Borrar va primero y siempre disponible: es lo urgente. Consolidar solo tiene
+                  sentido con statements finalizados, así que ese botón sí depende del estado —
+                  pero su ausencia ya no impide sacar un archivo mal subido. */}
+              <BorrarSeleccionados
+                reportes={reportesSeleccionados.map((r) => ({
+                  id: r.id,
+                  nombre: `${r.aseguradora?.nombre ?? "Sin compañía"} · ${r.periodo ?? r.nombre_archivo ?? "sin período"}`,
+                  lineas: Number(r.lineas_reales ?? 0),
+                }))}
+                onBorrado={() => {
+                  setSeleccionados(new Set());
+                  void refreshReportes();
+                }}
+              />
               {/* Consolidar y no "fusionar": no se toca ningún statement, se abren juntos en una
                   vista. Los ids van en la URL para que el consolidado se pueda compartir o volver
                   a abrir tal como quedó. */}
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={() =>
-                  router.push(`/comisiones/consolidado/?reportes=${[...seleccionados].join(",")}`)
-                }
-              >
-                <Layers className="h-3.5 w-3.5" />
-                Ver los {seleccionados.size} juntos
-              </Button>
+              {todosConsolidables && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() =>
+                    router.push(`/comisiones/consolidado/?reportes=${[...seleccionados].join(",")}`)
+                  }
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  Ver los {seleccionados.size} juntos
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -609,20 +632,23 @@ export default function SubirPage() {
                             selected && "bg-brand-tint"
                           )}
                         >
-                          {/* La casilla solo aparece si el statement está finalizado. No se dibuja
-                              deshabilitada: una casilla gris que no se puede tocar hace pensar que
-                              algo está roto, mientras que su ausencia con el estado al lado
-                              diciendo "Abierto" ya explica por qué. El clic no se propaga a la
-                              fila, que navega al statement. */}
+                          {/* La casilla aparece SIEMPRE. Antes solo salía en los statements
+                              finalizados, porque se había puesto para consolidar — y eso dejaba
+                              sin casilla justo a los que hay que sacar del sistema. Arturo subió
+                              un Progressive que rompía la pantalla de adentro y no tuvo por dónde
+                              borrarlo: el botón estaba dentro del statement, y al statement no se
+                              podía entrar.
+
+                              Marcar no es consolidar. Lo que cambia según el estado es qué se
+                              puede HACER con lo marcado, y eso se decide en la barra de arriba.
+                              El clic no se propaga a la fila, que navega al statement. */}
                           <td className="px-5 py-2.5" onClick={(e) => e.stopPropagation()}>
-                            {esConsolidable(r) && (
-                              <input
-                                type="checkbox"
-                                checked={seleccionados.has(r.id)}
-                                onChange={() => alternarSeleccion(r.id)}
-                                aria-label={`Seleccionar ${r.aseguradora?.nombre ?? "statement"}`}
-                              />
-                            )}
+                            <input
+                              type="checkbox"
+                              checked={seleccionados.has(r.id)}
+                              onChange={() => alternarSeleccion(r.id)}
+                              aria-label={`Seleccionar ${r.aseguradora?.nombre ?? "statement"}`}
+                            />
                           </td>
                           {/* La compañía es lo primero que se busca con el ojo al barrer la lista,
                               así que va primera y en negrita. Debajo, el tipo de papel, que casi
