@@ -765,7 +765,7 @@ function ConciliacionContent() {
                             {r.productor_crudo && <span className="text-[11px] text-muted">Productor: {r.productor_crudo}</span>}
                           </div>
                         </td>
-                        <td className="px-2 py-2.5 font-medium text-foreground">{money(r.monto)}</td>
+                        <td className="px-2 py-2.5 font-medium text-foreground">{money(r.monto ?? r.monto_costo ?? 0)}</td>
                         <td className="px-2 py-2.5">
                           {r.oficina_sugerida ? (
                             <div className="flex flex-col gap-0.5">

@@ -56,6 +56,16 @@ export interface ExcepcionRow {
   venta_cliente: string | null;
   venta_agente: string | null;
   venta_poliza: string | null;
+  // Un cargo de MVR sin dueño. Su importe NO viene en `monto` a propósito: esa columna la suman
+  // resumen_kpis y las pantallas de agentes, oficinas y clientes para decir "esto es lo que está
+  // en disputa", y eso es comisión que le DEBEN a la agencia. Un MVR es plata que DEBE. Sumarlas
+  // daría un número sin significado, así que el cargo llega con monto en null y su importe acá.
+  // Ver 20261009000002.
+  linea_costo_id: string | null;
+  monto_costo: number | null;
+  costo_conductor: string | null;
+  costo_estado_us: string | null;
+  costo_es_comercial: boolean | null;
   // no viene en la vista, pero lo unimos client-side cuando hace falta
   ramo?: string | null;
 }
@@ -415,9 +425,40 @@ export interface ResolverExcepcionParams {
   polizaId?: string | null;
   motivo?: string | null;
   cliente?: ClienteNuevo | null;
+  // Forzar la rama de cargo. Normalmente no hace falta: la función lo averigua sola.
+  esCosto?: boolean;
 }
 
 export async function resolverExcepcion(params: ResolverExcepcionParams): Promise<void> {
+  // Una excepción de cargo (MVR) va por otra función: resolver_excepcion() actualiza
+  // lineas_comision, que no es donde vive un MVR, y tiraría "No hay sugerencia para confirmar"
+  // o peor, resolvería la excepción sin tocar el cargo.
+  //
+  // Se consulta acá en vez de pedírselo a quien llama: la pantalla resuelve desde tres lugares
+  // (el panel de detalle, el botón de confirmar y la asignación en lote), y basta olvidarse de
+  // pasar el flag en uno para que ese camino falle en silencio. Es un viaje más y no se puede
+  // escribir mal.
+  let esCosto = params.esCosto ?? false;
+  if (!esCosto) {
+    const { data } = await supabase
+      .from("excepciones")
+      .select("linea_costo_id")
+      .eq("id", params.excepcionId)
+      .maybeSingle();
+    esCosto = Boolean(data?.linea_costo_id);
+  }
+
+  if (esCosto) {
+    const { error: errCosto } = await supabase.rpc("resolver_costo", {
+      p_excepcion_id: params.excepcionId,
+      p_accion: params.accion,
+      p_agente_id: params.agenteId ?? null,
+      p_oficina_id: params.oficinaId ?? null,
+      p_motivo: params.motivo ?? null,
+    });
+    if (errCosto) throw new Error(errCosto.message || "No se pudo resolver el cargo.");
+    return;
+  }
   const { error } = await supabase.rpc("resolver_excepcion", {
     p_excepcion_id: params.excepcionId,
     p_accion: params.accion,

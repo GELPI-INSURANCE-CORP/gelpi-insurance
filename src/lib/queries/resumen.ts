@@ -51,6 +51,15 @@ export interface ExcepcionRow {
   atrasada: boolean;
   explicacion: string | null;
   created_at: string;
+  // Un cargo de MVR sin dueño. Su importe NO viaja en `monto` a propósito: esa columna la suman
+  // resumen_kpis y las pantallas de agentes, oficinas y clientes para decir "esto es lo que está
+  // en disputa", y eso es comisión que le DEBEN a la agencia. Un MVR es plata que DEBE. Sumarlas
+  // daría un número que no significa nada, así que el cargo llega con monto en null y su importe
+  // en monto_costo. Ver 20261009000002.
+  linea_costo_id?: string | null;
+  monto_costo?: number | null;
+  costo_conductor?: string | null;
+  costo_es_comercial?: boolean | null;
 }
 
 /** Rango [primer día, último día] del mes que contiene `d` (o el mes actual si se omite), en formato YYYY-MM-DD. */
