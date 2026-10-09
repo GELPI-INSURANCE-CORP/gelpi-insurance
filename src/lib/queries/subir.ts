@@ -422,7 +422,7 @@ function construirQueryReportes(filtros: FiltrosReportes) {
   let q = supabase
     .from("v_reportes")
     .select(
-      "id, tipo, aseguradora_id, nombre_archivo, storage_path, mime, hash_archivo, subido_por, periodo, estado, total_lineas, total_ok, total_excepciones, lineas_reales, ok_reales, pendientes_reales, fuera_reales, mes_statement, monto_total, confianza_promedio, mapeo_columnas, columnas_detectadas, resumen_ia, error, created_at, updated_at, aseguradora:aseguradoras(nombre)"
+      "id, tipo, aseguradora_id, nombre_archivo, storage_path, mime, hash_archivo, subido_por, periodo, estado, total_lineas, total_ok, total_excepciones, lineas_reales, ok_reales, pendientes_reales, fuera_reales, mes_statement, subido_con_id, monto_total, confianza_promedio, mapeo_columnas, columnas_detectadas, resumen_ia, error, created_at, updated_at, aseguradora:aseguradoras(nombre)"
     )
     .order("created_at", { ascending: false })
     .order("id", { ascending: true });
