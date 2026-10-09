@@ -12,6 +12,7 @@ import type { ClaveTexto } from "@/lib/i18n/textos";
 const TITLES: Record<string, ClaveTexto> = {
   "/comisiones/resumen": "nav.dashboard",
   "/comisiones/subir": "nav.commissions",
+  "/comisiones/mvr": "nav.mvr",
   "/comisiones/statement": "nav.statementDetail",
   "/comisiones/conciliacion": "nav.reconciliation",
   "/comisiones/liquidacion": "nav.payout",

@@ -367,12 +367,18 @@ export default function SubirPage() {
   // en el que no se puede confiar — pasó con el dashboard y no se repite acá.
   const resumen = useMemo(() => {
     let monto = 0;
+    let mvr = 0;
     let faltan = 0;
     for (const r of reportesVisibles) {
-      monto += Number(r.monto_total ?? 0);
+      // Los cargos por MVR se cuentan aparte. Ese total dice lo que la agencia RECIBIÓ, y un MVR
+      // es lo contrario: plata que la compañía descuenta y que después se le resta a la oficina,
+      // sin tocar la comisión ni la base del royalty. Mezclarlos daría un número que no es ni
+      // una cosa ni la otra. Pero tampoco desaparece: va en su propio renglón acá al lado.
+      if (r.tipo === "mvr") mvr += Math.abs(Number(r.monto_total ?? 0));
+      else monto += Number(r.monto_total ?? 0);
       faltan += r.pendientes_reales ?? 0;
     }
-    return { monto, faltan, n: reportesVisibles.length };
+    return { monto, mvr, faltan, n: reportesVisibles.length };
   }, [reportesVisibles]);
 
   const etiquetaMesActual = filtroMes
@@ -534,6 +540,21 @@ export default function SubirPage() {
               {money(resumen.monto)}
             </span>
           </div>
+          {/* Lo que las compañías descuentan por MVR, aparte y a la vista. No se resta del total
+              de arriba porque no es menos comisión: es un gasto que se le descuenta a la oficina
+              después del royalty. Pero esconderlo seria peor — es plata que alguien paga. */}
+          {resumen.mvr > 0 && (
+            <div className="flex flex-col">
+              <span className="text-[13px] text-muted">Cargos por MVR</span>
+              <Link
+                href="/comisiones/mvr/"
+                className="text-[20px] font-semibold leading-tight tracking-tight text-foreground hover:text-brand"
+              >
+                −{money(resumen.mvr)}
+              </Link>
+              <span className="text-[11px] text-muted">Se les descuenta a las oficinas · ver el reparto</span>
+            </div>
+          )}
           <div className="flex flex-col items-end gap-0.5 text-right">
             <span className="text-[13px] text-muted">
               {t("statements.countLabel", { n: resumen.n, mes: etiquetaMesActual })}

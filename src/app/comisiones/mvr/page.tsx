@@ -21,6 +21,9 @@ import {
 import { money, etiquetaPeriodo } from "@/lib/format";
 import {
   getMvrDetalle,
+  getMvrDelMes,
+  listMesesConMvr,
+  type MesConMvr,
   asignarCargos,
   cargosACuentaCasa,
   releerArchivoMvr,
@@ -121,7 +124,7 @@ function bajarCsv(datos: MvrDetalle, filas: CargoMvr[], paraQuien: string) {
   out.push(linea([`${filas.length} cargos`, `TOTAL`, total.toFixed(2)]));
   out.push("");
 
-  // Si se está exportando todo, el resumen por oficina va primero: es el reparto completo.
+  // Si se está exportando todo, el reparto por oficina va primero: es la foto completa.
   // Filtrado a una sola oficina sobra, porque el total de arriba ya es el suyo.
   if (!paraQuien) {
     out.push(linea(["OFICINA", "CARGOS", "MONTO"]));
@@ -129,7 +132,25 @@ function bajarCsv(datos: MvrDetalle, filas: CargoMvr[], paraQuien: string) {
     out.push("");
   }
 
-  out.push(linea(["Cliente", "Conductor", "Lic.", "Fecha", "Agente", "Oficina", "Monto", "Situación"]));
+  // Y siempre el desglose por compañía: es lo que la oficina pregunta cuando ve el total.
+  // Arturo: "para que vean por compañía cuánto se están gastando".
+  const porCompania = new Map<string, { n: number; monto: number }>();
+  for (const c of filas) {
+    const k = c.aseguradora ?? "Sin compañía";
+    const p = porCompania.get(k) ?? { n: 0, monto: 0 };
+    p.n += 1;
+    p.monto += Number(c.monto ?? 0);
+    porCompania.set(k, p);
+  }
+  if (porCompania.size > 0) {
+    out.push(linea(["COMPAÑÍA", "CARGOS", "MONTO"]));
+    for (const [k, v] of [...porCompania.entries()].sort((a, b) => b[1].monto - a[1].monto)) {
+      out.push(linea([k, v.n, v.monto.toFixed(2)]));
+    }
+    out.push("");
+  }
+
+  out.push(linea(["Cliente", "Conductor", "Lic.", "Fecha", "Compañía", "Agente", "Oficina", "Monto", "Situación"]));
   for (const c of filas) {
     out.push(
       linea([
@@ -137,6 +158,7 @@ function bajarCsv(datos: MvrDetalle, filas: CargoMvr[], paraQuien: string) {
         c.conductor_crudo ?? "",
         c.estado_us ?? "",
         c.fecha_orden ?? "",
+        c.aseguradora ?? "",
         c.agente ?? SIN_AGENTE,
         oficinaDe(c),
         Number(c.monto ?? 0).toFixed(2),
@@ -145,7 +167,7 @@ function bajarCsv(datos: MvrDetalle, filas: CargoMvr[], paraQuien: string) {
     );
   }
   out.push("");
-  out.push(linea(["", "", "", "", "", "TOTAL", total.toFixed(2)]));
+  out.push(linea(["", "", "", "", "", "", "TOTAL", total.toFixed(2)]));
 
   // El BOM va adelante o Excel abre "Martínez" como "MartÃ­nez".
   const blob = new Blob(["﻿" + out.join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -164,6 +186,13 @@ function bajarCsv(datos: MvrDetalle, filas: CargoMvr[], paraQuien: string) {
 function MvrContenido() {
   const params = useSearchParams();
   const reporteId = params.get("id") ?? "";
+  // Sin id en la URL, la pantalla muestra TODOS los MVR del mes juntos. Es la misma pantalla a
+  // proposito: lo que se hace con un archivo -- filtrar por oficina, asignar lo que falta,
+  // exportar la lista para mandarsela -- es exactamente lo que se hace con el mes entero, y a la
+  // oficina no le importa de cual de los dos archivos salio cada cargo.
+  const consolidado = reporteId === "";
+  const [meses, setMeses] = useState<MesConMvr[]>([]);
+  const [mesSel, setMesSel] = useState("");
 
   const [datos, setDatos] = useState<MvrDetalle | null>(null);
   const [agentes, setAgentes] = useState<AgenteSimple[]>([]);
@@ -173,6 +202,7 @@ function MvrContenido() {
   const [busqueda, setBusqueda] = useState("");
   const [oficinaSel, setOficinaSel] = useState("");
   const [agenteSel, setAgenteSel] = useState("");
+  const [companiaSel, setCompaniaSel] = useState("");
   const [filasPorPagina, setFilasPorPagina] = useState("100");
   const [pagina, setPagina] = useState(1);
   const [elegidos, setElegidos] = useState<Set<string>>(new Set());
@@ -181,10 +211,11 @@ function MvrContenido() {
   const [releyendo, setReleyendo] = useState(false);
 
   const cargar = useCallback(async () => {
-    if (!reporteId) return;
+    if (!consolidado && !reporteId) return;
+    if (consolidado && !mesSel) return;
     setCargando(true);
     try {
-      const d = await getMvrDetalle(reporteId);
+      const d = consolidado ? await getMvrDelMes(mesSel) : await getMvrDetalle(reporteId);
       setDatos(d);
       setElegidos(new Set());
       setError(null);
@@ -193,7 +224,19 @@ function MvrContenido() {
     } finally {
       setCargando(false);
     }
-  }, [reporteId]);
+  }, [reporteId, consolidado, mesSel]);
+
+  // Los meses que tienen MVR cargado. El mas reciente queda elegido solo: es el que se esta
+  // trabajando, y hacer un clic para ver lo de este mes es un clic de mas.
+  useEffect(() => {
+    if (!consolidado) return;
+    listMesesConMvr()
+      .then((ms) => {
+        setMeses(ms);
+        setMesSel((actual) => actual || ms[0]?.mes || "");
+      })
+      .catch(() => {});
+  }, [consolidado]);
 
   useEffect(() => {
     void cargar();
@@ -216,6 +259,10 @@ function MvrContenido() {
   // Las listas salen de los cargos que hay, no del catálogo entero: si en este archivo no aparece
   // Palmetto Bay, no tiene sentido ofrecerla y que el filtro devuelva vacío.
   const oficinas = useMemo(() => [...new Set(todos.map(oficinaDe))].sort(), [todos]);
+  const companias = useMemo(
+    () => [...new Set(todos.map((c) => c.aseguradora ?? "Sin compañía"))].sort(),
+    [todos]
+  );
   const agentesEnArchivo = useMemo(
     () => [...new Set(todos.map((c) => c.agente ?? SIN_AGENTE))].sort(),
     [todos]
@@ -229,6 +276,7 @@ function MvrContenido() {
     else if (filtro === "casa") xs = xs.filter((c) => c.estado === "cuenta_casa");
     if (oficinaSel) xs = xs.filter((c) => oficinaDe(c) === oficinaSel);
     if (agenteSel) xs = xs.filter((c) => (c.agente ?? SIN_AGENTE) === agenteSel);
+    if (companiaSel) xs = xs.filter((c) => (c.aseguradora ?? "Sin compañía") === companiaSel);
     const q = busqueda.trim().toLowerCase();
     if (q) {
       xs = xs.filter((c) =>
@@ -237,12 +285,12 @@ function MvrContenido() {
       );
     }
     return xs;
-  }, [todos, filtro, oficinaSel, agenteSel, busqueda]);
+  }, [todos, filtro, oficinaSel, agenteSel, companiaSel, busqueda]);
 
   // Cambiar un filtro estando en la página 7 dejaba la tabla vacía, como si no hubiera resultados.
   useEffect(() => {
     setPagina(1);
-  }, [busqueda, filtro, oficinaSel, agenteSel, filasPorPagina]);
+  }, [busqueda, filtro, oficinaSel, agenteSel, companiaSel, filasPorPagina]);
 
   const pageSize = filasPorPagina === "todas" ? Math.max(filtradas.length, 1) : Number(filasPorPagina);
   const totalPaginas = Math.max(1, Math.ceil(filtradas.length / pageSize));
@@ -326,9 +374,17 @@ function MvrContenido() {
     }
   }
 
-  if (!reporteId) return <EmptyState title="Falta el reporte" subtitle="Entrá desde la lista de archivos subidos." />;
+  if (!consolidado && !reporteId)
+    return <EmptyState title="Falta el reporte" subtitle="Entrá desde la lista de archivos subidos." />;
+  if (consolidado && meses.length === 0 && !cargando)
+    return (
+      <EmptyState
+        title="Todavía no hay cargos por MVR"
+        subtitle="Subí el MVR de una compañía desde Subir statement o MVR y acá vas a ver cuánto gastó cada oficina."
+      />
+    );
   if (cargando && !datos) return <Loading />;
-  if (!datos) return <EmptyState title="No se encontró el reporte" />;
+  if (!datos) return <Loading />;
 
   const r = datos.resumen;
   const opcionesAgente = agentes.map((a) => ({ value: a.id, label: a.nombre }));
@@ -345,20 +401,46 @@ function MvrContenido() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Link href="/comisiones/subir/" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground">
-        <ArrowLeft size={14} />
-        Volver a los archivos
-      </Link>
+      {/* En el consolidado no hay "los archivos" a los que volver: se entra desde el menú. */}
+      {!consolidado && (
+        <Link
+          href="/comisiones/subir/"
+          className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground"
+        >
+          <ArrowLeft size={14} />
+          Volver a los archivos
+        </Link>
+      )}
 
       <Card>
         <CardHead
-          title={`Cargos por MVR · ${datos.aseguradora ?? "Sin compañía"}`}
-          subtitle={`${etiquetaPeriodo(datos.periodo) ?? "Sin período"} · ${datos.nombreArchivo ?? ""}`}
+          title={
+            consolidado
+              ? "Cargos por MVR · todas las compañías"
+              : `Cargos por MVR · ${datos.aseguradora ?? "Sin compañía"}`
+          }
+          subtitle={
+            consolidado
+              ? `${datos.aseguradora ?? "sin archivos"} · ${datos.nombreArchivo ?? ""}`
+              : `${etiquetaPeriodo(datos.periodo) ?? "Sin período"} · ${datos.nombreArchivo ?? ""}`
+          }
           actions={
-            <Button variant="ghost" onClick={releer} disabled={releyendo}>
-              <RefreshCw size={14} />
-              {releyendo ? "Leyendo…" : "Volver a leer el archivo"}
-            </Button>
+            consolidado ? (
+              <Select
+                value={mesSel}
+                onChange={setMesSel}
+                options={meses.map((m) => ({
+                  value: m.mes,
+                  label: `${etiquetaPeriodo(m.etiqueta) ?? m.mes} · ${m.reportes} archivo${m.reportes === 1 ? "" : "s"}`,
+                }))}
+                className="w-64"
+              />
+            ) : (
+              <Button variant="ghost" onClick={releer} disabled={releyendo}>
+                <RefreshCw size={14} />
+                {releyendo ? "Leyendo…" : "Volver a leer el archivo"}
+              </Button>
+            )
           }
         />
         <div className="grid grid-cols-2 gap-3 px-5 pb-5 md:grid-cols-4">
@@ -463,6 +545,23 @@ function MvrContenido() {
           )}
           <div className="flex-1" />
           <span className="text-xs text-muted">Filtrar por:</span>
+          {/* Sólo en el consolidado: con un archivo solo, la compañía es una y el filtro sobra.
+              Juntos, "por compañía cuánto se están gastando" es la pregunta que hay que poder
+              contestar. */}
+          {consolidado && companias.length > 1 && (
+            <Select
+              value={companiaSel}
+              onChange={(v) => {
+                setCompaniaSel(v);
+                setElegidos(new Set());
+              }}
+              options={[
+                { value: "", label: "Todas las compañías" },
+                ...companias.map((c) => ({ value: c, label: c })),
+              ]}
+              className="w-48"
+            />
+          )}
           <Select
             value={oficinaSel}
             onChange={(v) => {
@@ -534,7 +633,7 @@ function MvrContenido() {
                         title="Marca los cargos de todo el filtro, no sólo los de esta página"
                       />
                     </th>
-                    {["Oficina", "Agente", "Cliente", "Conductor", "Lic.", "Fecha", "Monto", "Por qué"].map((h) => (
+                    {["Oficina", "Agente", "Compañía", "Cliente", "Conductor", "Lic.", "Fecha", "Monto", "Por qué"].map((h) => (
                       <th
                         key={h}
                         className="whitespace-nowrap border-b border-border px-3.5 py-2.5 text-left font-medium text-muted"
@@ -578,6 +677,7 @@ function FilaCargo({ c, marcado, onMarcar }: { c: CargoMvr; marcado: boolean; on
         )}
       </td>
       <td className="px-3.5 py-2">{conDueno && c.agente ? c.agente : <span className="text-muted">—</span>}</td>
+      <td className="px-3.5 py-2 text-muted">{c.aseguradora ?? "—"}</td>
       <td className="px-3.5 py-2">
         {c.asegurado_crudo ?? <span className="text-muted">(sin asegurado)</span>}
       </td>

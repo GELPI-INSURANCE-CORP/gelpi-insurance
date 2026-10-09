@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Wallet,
+  ReceiptText,
   BookOpen,
   Building2,
   Settings,
@@ -26,6 +27,10 @@ const SUBTABS = [
   // la sección. Lo que se hace ahí es plata — cuánto pagó cada compañía y cuánto le toca a cada
   // agente — así que va una billetera. Lo mismo con Bonuses: un regalo no es un bono de producción.
   { href: "/comisiones/subir", clave: "nav.commissions" as ClaveTexto, icon: Wallet, tambien: ["/comisiones/conciliacion", "/comisiones/liquidacion", "/comisiones/statement"] },
+  // Los MVR tienen entrada propia porque son plata que SALE, y se trabajan al reves que un
+  // statement: no se cobra, se descuenta, y hay que poder mirarlos de todas las companias
+  // juntas para mandarle a cada oficina cuanto gasto en el mes.
+  { href: "/comisiones/mvr", clave: "nav.mvr" as ClaveTexto, icon: ReceiptText, tambien: [] as string[] },
   { href: "/comisiones/clientes", clave: "nav.book" as ClaveTexto, icon: BookOpen, tambien: [] as string[] },
   { href: "/comisiones/oficinas", clave: "nav.offices" as ClaveTexto, icon: Building2, tambien: [] as string[] },
 ];

@@ -25,6 +25,7 @@ const en = {
   // --- Navegación y marco ---
   "nav.dashboard": "Dashboard",
   "nav.commissions": "Commissions",
+  "nav.mvr": "MVR charges",
   "nav.book": "Book of Business",
   "nav.offices": "Offices",
   "nav.bonuses": "Bonuses",
@@ -167,6 +168,7 @@ const es: Partial<Record<ClaveTexto, string>> = {
   "nav.dashboard": "Panel",
   "nav.commissions": "Comisiones",
   "nav.book": "Book of Business",
+  "nav.mvr": "Cargos por MVR",
   "nav.offices": "Oficinas",
   "nav.bonuses": "Bonos",
   "nav.settings": "Configuración",
