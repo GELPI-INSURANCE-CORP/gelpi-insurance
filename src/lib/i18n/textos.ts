@@ -40,8 +40,8 @@ const en = {
   "statements.title": "Statements received",
   "statements.subtitle":
     "“Missing” is how many lines on that statement are still waiting on a decision from you, counted right now.",
-  "statements.upload": "Upload statement",
-  "statements.uploadHint": "A carrier statement, in PDF, Excel or CSV",
+  "statements.upload": "Upload statement or MVR",
+  "statements.uploadHint": "Statement, MVR charges or quotes — PDF, Excel or CSV",
   "statements.export": "Export to Excel",
   "statements.totalLabel": "Total received in {mes}",
   "statements.countLabel": "{n} statements · {mes}",
@@ -180,8 +180,8 @@ const es: Partial<Record<ClaveTexto, string>> = {
   "statements.title": "Statements recibidos",
   "statements.subtitle":
     "“Te faltan” son las líneas de ese statement que todavía esperan una decisión tuya, contadas en este momento.",
-  "statements.upload": "Subir statement",
-  "statements.uploadHint": "El estado de cuenta de una compañía, en PDF, Excel o CSV",
+  "statements.upload": "Subir statement o MVR",
+  "statements.uploadHint": "Statement, cargos por MVR o cotizaciones — PDF, Excel o CSV",
   "statements.export": "Exportar a Excel",
   "statements.totalLabel": "Total recibido en {mes}",
   "statements.countLabel": "{n} statements · {mes}",

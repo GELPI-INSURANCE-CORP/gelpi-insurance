@@ -21,6 +21,9 @@ import {
 const TIPOS_REPROCESABLES = new Set([
   "comision_aseguradora", "produccion", "cancelaciones", "renovaciones", "chargebacks", "resumen_anual", "otro", "venta_interna",
   "actualizacion_abb",
+  // Los MVR y las cotizaciones también: si el cruce dejó cargos sin dueño porque faltaba un
+  // agente o una cotización, se corrige el dato y se vuelve a correr el mismo archivo.
+  "mvr", "cotizaciones",
 ]);
 
 const ESTADOS_VENTA_ABB: Record<string, { label: string; tone: Tone }> = {

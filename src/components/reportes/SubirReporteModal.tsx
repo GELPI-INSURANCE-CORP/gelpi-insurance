@@ -26,6 +26,8 @@ const TIPOS: TipoReporte[] = [
   "resumen_anual",
   "bono_contingencia",
   "venta_interna",
+  "mvr",
+  "cotizaciones",
   "otro",
 ];
 
@@ -41,10 +43,16 @@ const AYUDA: Partial<Record<TipoReporte, string>> = {
   bono_contingencia: "El bono anual o de contingencia, para repartirlo entre los agentes.",
   venta_interna:
     "El Excel del sistema interno con lo que vendió cada agente. Sirve para cruzarlo contra el statement y ver si la compañía te pagó todo lo que se vendió. Si no llevás ese registro aparte, no lo necesitás.",
+  mvr:
+    "Lo que la compañía te cobra por correr reportes de manejo. Elegí de qué compañía es: Progressive, United, Kemper y Responsive mandan cada uno el suyo con otro formato. Se cruza contra las cotizaciones para saber qué agente lo ordenó y descontárselo a su oficina.",
+  cotizaciones:
+    "El QuoteReport del sistema, con todas las cotizaciones del período. Es lo que identifica de quién es cada MVR, así que conviene subirlo antes. No lleva compañía: trae las de todas.",
   otro: "Cualquier otro archivo de la compañía; la IA intenta reconocerlo sola.",
 };
 
-const SIN_ASEGURADORA: TipoReporte[] = ["venta_interna"];
+// El QuoteReport es de la agencia y trae cotizaciones de todas las compañías, así que no se le
+// pide una. El MVR sí: cada compañía cobra el suyo y con su tarifa.
+const SIN_ASEGURADORA: TipoReporte[] = ["venta_interna", "cotizaciones"];
 
 const MESES = [
   "Enero",

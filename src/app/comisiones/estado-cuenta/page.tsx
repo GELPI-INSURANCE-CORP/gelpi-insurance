@@ -359,6 +359,38 @@ function Contenido() {
               </span>
               <span className="tabular-nums text-foreground">−{money(datos.royalty)}</span>
             </div>
+
+            {/* Los MVR van DESPUÉS del royalty y nunca antes: el royalty se cobra sobre la
+                ganancia bruta y un gasto no baja esa base. Por eso también va el subtotal, que
+                es el renglón "TOTAL BEFORE SOFTWARES" de la planilla con la que se liquida hoy:
+                sin él no se ve dónde termina el royalty y dónde empiezan los gastos.
+
+                Un renglón por compañía, no un total de "MVR": el franquiciado tiene que poder
+                ver que son $601 de Progressive y $456 de Responsive sin llamar a preguntar. */}
+            {datos.costos.length > 0 && (
+              <>
+                <div className="flex justify-between border-t border-border py-2.5 print:py-2">
+                  <span className="text-muted">Before expenses</span>
+                  <span className="tabular-nums text-foreground">
+                    {money(datos.comisionGenerada + datos.ajustes.reduce((t, a) => t + a.monto, 0) - datos.royalty)}
+                  </span>
+                </div>
+                {datos.costos.map((c) => (
+                  <div
+                    key={c.compania}
+                    className="flex items-baseline justify-between border-b border-border py-2.5 print:py-2"
+                  >
+                    <span className="text-muted">
+                      MVR {c.compania}
+                      <span className="ml-1.5 text-[11px] text-muted/70">
+                        {c.conCargo} of {c.cargos}
+                      </span>
+                    </span>
+                    <span className="tabular-nums text-foreground">−{money(c.monto)}</span>
+                  </div>
+                ))}
+              </>
+            )}
             <div className="mt-1 flex items-baseline justify-between border-t-2 border-brand-dark pt-3.5">
               <span className="text-[14px] font-semibold text-foreground">Net to Office</span>
               <span className="text-[22px] font-semibold tracking-tight tabular-nums text-brand-dark">

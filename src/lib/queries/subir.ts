@@ -15,6 +15,8 @@ export type TipoReporte =
   | "renovaciones"
   | "chargebacks"
   | "resumen_anual"
+  | "mvr"
+  | "cotizaciones"
   | "otro";
 
 export type EstadoReporte =

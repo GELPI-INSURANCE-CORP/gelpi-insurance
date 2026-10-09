@@ -29,7 +29,8 @@ export const TIPOS_TRANSACCION: Record<string, string> = {
 export const TIPOS_REPORTE: Record<string, string> = {
   comision_aseguradora: "Statement de comisiones", venta_interna: "Reporte de ventas (interno)", bono_contingencia: "Bono / contingencia",
   actualizacion_abb: "Active Business Book", produccion: "Producción / nuevo negocio", cancelaciones: "Cancelaciones y pendientes",
-  renovaciones: "Renovaciones", chargebacks: "Chargebacks y ajustes", resumen_anual: "Resumen anual (1099)", otro: "Otro",
+  renovaciones: "Renovaciones", chargebacks: "Chargebacks y ajustes", resumen_anual: "Resumen anual (1099)",
+  mvr: "Cargos por MVR", cotizaciones: "Cotizaciones (QuoteReport)", otro: "Otro",
 };
 
 export const ESTADOS_LINEA: Record<string, { label: string; tone: "ok" | "warn" | "bad" | "info" | "neutral" | "brand" }> = {

@@ -494,6 +494,13 @@ async function limpiarLineasPrevias(admin: SupabaseClient, reporteId: string): P
   }
   await admin.from("lineas_comision").delete().eq("reporte_id", reporteId);
   await admin.from("lineas_venta").delete().eq("reporte_id", reporteId);
+
+  // MVR y cotizaciones. Van al final y sin rescate de trabajo manual a propósito: un MVR no se
+  // reasigna a mano como una comisión — si el cruce lo puso en la oficina equivocada, lo que se
+  // corrige es la cotización o el Book, no el cargo de 8 dólares. Y los costos se borran ANTES
+  // que las cotizaciones porque lineas_costo.cotizacion_id apunta a lineas_cotizacion.
+  await admin.from("lineas_costo").delete().eq("reporte_id", reporteId);
+  await admin.from("lineas_cotizacion").delete().eq("reporte_id", reporteId);
 }
 
 // ---------------------------------------------------------------------------
@@ -773,6 +780,42 @@ const CAMPOS_VENTA = [
   "numero_poliza", "aseguradora_nombre_crudo", "ramo", "fecha_venta", "fecha_vigencia", "prima",
 ] as const;
 
+// Cargos por MVR. Cada compañía manda el suyo con otro formato — Progressive titula las columnas
+// "Named Insured / Driver Name / Order Date / Amount", y United, Kemper y Responsive las titulan
+// distinto. Por eso el mapeo lo hace el modelo, igual que con los statements: así se sube el MVR
+// de cualquier compañía sin tocar código.
+//
+// Un renglón es un CONDUCTOR, no una póliza: una familia de cuatro conductores son cuatro cargos.
+// En el archivo de agosto de Progressive eran 389 renglones para 190 casos.
+const CAMPOS_MVR = [
+  "asegurado_crudo", "conductor_crudo", "estado_us", "fecha_orden", "tipo_costo", "monto",
+] as const;
+
+// El QuoteReport del sistema de la agencia. Siempre viene igual, pero pasa por el mismo mapeo
+// que todo lo demás para no tener dos caminos distintos que mantener.
+const CAMPOS_COTIZACION = [
+  "pila_crudo", "apellido_crudo", "agente_texto", "oficina_texto", "carrier_texto",
+  "estado_cotizacion", "fecha",
+] as const;
+
+// Qué juego de campos usa cada tipo de reporte. Antes esto era un booleano `esVenta`, que
+// alcanzaba cuando había dos formas; ahora hay cuatro.
+type Variante = "comision" | "venta" | "mvr" | "cotizacion";
+
+function varianteDeTipo(tipo: string | null | undefined): Variante {
+  if (tipo === "venta_interna" || tipo === "actualizacion_abb") return "venta";
+  if (tipo === "mvr") return "mvr";
+  if (tipo === "cotizaciones") return "cotizacion";
+  return "comision";
+}
+
+const CAMPOS_DE_VARIANTE: Record<Variante, readonly string[]> = {
+  comision: CAMPOS_COMISION,
+  venta: CAMPOS_VENTA,
+  mvr: CAMPOS_MVR,
+  cotizacion: CAMPOS_COTIZACION,
+};
+
 // El modelo devuelve el mapeo como texto libre y a veces inventa un nombre descriptivo en vez del
 // campo exacto. Pasó con el Book: mapeó la columna "Current Premium" a `prima_actual`, que no
 // existe, así que la prima se tiraba a campos_extra y 2.281 de las 2.331 pólizas quedaron sin
@@ -801,12 +844,45 @@ const ALIAS_CAMPOS: Record<string, string> = {
 // (normalizarExtraccion) para reconstruir exactamente el mismo `ExtraccionResultado` que
 // antes devolvía la tool-use original.
 
-function buildFilaSchema(esVenta: boolean): Record<string, unknown> {
+function buildFilaSchema(variante: Variante): Record<string, unknown> {
   const campoExtraProp = {
     type: "string",
     description: "JSON codificado (objeto plano) con las columnas sin mapeo de esta fila. Usar '{}' si no hay ninguna.",
   };
-  const filaProps: Record<string, unknown> = esVenta
+
+  if (variante === "mvr") {
+    const mvrProps: Record<string, unknown> = {
+      fila: { type: ["integer", "null"] },
+      // Progressive lo manda cortado a 13 caracteres y a veces dice "N/A" (los comerciales).
+      asegurado_crudo: { type: ["string", "null"], description: "Named Insured, tal cual viene. 'N/A' si el archivo no lo trae." },
+      conductor_crudo: { type: ["string", "null"], description: "Driver Name, tal cual viene." },
+      estado_us: { type: ["string", "null"], description: "Estado de 2 letras: FL, TX, NJ, NY, KY. La tarifa depende de él." },
+      fecha_orden: { type: ["string", "null"], description: "YYYY-MM-DD" },
+      tipo_costo: { type: ["string", "null"], description: "Ej: 'Personal Lines MVR', 'Commercial Lines MVR'." },
+      monto: { type: ["number", "string", "null"], description: "Lo cobrado. Puede ser 0." },
+      confianza: { type: ["number", "null"] },
+      campos_extra: campoExtraProp,
+    };
+    return { type: "object", properties: mvrProps, required: Object.keys(mvrProps), additionalProperties: false };
+  }
+
+  if (variante === "cotizacion") {
+    const cotProps: Record<string, unknown> = {
+      fila: { type: ["integer", "null"] },
+      pila_crudo: { type: ["string", "null"], description: "Nombre de pila del cliente (ClientFirstName)." },
+      apellido_crudo: { type: ["string", "null"], description: "Apellido del cliente (ClientLastName)." },
+      agente_texto: { type: ["string", "null"], description: "Quién hizo la cotización (QuoteCreatedBy)." },
+      oficina_texto: { type: ["string", "null"], description: "Oficina (AgencyName)." },
+      carrier_texto: { type: ["string", "null"], description: "Compañía cotizada (Carrier)." },
+      estado_cotizacion: { type: ["string", "null"], description: "Submitted / Quoted / Sold / Incomplete." },
+      fecha: { type: ["string", "null"], description: "YYYY-MM-DD (CreatedDate)" },
+      confianza: { type: ["number", "null"] },
+      campos_extra: campoExtraProp,
+    };
+    return { type: "object", properties: cotProps, required: Object.keys(cotProps), additionalProperties: false };
+  }
+
+  const filaProps: Record<string, unknown> = variante === "venta"
     ? {
         fila: { type: ["integer", "null"] },
         agente_nombre_crudo: { type: ["string", "null"] },
@@ -847,14 +923,14 @@ function buildFilaSchema(esVenta: boolean): Record<string, unknown> {
   };
 }
 
-function buildJsonSchema(esVenta: boolean): Record<string, unknown> {
+function buildJsonSchema(variante: Variante): Record<string, unknown> {
   return {
     type: "object",
     properties: {
       tipo_detectado: {
         type: "string",
         description:
-          "Tipo de reporte detectado: comision_aseguradora, chargebacks, produccion, cancelaciones, renovaciones, resumen_anual, venta_interna, bono_contingencia, actualizacion_abb u otro.",
+          "Tipo de reporte detectado: comision_aseguradora, chargebacks, produccion, cancelaciones, renovaciones, resumen_anual, venta_interna, bono_contingencia, actualizacion_abb, mvr, cotizaciones u otro.",
       },
       aseguradora_detectada: { type: ["string", "null"] },
       periodo: { type: ["string", "null"], description: "Ej: 2026-08 o 'Agosto 2026'" },
@@ -862,7 +938,7 @@ function buildJsonSchema(esVenta: boolean): Record<string, unknown> {
         type: "string",
         description:
           "JSON codificado (objeto plano) columna_origen -> campo_destino. El campo_destino tiene que ser EXACTAMENTE " +
-          `uno de estos: ${(esVenta ? CAMPOS_VENTA : CAMPOS_COMISION).join(", ")}. ` +
+          `uno de estos: ${CAMPOS_DE_VARIANTE[variante].join(", ")}. ` +
           "No inventes nombres ni les agregues adjetivos: una columna que no encaje exactamente en uno de esos " +
           "campos va en columnas_sin_mapeo, no en el mapeo. Usar '{}' si no aplica.",
       },
@@ -873,7 +949,7 @@ function buildJsonSchema(esVenta: boolean): Record<string, unknown> {
         type: "array",
         description:
           "Dejar vacío ([]) cuando sólo se pide mapeo de columnas (CSV/XLSX); completar todas las filas cuando el documento es PDF/imagen.",
-        items: buildFilaSchema(esVenta),
+        items: buildFilaSchema(variante),
       },
       total_filas_documento: {
         type: ["integer", "null"],
@@ -935,6 +1011,8 @@ Vas a recibir uno de estos tipos de documentos:
 - Reportes de ventas internas de la agencia (venta_interna): cada fila es una venta hecha por un agente/oficina de Gelpi.
 - Statements de bono o contingencia de una aseguradora (bono_contingencia): un monto total, a veces desglosado por agente/productor.
 - El "Active Business Book" (actualizacion_abb): el libro maestro de pólizas vigentes con cliente, aseguradora, agente y oficina asignados.
+- Reportes de cargos por MVR (mvr): lo que una aseguradora le cobra a la agencia por correr reportes de manejo (Motor Vehicle Record). Progressive los titula "MVR Chargeback" y trae Named Insured / Driver Name / State / Order Date / Chargeback Type / Amount, pero United, Kemper y Responsive mandan el suyo con otros títulos. UN RENGLÓN ES UN CONDUCTOR, no una póliza: si una familia tiene cuatro conductores, son cuatro renglones con el mismo asegurado. El monto suele ser chico (0 a 15 dólares) y MUCHOS VIENEN EN CERO — un cero no es un error, es un MVR que no cobraron, y hay que traerlo igual. Si el asegurado viene "N/A" o vacío (los comerciales), dejalo tal cual: no lo inventes ni lo copies del conductor.
+- Reportes de cotizaciones (cotizaciones): el QuoteReport del sistema de la agencia. Una fila por cotización, con nombre y apellido del cliente en columnas separadas, quién la hizo (QuoteCreatedBy), la oficina (AgencyName), la compañía cotizada y el estado (Submitted/Quoted/Sold/Incomplete). Sirve para saber qué agente ordenó cada MVR.
 
 Tu trabajo es mapear las columnas del archivo a los campos destino que te pide la herramienta "registrar_extraccion" y devolver metadatos (tipo de reporte, aseguradora, período). Cuando se te indique explícitamente, también devolvés cada fila ya extraída.
 Reglas:
@@ -1040,11 +1118,11 @@ async function callOpenAIRaw(opts: {
 async function callOpenAI(opts: {
   apiKey: string;
   model: string;
-  esVenta: boolean;
+  variante: Variante;
   content: unknown[];
   maxTokens?: number;
 }): Promise<ExtraccionResultado> {
-  const schema = buildJsonSchema(opts.esVenta);
+  const schema = buildJsonSchema(opts.variante);
   const maxTokens = opts.maxTokens ?? 8192;
 
   let raw = await callOpenAIRaw({ apiKey: opts.apiKey, model: opts.model, content: opts.content, schema, maxTokens });
@@ -1255,7 +1333,7 @@ Deno.serve(async (req: Request) => {
     // (aseguradora/cliente/agente/oficina por fila) que procesarAbb() puede consumir; sin
     // ellos, un ABB en PDF/imagen no tiene forma de resolver aseguradora por fila y
     // termina procesando 0 pólizas.
-    const esVentaEsperada = reporte.tipo === "venta_interna" || reporte.tipo === "actualizacion_abb";
+    const varianteEsperada = varianteDeTipo(reporte.tipo);
 
     let extraccion: ExtraccionResultado;
     let filasCrudas: Record<string, unknown>[] = [];
@@ -1294,7 +1372,7 @@ Deno.serve(async (req: Request) => {
       extraccion = await callOpenAI({
         apiKey: OPENAI_API_KEY,
         model: OPENAI_MODEL,
-        esVenta: esVentaEsperada,
+        variante: varianteEsperada,
         maxTokens: 4096,
         content: [
           {
@@ -1378,7 +1456,7 @@ Deno.serve(async (req: Request) => {
           return callOpenAI({
             apiKey: OPENAI_API_KEY,
             model: OPENAI_MODEL,
-            esVenta: esVentaEsperada,
+            variante: varianteEsperada,
             maxTokens: 16384,
             content: [{
               type: "input_text",
@@ -1412,7 +1490,7 @@ Deno.serve(async (req: Request) => {
         return callOpenAI({
           apiKey: OPENAI_API_KEY,
           model: OPENAI_MODEL,
-          esVenta: esVentaEsperada,
+          variante: varianteEsperada,
           // Techo real de salida de gpt-4o-mini (Responses API); con 8192 un statement con
           // ~100+ filas ya truncaba el array "filas" a mitad de camino.
           maxTokens: 16384,
@@ -1571,7 +1649,69 @@ Deno.serve(async (req: Request) => {
     // -----------------------------------------------------------------------
     // Ramas por tipo de reporte
     // -----------------------------------------------------------------------
-    if (tipoEfectivo === "venta_interna") {
+    if (tipoEfectivo === "mvr") {
+      const batch = filasFinal.map((f) => ({
+        reporte_id: reporteId,
+        fila: f.fila ?? null,
+        tipo_costo: (f.tipo_costo as string | null) ?? "mvr",
+        asegurado_crudo: f.asegurado_crudo ?? null,
+        conductor_crudo: f.conductor_crudo ?? null,
+        estado_us: typeof f.estado_us === "string" ? f.estado_us.trim().toUpperCase().slice(0, 2) : null,
+        fecha_orden: coerceDate(f.fecha_orden),
+        // Un MVR en cero NO es un dato faltante: es un MVR que la compañía no cobró. En el
+        // archivo de agosto de Progressive eran 100 de 389. Si esto fuera `?? null` la columna
+        // (not null default 0) los convertiría igual, pero dejarlo explícito evita que mañana
+        // alguien "arregle" el default y empiece a perder renglones.
+        monto: coerceNumber(f.monto) ?? 0,
+      }));
+
+      await limpiarLineasPrevias(admin, reporteId!);
+      for (const b of chunk(batch, 500)) {
+        const { error: insErr } = await admin.from("lineas_costo").insert(b);
+        if (insErr) throw new ReporteError(`Insertando lineas_costo: ${insErr.message}`);
+      }
+
+      await admin.from("reportes").update({ ...metaUpdate, total_lineas: batch.length }).eq("id", reporteId);
+      const { error: rpcErr } = await admin.rpc("procesar_costos", { p_reporte_id: reporteId });
+      if (rpcErr) throw new ReporteError(`procesar_costos: ${rpcErr.message}`);
+    } else if (tipoEfectivo === "cotizaciones") {
+      const batch = filasFinal.map((f) => {
+        const pila = (f.pila_crudo as string | null) ?? null;
+        const apellido = (f.apellido_crudo as string | null) ?? null;
+        return {
+          reporte_id: reporteId,
+          fila: f.fila ?? null,
+          nombre_crudo: [pila, apellido].filter(Boolean).join(" ").trim() || null,
+          pila_crudo: pila,
+          apellido_crudo: apellido,
+          agente_texto: f.agente_texto ?? null,
+          oficina_texto: f.oficina_texto ?? null,
+          carrier_texto: f.carrier_texto ?? null,
+          estado_cotizacion: f.estado_cotizacion ?? null,
+          fecha: coerceDate(f.fecha),
+        };
+      });
+
+      await limpiarLineasPrevias(admin, reporteId!);
+      for (const b of chunk(batch, 500)) {
+        const { error: insErr } = await admin.from("lineas_cotizacion").insert(b);
+        if (insErr) throw new ReporteError(`Insertando lineas_cotizacion: ${insErr.message}`);
+      }
+
+      await admin.from("reportes").update({ ...metaUpdate, total_lineas: batch.length }).eq("id", reporteId);
+
+      // Subir cotizaciones nuevas puede identificar MVR que antes quedaron sin dueño, así que se
+      // reintentan. Sin esto habría que acordarse de resubir el MVR después de las cotizaciones,
+      // y el orden en que llegan los archivos no debería cambiar el resultado.
+      const { data: pendientes } = await admin
+        .from("lineas_costo")
+        .select("reporte_id")
+        .eq("estado", "sin_identificar");
+      for (const rid of new Set((pendientes ?? []).map((p) => p.reporte_id as string))) {
+        const { error: reErr } = await admin.rpc("procesar_costos", { p_reporte_id: rid });
+        if (reErr) throw new ReporteError(`procesar_costos (reintento ${rid}): ${reErr.message}`);
+      }
+    } else if (tipoEfectivo === "venta_interna") {
       const batch = filasFinal.map((f) => ({
         reporte_id: reporteId,
         fila: f.fila ?? null,

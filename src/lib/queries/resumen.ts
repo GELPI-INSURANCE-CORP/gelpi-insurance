@@ -410,6 +410,17 @@ export async function borrarAjusteOficina(id: string): Promise<void> {
   if (error) throw error;
 }
 
+// Un renglón de MVR por compañía: "MVR PROGRESSIVE $601.00", igual que en la planilla con la
+// que Arturo le liquida a cada oficina. Sale de lineas_costo, no de ajustes_oficina: estos se
+// calculan del archivo que manda la compañía, no se teclean.
+export interface LineaCostoOficina {
+  compania: string;
+  cargos: number;     // renglones = conductores
+  conCargo: number;   // los que de verdad cobraron (muchos MVR vienen en $0)
+  casos: number;      // asegurados distintos
+  monto: number;
+}
+
 export interface EstadoCuentaOficina {
   oficinaId: string;
   oficina: string;
@@ -420,6 +431,8 @@ export interface EstadoCuentaOficina {
   totalPrima: number;
   comisionGenerada: number;
   ajustes: AjusteOficina[];
+  costos: LineaCostoOficina[];
+  totalCostos: number;
   royalty: number;
   neto: number;
   comisionMesAnterior: number;
@@ -444,14 +457,16 @@ export async function getEstadoCuentaOficina(
   // que se guardan los períodos de los statements (ver 20260927000005).
   const periodoTxt = `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, "0")}`;
 
-  const [resumen, detalle, detalleAnterior, ajustes] = await Promise.all([
+  const [resumen, detalle, detalleAnterior, ajustes, costos] = await Promise.all([
     getRoyaltyPorOficina(actual.desde, actual.hasta),
     supabase.rpc("royalty_detalle_por_compania", { p_desde: actual.desde, p_hasta: actual.hasta }),
     supabase.rpc("royalty_detalle_por_compania", { p_desde: anterior.desde, p_hasta: anterior.hasta }),
     getAjustesOficina(oficinaId, periodoTxt),
+    supabase.rpc("costos_por_oficina", { p_desde: actual.desde, p_hasta: actual.hasta }),
   ]);
   if (detalle.error) throw detalle.error;
   if (detalleAnterior.error) throw detalleAnterior.error;
+  if (costos.error) throw costos.error;
 
   const ofi = resumen.find((o) => o.oficinaId === oficinaId);
   if (!ofi) return null;
@@ -472,6 +487,21 @@ export async function getEstadoCuentaOficina(
     comisionMesAnterior: antes.has(String(d.compania)) ? antes.get(String(d.compania))! : null,
   }));
 
+  // Los MVR de esta oficina, un renglón por compañía. Vienen con monto positivo (es lo que la
+  // compañía cobró) y se restan al final, nunca de la base del royalty: Arturo cobra el royalty
+  // sobre la ganancia bruta y los gastos no lo tocan.
+  const misCostos: LineaCostoOficina[] = ((costos.data ?? []) as Fila[])
+    .filter((d) => String(d.oficina_id) === oficinaId)
+    .map((d) => ({
+      compania: String(d.compania ?? "—"),
+      cargos: Number(d.cargos ?? 0),
+      conCargo: Number(d.con_cargo ?? 0),
+      casos: Number(d.casos ?? 0),
+      monto: Number(d.monto ?? 0),
+    }))
+    .filter((c) => c.monto !== 0);
+  const totalCostos = misCostos.reduce((s, c) => s + c.monto, 0);
+
   return {
     oficinaId,
     oficina: ofi.oficina,
@@ -482,6 +512,8 @@ export async function getEstadoCuentaOficina(
     totalPrima: companias.reduce((s, c) => s + c.prima, 0),
     comisionGenerada: ofi.comisionGenerada,
     ajustes,
+    costos: misCostos,
+    totalCostos,
     royalty: ofi.royalty,
     // Lo que de verdad le entra a su cuenta. Es el número que la oficina va a mirar primero.
     //
@@ -489,7 +521,14 @@ export async function getEstadoCuentaOficina(
     // se descuentan sino cuándo. Los que llevan royalty ya movieron la base (y por eso el
     // royalty que viene de la base ya salió más chico); los que no, se descuentan acá al final.
     // En los dos casos la oficina recibe lo mismo de menos.
-    neto: ofi.comisionGenerada + ajustes.reduce((t, x) => t + x.monto, 0) - ofi.royalty,
+    //
+    // Los MVR se restan acá al final y JAMÁS de la base del royalty. Es la regla de Arturo:
+    // "si ellos ganan $10,000, me tienen que pagar el royalty de los $10,000, no importa si
+    // tuvieron $50,000 o $1,000 en MVR". Su planilla de Miami Lakes lo confirma al centavo:
+    // 26,911.59 bruto → royalty 12% = 3,229.39 → 23,682.20 → menos 1,833.18 de gastos →
+    // 21,849.02. El royalty sale del bruto, siempre.
+    neto:
+      ofi.comisionGenerada + ajustes.reduce((t, x) => t + x.monto, 0) - ofi.royalty - totalCostos,
     comisionMesAnterior: [...antes.values()].reduce((s, v) => s + v, 0),
   };
 }
