@@ -455,10 +455,83 @@ export async function listReportes(filtros: FiltrosReportes = {}): Promise<Repor
   return rows;
 }
 
+// Un cargo de MVR, como se ve en el panel del reporte.
+export interface LineaCostoVista {
+  id: string;
+  fila: number | null;
+  asegurado_crudo: string | null;
+  conductor_crudo: string | null;
+  estado_us: string | null;
+  fecha_orden: string | null;
+  monto: number;
+  estado: string;
+  regla_match: string | null;
+  score: number | null;
+  es_comercial: boolean;
+  agente: string | null;
+  oficina: string | null;
+}
+
+// Una cotización del QuoteReport.
+export interface LineaCotizacionVista {
+  id: string;
+  fila: number | null;
+  nombre_crudo: string | null;
+  agente_texto: string | null;
+  oficina_texto: string | null;
+  carrier_texto: string | null;
+  estado_cotizacion: string | null;
+  fecha: string | null;
+  agente: string | null;
+}
+
 export async function getReporteLineas(
   reporteId: string,
   tipo: TipoReporte
-): Promise<{ comision: LineaComision[]; venta: LineaVenta[]; bono: BonoResumen | null }> {
+): Promise<{
+  comision: LineaComision[];
+  venta: LineaVenta[];
+  bono: BonoResumen | null;
+  costo: LineaCostoVista[];
+  cotizacion: LineaCotizacionVista[];
+}> {
+  // Los MVR y las cotizaciones viven en sus propias tablas. Sin estas dos ramas el panel
+  // consultaba lineas_comision con ese reporte_id, no encontraba nada, y mostraba "todavía no
+  // hay líneas extraídas" sobre 389 cargos que sí estaban cargados.
+  if (tipo === "mvr") {
+    const { data, error } = await supabase
+      .from("lineas_costo")
+      .select(
+        "id, fila, asegurado_crudo, conductor_crudo, estado_us, fecha_orden, monto, estado, regla_match, score, es_comercial, agentes(nombre), oficinas(nombre)"
+      )
+      .eq("reporte_id", reporteId)
+      .order("fila", { ascending: true });
+    if (error) throw error;
+    const filas = ((data ?? []) as unknown as Array<
+      Omit<LineaCostoVista, "agente" | "oficina"> & {
+        agentes: { nombre: string } | null;
+        oficinas: { nombre: string } | null;
+      }
+    >).map((l) => ({ ...l, agente: l.agentes?.nombre ?? null, oficina: l.oficinas?.nombre ?? null }));
+    return { comision: [], venta: [], bono: null, costo: filas, cotizacion: [] };
+  }
+
+  if (tipo === "cotizaciones") {
+    const { data, error } = await supabase
+      .from("lineas_cotizacion")
+      .select(
+        "id, fila, nombre_crudo, agente_texto, oficina_texto, carrier_texto, estado_cotizacion, fecha, agentes(nombre)"
+      )
+      .eq("reporte_id", reporteId)
+      .order("fila", { ascending: true })
+      .limit(2000);
+    if (error) throw error;
+    const filas = ((data ?? []) as unknown as Array<
+      Omit<LineaCotizacionVista, "agente"> & { agentes: { nombre: string } | null }
+    >).map((q) => ({ ...q, agente: q.agentes?.nombre ?? null }));
+    return { comision: [], venta: [], bono: null, costo: [], cotizacion: filas };
+  }
+
   if (tipo === "venta_interna") {
     const { data, error } = await supabase
       .from("lineas_venta")
@@ -466,7 +539,7 @@ export async function getReporteLineas(
       .eq("reporte_id", reporteId)
       .order("fila", { ascending: true });
     if (error) throw error;
-    return { comision: [], venta: (data ?? []) as unknown as LineaVenta[], bono: null };
+    return { comision: [], venta: (data ?? []) as unknown as LineaVenta[], bono: null , costo: [], cotizacion: [] };
   }
 
   if (tipo === "bono_contingencia") {
@@ -478,7 +551,7 @@ export async function getReporteLineas(
       .eq("reporte_id", reporteId)
       .maybeSingle();
     if (bErr) throw bErr;
-    if (!bonoRow) return { comision: [], venta: [], bono: null };
+    if (!bonoRow) return { comision: [], venta: [], bono: null , costo: [], cotizacion: [] };
     const { data: repartoData, error: rErr } = await supabase
       .from("bono_reparto")
       .select("id, agente_id, monto, motivo, pagado, agentes(nombre)")
@@ -499,14 +572,14 @@ export async function getReporteLineas(
       motivo: r.motivo,
       pagado: r.pagado,
     }));
-    return { comision: [], venta: [], bono: { ...(bonoRow as Omit<BonoResumen, "reparto">), reparto } };
+    return { comision: [], venta: [], bono: { ...(bonoRow as Omit<BonoResumen, "reparto">), reparto } , costo: [], cotizacion: [] };
   }
 
   // 'actualizacion_abb' tampoco inserta en lineas_comision (procesarAbb escribe directo en clientes/polizas),
   // y a diferencia de bono_contingencia no hay FK confiable reporte->pólizas (solo un archivo_path de texto en
   // abb_versiones, sin reporte_id): devolvemos vacío y el resumen agregado se muestra vía reportes.resumen_ia.
   if (tipo === "actualizacion_abb") {
-    return { comision: [], venta: [], bono: null };
+    return { comision: [], venta: [], bono: null , costo: [], cotizacion: [] };
   }
 
   const { data, error } = await supabase
@@ -515,7 +588,7 @@ export async function getReporteLineas(
     .eq("reporte_id", reporteId)
     .order("fila", { ascending: true });
   if (error) throw error;
-  return { comision: (data ?? []) as unknown as LineaComision[], venta: [], bono: null };
+  return { comision: (data ?? []) as unknown as LineaComision[], venta: [], bono: null , costo: [], cotizacion: [] };
 }
 
 export async function listAseguradoras(): Promise<Aseguradora[]> {

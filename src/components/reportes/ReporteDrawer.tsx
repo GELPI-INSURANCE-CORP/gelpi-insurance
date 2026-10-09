@@ -11,6 +11,8 @@ import {
   reprocesarReporte,
   type BonoResumen,
   type LineaComision,
+  type LineaCostoVista,
+  type LineaCotizacionVista,
   type LineaVenta,
   type Reporte,
 } from "@/lib/queries/subir";
@@ -38,6 +40,8 @@ export default function ReporteDrawer({
   lineasComision,
   lineasVenta,
   bonoResumen,
+  lineasCosto,
+  lineasCotizacion,
   loadingLineas,
   onClose,
   onPeriodoActualizado,
@@ -46,6 +50,8 @@ export default function ReporteDrawer({
   lineasComision: LineaComision[];
   lineasVenta: LineaVenta[];
   bonoResumen: BonoResumen | null;
+  lineasCosto: LineaCostoVista[];
+  lineasCotizacion: LineaCotizacionVista[];
   loadingLineas: boolean;
   onClose: () => void;
   onPeriodoActualizado: (periodo: string | null) => void;
@@ -131,6 +137,10 @@ export default function ReporteDrawer({
               <Loading />
             ) : reporte.tipo === "venta_interna" ? (
               <VentasTabla lineas={lineasVenta} onVerCrudo={verCrudo} />
+            ) : reporte.tipo === "mvr" ? (
+              <CostosTabla lineas={lineasCosto} />
+            ) : reporte.tipo === "cotizaciones" ? (
+              <CotizacionesTabla lineas={lineasCotizacion} />
             ) : reporte.tipo === "bono_contingencia" ? (
               <BonoResumenTabla bono={bonoResumen} />
             ) : reporte.tipo === "actualizacion_abb" ? (
@@ -403,6 +413,106 @@ function ComisionTabla({
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Mismo formato que la tabla de comisiones: encabezado gris, una fila por renglón, montos a la
+// derecha y tabulares, el estado como badge. Lo que cambia son las columnas, porque un cargo de
+// MVR no tiene póliza ni prima — tiene conductor, estado y fecha de orden.
+function CostosTabla({ lineas }: { lineas: LineaCostoVista[] }) {
+  if (lineas.length === 0) {
+    return <div className="py-8 text-center text-[13px] text-muted">Todavía no hay cargos extraídos de este archivo.</div>;
+  }
+  const total = lineas.reduce((s, l) => s + Number(l.monto ?? 0), 0);
+  const conCargo = lineas.filter((l) => Number(l.monto ?? 0) > 0).length;
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Un MVR en cero no es un error: es uno que la compañía no cobró. Por eso se cuentan
+          aparte — si no, "389 cargos" suena a mucho más plata de la que es. */}
+      <div className="text-[13px] text-muted">
+        {lineas.length} cargo{lineas.length === 1 ? "" : "s"} · {conCargo} con costo ·{" "}
+        <span className="font-medium text-foreground">{money(total)}</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="mt-1.5 w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="bg-background">
+              {["Fila", "Asegurado", "Conductor", "Est.", "Fecha", "Monto", "Agente", "Estado"].map((h) => (
+                <th key={h} className="whitespace-nowrap border-b border-border px-3.5 py-2 text-left font-medium text-muted">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {lineas.map((l) => (
+              <tr key={l.id} className="border-b border-border last:border-b-0">
+                <td className="px-3.5 py-2 font-medium text-foreground">Fila {l.fila ?? "—"}</td>
+                <td className="px-3.5 py-2">
+                  {l.es_comercial ? <span className="text-muted">Comercial (sin asegurado)</span> : l.asegurado_crudo ?? "—"}
+                </td>
+                <td className="px-3.5 py-2 text-muted">{l.conductor_crudo ?? "—"}</td>
+                <td className="px-3.5 py-2 text-muted">{l.estado_us ?? "—"}</td>
+                <td className="px-3.5 py-2 text-muted">{l.fecha_orden ?? "—"}</td>
+                <td className="px-3.5 py-2 text-right font-medium tabular-nums">{money(Number(l.monto ?? 0))}</td>
+                <td className="px-3.5 py-2">{l.agente ?? <span className="text-muted">—</span>}</td>
+                <td className="px-3.5 py-2">
+                  <Badge tone={l.agente ? "ok" : "warn"}>{l.agente ? "Asignado" : "Sin identificar"}</Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function CotizacionesTabla({ lineas }: { lineas: LineaCotizacionVista[] }) {
+  if (lineas.length === 0) {
+    return <div className="py-8 text-center text-[13px] text-muted">Todavía no hay cotizaciones extraídas de este archivo.</div>;
+  }
+  const conAgente = lineas.filter((q) => q.agente).length;
+  return (
+    <div className="flex flex-col gap-2">
+      {/* El dato que importa de este archivo no es cuántas cotizaciones trae sino cuántas tienen
+          un agente reconocido: una cotización sin agente no sirve para identificar ningún MVR. */}
+      <div className="text-[13px] text-muted">
+        {lineas.length} cotizaciones ·{" "}
+        <span className={conAgente === lineas.length ? "font-medium text-foreground" : "font-medium text-warn-fg"}>
+          {conAgente} con agente reconocido
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="mt-1.5 w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="bg-background">
+              {["Fila", "Cliente", "Agente (archivo)", "Oficina (archivo)", "Compañía", "Estado", "Fecha", "Reconocido"].map((h) => (
+                <th key={h} className="whitespace-nowrap border-b border-border px-3.5 py-2 text-left font-medium text-muted">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {lineas.map((q) => (
+              <tr key={q.id} className="border-b border-border last:border-b-0">
+                <td className="px-3.5 py-2 font-medium text-foreground">Fila {q.fila ?? "—"}</td>
+                <td className="px-3.5 py-2">{q.nombre_crudo ?? "—"}</td>
+                <td className="px-3.5 py-2">{q.agente_texto ?? <span className="text-bad-fg">sin dato</span>}</td>
+                <td className="px-3.5 py-2 text-muted">{q.oficina_texto ?? "—"}</td>
+                <td className="px-3.5 py-2 text-muted">{q.carrier_texto ?? "—"}</td>
+                <td className="px-3.5 py-2 text-muted">{q.estado_cotizacion ?? "—"}</td>
+                <td className="px-3.5 py-2 text-muted">{q.fecha ?? "—"}</td>
+                <td className="px-3.5 py-2">
+                  <Badge tone={q.agente ? "ok" : "bad"}>{q.agente ?? "No reconocido"}</Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

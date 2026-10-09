@@ -13,6 +13,8 @@ import type { ClaveTexto, Idioma } from "@/lib/i18n/textos";
 import {
   esReporteReintentable,
   getReporteLineas,
+  type LineaCostoVista,
+  type LineaCotizacionVista,
   listAseguradoras,
   listReportes,
   reintentarExtraccion,
@@ -158,6 +160,8 @@ export default function SubirPage() {
   const [lineasComision, setLineasComision] = useState<LineaComision[]>([]);
   const [lineasVenta, setLineasVenta] = useState<LineaVenta[]>([]);
   const [bonoResumen, setBonoResumen] = useState<BonoResumen | null>(null);
+  const [lineasCosto, setLineasCosto] = useState<LineaCostoVista[]>([]);
+  const [lineasCotizacion, setLineasCotizacion] = useState<LineaCotizacionVista[]>([]);
   const [loadingLineas, setLoadingLineas] = useState(false);
   // último reporte pedido para la vista previa: descarta respuestas fuera de orden (ver abrirVistaPrevia)
   const solicitudLineasRef = useRef<string | null>(null);
@@ -250,12 +254,16 @@ export default function SubirPage() {
     setLoadingLineas(true);
     setLineasComision([]);
     setLineasVenta([]);
+    setLineasCosto([]);
+    setLineasCotizacion([]);
     setBonoResumen(null);
     try {
-      const { comision, venta, bono } = await getReporteLineas(reporte.id, reporte.tipo);
+      const { comision, venta, bono, costo, cotizacion } = await getReporteLineas(reporte.id, reporte.tipo);
       if (solicitudLineasRef.current !== reporte.id) return; // llegó una solicitud más nueva mientras tanto: descartar
       setLineasComision(comision);
       setLineasVenta(venta);
+      setLineasCosto(costo);
+      setLineasCotizacion(cotizacion);
       setBonoResumen(bono);
     } catch (err) {
       if (solicitudLineasRef.current !== reporte.id) return;
@@ -789,6 +797,8 @@ export default function SubirPage() {
         <ReporteDrawer
           reporte={selectedReporte}
           lineasComision={lineasComision}
+          lineasCosto={lineasCosto}
+          lineasCotizacion={lineasCotizacion}
           lineasVenta={lineasVenta}
           bonoResumen={bonoResumen}
           loadingLineas={loadingLineas}
