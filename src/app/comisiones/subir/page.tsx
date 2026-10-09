@@ -306,6 +306,12 @@ export default function SubirPage() {
   }
   function onFilaClick(reporte: Reporte) {
     if (!isPreviewable(reporte.estado)) return;
+    // El MVR tiene pantalla propia: es la unica donde hay trabajo por hacer renglon por
+    // renglon. El QuoteReport no — ese se consulta en el panel y no se edita.
+    if (reporte.tipo === "mvr") {
+      router.push(`/comisiones/mvr/?id=${reporte.id}`);
+      return;
+    }
     if (TIPOS_PANTALLA_STATEMENT.has(reporte.tipo)) {
       router.push(`/comisiones/statement/?id=${reporte.id}`);
     } else {
