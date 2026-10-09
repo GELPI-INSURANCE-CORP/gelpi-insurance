@@ -812,7 +812,7 @@ const CAMPOS_VENTA = [
 // En el archivo de agosto de Progressive eran 389 renglones para 190 casos.
 const CAMPOS_MVR = [
   "asegurado_crudo", "conductor_crudo", "estado_us", "fecha_orden", "tipo_costo", "monto",
-  "agente_texto",
+  "agente_texto", "cotizacion_crudo",
 ] as const;
 
 // El QuoteReport del sistema de la agencia. Siempre viene igual, pero pasa por el mismo mapeo
@@ -883,6 +883,7 @@ function buildFilaSchema(variante: Variante): Record<string, unknown> {
       estado_us: { type: ["string", "null"], description: "Estado de 2 letras: FL, TX, NJ, NY, KY. La tarifa depende de él." },
       fecha_orden: { type: ["string", "null"], description: "YYYY-MM-DD" },
       tipo_costo: { type: ["string", "null"], description: "Ej: 'Personal Lines MVR', 'Commercial Lines MVR', 'Loss Hist Chargeback'." },
+      cotizacion_crudo: { type: ["string", "null"], description: "Numero de cotizacion o quote, tal cual viene (ej. Kemper manda 'Quote ID')." },
       agente_texto: { type: ["string", "null"], description: "Columna de productor o agente CON NOMBRE de persona, si el archivo la trae (ej. National General manda 'Quoting Producer'). NO uses una columna que traiga un codigo numerico de agencia." },
       monto: { type: ["number", "string", "null"], description: "Lo cobrado. Puede ser 0." },
       confianza: { type: ["number", "null"] },
@@ -1054,7 +1055,7 @@ Vas a recibir uno de estos tipos de documentos:
 - Reportes de ventas internas de la agencia (venta_interna): cada fila es una venta hecha por un agente/oficina de Gelpi.
 - Statements de bono o contingencia de una aseguradora (bono_contingencia): un monto total, a veces desglosado por agente/productor.
 - El "Active Business Book" (actualizacion_abb): el libro maestro de pólizas vigentes con cliente, aseguradora, agente y oficina asignados.
-- Reportes de cargos por MVR (mvr): lo que una aseguradora le cobra a la agencia por correr reportes de manejo (Motor Vehicle Record). Progressive los titula "MVR Chargeback" y trae Named Insured / Driver Name / State / Order Date / Chargeback Type / Amount; National General trae Drivers Name / DL State / Order Date / TransType / Amount / Quoting Producer y NO trae asegurado; United, Kemper y Responsive mandan el suyo con otros títulos. LO QUE NO PUEDE FALTAR ES EL NOMBRE: el nombre del asegurado y el del conductor son lo único que permite saber de quién es el cargo, y un reporte sin nombres no sirve para nada. Si el archivo trae cualquier columna con un nombre de persona, mapeala — a asegurado_crudo la del titular, a conductor_crudo la del conductor — antes que mandarla a campos_extra. UN RENGLÓN ES UN CONDUCTOR, no una póliza: si una familia tiene cuatro conductores, son cuatro renglones con el mismo asegurado. El monto suele ser chico (0 a 15 dólares) y MUCHOS VIENEN EN CERO — un cero no es un error, es un MVR que no cobraron, y hay que traerlo igual; si vienen en negativo, traelos en negativo tal cual, el signo lo arregla el sistema. Si el asegurado viene "N/A" o vacío, dejalo tal cual: no lo inventes ni lo copies del conductor. Si hay una columna de productor o agente CON NOMBRE DE PERSONA (ej. "Quoting Producer"), va a agente_texto; si lo que hay es un código numérico de agencia, dejalo en campos_extra.
+- Reportes de cargos por MVR (mvr): lo que una aseguradora le cobra a la agencia por correr reportes de manejo (Motor Vehicle Record) y de siniestros (CLUE). Cada una manda el suyo distinto: Progressive titula "MVR Chargeback" y trae Named Insured / Driver Name / State / Order Date / Chargeback Type / Amount; National General trae Drivers Name / DL State / Order Date / TransType / Amount / Quoting Producer y NO trae asegurado; Kemper manda un "Point of Sale Detail" con Producer Code / State / Line Of Business / Program / Date Ordered / Quote ID / "Name Insured / Driver Name" / Report Type / Cost / Date Uploaded / Charges. LO QUE NO PUEDE FALTAR ES EL NOMBRE: el del asegurado y el del conductor son lo unico que permite saber de quien es el cargo, y un reporte sin nombres no sirve para nada. Si el archivo trae cualquier columna con un nombre de persona, mapeala -- a asegurado_crudo la del titular, a conductor_crudo la del conductor -- antes que mandarla a campos_extra; si viene UNA sola columna con los dos (Kemper), mandala a asegurado_crudo tal cual, con el sufijo "[NI]" incluido si lo trae, que el sistema lo interpreta. UN RENGLON ES UN CONDUCTOR, no una poliza: si una familia tiene cuatro conductores, son cuatro renglones. CUANDO HAY DOS COLUMNAS DE PLATA, elegi SIEMPRE la de lo efectivamente cobrado y no la de la tarifa: en Kemper eso es "Charges" y NO "Cost" (Cost dice cuanto vale el reporte, Charges cuanto descontaron de verdad, y en septiembre fueron $572.15 contra $399.65). El monto suele ser chico (0 a 15 dolares) y MUCHOS VIENEN EN CERO -- un cero no es un error, es un reporte que no cobraron, y hay que traerlo igual; si vienen en negativo, traelos en negativo tal cual, el signo lo arregla el sistema. El tipo de reporte (MVR, CLUE, "Loss Hist Chargeback") va a tipo_costo. Si el archivo trae numero de cotizacion o Quote ID, va a cotizacion_crudo: varias filas con el mismo numero son la misma cotizacion y el sistema las usa juntas. Si el asegurado viene "N/A" o vacio, dejalo tal cual: no lo inventes ni lo copies del conductor. Si hay una columna de productor o agente CON NOMBRE DE PERSONA (ej. "Quoting Producer"), va a agente_texto; si lo que hay es un codigo numerico de agencia (ej. el Producer Code 5539583 de Kemper, que es uno solo para toda la agencia), dejalo en campos_extra. NO TRAIGAS las filas de encabezado del archivo ("Producer Code:", "Report Period:", "Generated On") ni las de totales ("Grand Totals", "Total"): no son cargos de nadie y sumarlas duplicaria el total del reporte.
 - Reportes de cotizaciones (cotizaciones): el QuoteReport del sistema de la agencia. Una fila por cotización. EL MAPEO DE ESTE TIPO ES FIJO Y NO HAY QUE INTERPRETARLO — el archivo siempre trae estos títulos exactos y van a estos campos, sin excepción:
     ClientFirstName -> pila_crudo
     ClientLastName  -> apellido_crudo
@@ -1728,38 +1729,78 @@ Deno.serve(async (req: Request) => {
         const estado = (f.estado_us as string | null)
           ?? delExtra(f, /dlstate|licensestate/i)
           ?? delExtra(f, /govstate|^state$/i);
-        // Las dos compañías que mandan MVR lo firman al revés: Progressive cobra 8.00 y National
-        // General cobra -1.00, por el mismo cargo. Si se guardaran tal cual, los totales por
-        // oficina se cancelarían entre sí. Un archivo de cargos solo cobra, nunca devuelve, así
-        // que el signo es decoración de cada compañía y lo que vale es cuánto.
-        const bruto = coerceNumber(f.monto) ?? coerceNumber(delExtra(f, /^amount$|chargeamount|^charge$|^monto$/i)) ?? 0;
+
+        // OJO CON KEMPER: su "Point of Sale Detail" trae DOS columnas de plata, Cost y Charges, y
+        // no son lo mismo. Cost es la tarifa del reporte; Charges es lo que la compañía REALMENTE
+        // descuenta, y muchas filas valen $5.00 pero cobran $0.00 porque no las facturaron. En el
+        // archivo de septiembre: Cost suma $572.15 y Charges $399.65. Tomar la columna equivocada
+        // le cobraría a las oficinas $172.50 que nadie les cobró. Charges manda; Cost es el último
+        // recurso, para una compañía que solo mande esa.
+        const bruto =
+          coerceNumber(f.monto)
+          ?? coerceNumber(delExtra(f, /^charges$|chargeamount|^amount$|^monto$/i))
+          ?? coerceNumber(delExtra(f, /^cost$|^charge$/i))
+          ?? 0;
+
+        // Los nombres. Progressive manda asegurado y conductor en columnas separadas; Kemper los
+        // manda en UNA sola ("Name Insured / Driver Name") y marca al titular con un sufijo [NI].
+        // Ese sufijo hay que sacarlo sí o sí: "WENDY PEREZ [NI]" no pega contra "WENDY PEREZ" ni
+        // en las cotizaciones ni en el Book, y el cargo quedaría sin dueño por tres letras.
+        const SUFIJO_NI = /\s*\[\s*NI\s*\]\s*$/i;
+        const limpiar = (s: string | null | undefined) =>
+          (typeof s === "string" ? s.replace(SUFIJO_NI, "").trim() : "") || null;
+
+        let aseg = (f.asegurado_crudo as string | null)
+          ?? delExtra(f, /namedinsured|nameinsured|insuredname|^insured$/i);
+        let cond = (f.conductor_crudo as string | null)
+          ?? delExtra(f, /driversname|drivername|^driver$/i);
+
+        // Columna única con las dos cosas: el [NI] dice cuál de las dos es.
+        if (!aseg && !cond) {
+          const unico = delExtra(f, /insured.*driver|driver.*insured|^name$/i);
+          if (unico && SUFIJO_NI.test(unico)) aseg = unico;
+          else cond = unico;
+        } else if (!aseg && cond && SUFIJO_NI.test(cond)) {
+          aseg = cond;
+          cond = null;
+        }
+
         return {
           reporte_id: reporteId,
           fila: f.fila ?? null,
+          // "Report Type" de Kemper dice CLUE o MVR, y son cargos distintos que conviven en el
+          // mismo archivo (102 CLUE y 44 MVR en septiembre). Guardarlo deja verlos por separado
+          // en vez de un bulto de "cargos".
           tipo_costo:
             ((f.tipo_costo as string | null)
-              ?? delExtra(f, /transtype|chargebacktype/i)
+              ?? delExtra(f, /reporttype|transtype|chargebacktype/i)
               ?? delExtra(f, /^product$|^type$/i)) || "mvr",
-          asegurado_crudo:
-            ((f.asegurado_crudo as string | null) ?? delExtra(f, /namedinsured|insuredname|^insured$/i)) || null,
-          conductor_crudo:
-            ((f.conductor_crudo as string | null) ?? delExtra(f, /driversname|drivername|^driver$/i)) || null,
+          asegurado_crudo: limpiar(aseg),
+          conductor_crudo: limpiar(cond),
           estado_us: typeof estado === "string" ? estado.trim().toUpperCase().slice(0, 2) : null,
-          fecha_orden: coerceDate(f.fecha_orden) ?? coerceDate(delExtra(f, /orderdate|fechaorden|^date$/i)),
+          fecha_orden: coerceDate(f.fecha_orden) ?? coerceDate(delExtra(f, /dateordered|orderdate|fechaorden|^date$/i)),
+          // El número de cotización, cuando la compañía lo manda. Vale oro: Kemper pone varias
+          // filas con el mismo Quote ID -- el titular y cada conductor de esa misma cotización --
+          // y los conductores no aparecen en el Book porque la póliza no es de ellos. Sabiendo
+          // que son la misma cotización, el dueño que se encuentra para uno vale para todos.
+          cotizacion_crudo:
+            ((f.cotizacion_crudo as string | null) ?? delExtra(f, /quoteid|quotenum|numerocotizacion/i)) || null,
           // El productor que trae el archivo NO dice de quién es el cargo, y guardarlo como si lo
           // dijera sería cobrarle a la persona equivocada. National General manda "Quoting
           // Producer" con el usuario que estaba logueado: Thalía cotiza bajo el usuario de
-          // Arturo, así que sus MVR le caerían a él. Se guarda porque sirve de pista cuando el
-          // cliente no aparece en ninguna cotización, pero el cruce contra el cliente manda
-          // siempre. Esa regla vive en matchear_costo(), no acá.
+          // Arturo, así que sus MVR le caerían a él. Y Kemper manda un solo código, 5539583, para
+          // toda la agencia — por eso acá se piden nombres y no códigos. Se guarda porque sirve
+          // de pista cuando el cliente no aparece en ninguna cotización, pero el cruce contra el
+          // cliente manda siempre. Esa regla vive en matchear_costo(), no acá.
           agente_texto:
             ((f.agente_texto as string | null) ??
               delExtra(f, /quotingproducer|quotecreatedby/i) ??
               delExtra(f, /producername|^producer$/i)) || null,
           // Un MVR en cero NO es un dato faltante: es un MVR que la compañía no cobró. En el
-          // archivo de agosto de Progressive eran 100 de 389. Si esto fuera `?? null` la columna
-          // (not null default 0) los convertiría igual, pero dejarlo explícito evita que mañana
-          // alguien "arregle" el default y empiece a perder renglones.
+          // archivo de agosto de Progressive eran 100 de 389, y en el de Kemper son más de la
+          // mitad. Si esto fuera `?? null` la columna (not null default 0) los convertiría igual,
+          // pero dejarlo explícito evita que mañana alguien "arregle" el default y empiece a
+          // perder renglones.
           monto: Math.abs(bruto),
         };
       });
