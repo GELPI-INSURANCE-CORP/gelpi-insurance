@@ -812,7 +812,7 @@ const CAMPOS_VENTA = [
 // En el archivo de agosto de Progressive eran 389 renglones para 190 casos.
 const CAMPOS_MVR = [
   "asegurado_crudo", "conductor_crudo", "estado_us", "fecha_orden", "tipo_costo", "monto",
-  "agente_texto", "cotizacion_crudo",
+  "agente_texto", "cotizacion_crudo", "monto_credito",
 ] as const;
 
 // El QuoteReport del sistema de la agencia. Siempre viene igual, pero pasa por el mismo mapeo
@@ -885,7 +885,8 @@ function buildFilaSchema(variante: Variante): Record<string, unknown> {
       tipo_costo: { type: ["string", "null"], description: "Ej: 'Personal Lines MVR', 'Commercial Lines MVR', 'Loss Hist Chargeback'." },
       cotizacion_crudo: { type: ["string", "null"], description: "Numero de cotizacion o quote, tal cual viene (ej. Kemper manda 'Quote ID')." },
       agente_texto: { type: ["string", "null"], description: "Columna de productor o agente CON NOMBRE de persona, si el archivo la trae (ej. National General manda 'Quoting Producer'). NO uses una columna que traiga un codigo numerico de agencia." },
-      monto: { type: ["number", "string", "null"], description: "Lo cobrado. Puede ser 0." },
+      monto: { type: ["number", "string", "null"], description: "Lo que la compania COBRA por el reporte. Puede ser 0. Si hay una columna de tarifa y otra de cobrado (Kemper: Cost y Charges), aca va la de COBRADO." },
+      monto_credito: { type: ["number", "string", "null"], description: "La columna de CREDITO o devolucion de la misma fila, si el archivo la trae (United: 'Mvr Credit', viene en negativo cuando el cliente pago el MVR). Copiala tal cual, en negativo. Null si el archivo no tiene esa columna. NO la restes vos: el sistema hace la cuenta." },
       confianza: { type: ["number", "null"] },
       campos_extra: campoExtraProp,
     };
@@ -1742,13 +1743,19 @@ Deno.serve(async (req: Request) => {
         //
         // En los dos casos, tomar la primera columna que aparece le cobraría a las oficinas
         // plata que nadie les cobró. Acá: la cifra neta manda, la tarifa es el último recurso.
-        const credito = coerceNumber(delExtra(f, /mvrcredit|^credit$|^credito$/i)) ?? 0;
+        // El credito sale de su propio campo declarado y, si el modelo no lo mando ahi, de la
+        // columna suelta. Depender solo de campos_extra no alcanzo: en el archivo de United de
+        // septiembre el modelo puso el credito en 60 de las 70 filas y en 10 no, asi que esas 10
+        // se cobraron enteras. $83.50 de mas sobre $317.30 -- un cuarto del archivo.
+        const credito =
+          coerceNumber(f.monto_credito)
+          ?? coerceNumber(delExtra(f, /mvrcredit|^credit$|^credito$/i))
+          ?? 0;
         const cargo =
           coerceNumber(f.monto)
           ?? coerceNumber(delExtra(f, /^charges$|mvrcharge|chargeamount|^amount$|^monto$/i))
           ?? coerceNumber(delExtra(f, /^cost$|^charge$/i))
           ?? 0;
-        const bruto = cargo + credito;
 
         // Los nombres. Progressive manda asegurado y conductor en columnas separadas; Kemper los
         // manda en UNA sola ("Name Insured / Driver Name") y marca al titular con un sufijo [NI].
@@ -1772,6 +1779,19 @@ Deno.serve(async (req: Request) => {
           aseg = cond;
           cond = null;
         }
+
+        // EL PIE DE PAGINA NO ES UN CARGO. El prompt le pide al modelo que no traiga los totales
+        // del archivo, y aun asi trajo dos de United: "REQUESTED 65 $542.75" y "COLLECTED FROM
+        // INSURED 27 $225.45", con el 65 y el 27 metidos como si fueran nombres de conductor.
+        // Pedirselo no alcanza; se verifica.
+        //
+        // La regla es dura y simple: un cargo es de una PERSONA. Si el renglon trae algo en el
+        // lugar del nombre y ese algo no tiene una sola letra -- "65", "27", "$ 542.75" -- no es
+        // una persona. Un renglon sin ningun nombre SI pasa, porque ese es un caso real (los
+        // comerciales de Progressive) y tiene que verse en la pantalla, no desaparecer.
+        const nombreJunto = `${aseg ?? ""} ${cond ?? ""}`.trim();
+        const esTotal = /^(requested|collected|grand\s*total|totals?|mvr\s*(count|cost|conversion)|cost\s*to\s*agent)/i;
+        if (nombreJunto && (!/\p{L}/u.test(nombreJunto) || esTotal.test(nombreJunto))) return null;
 
         return {
           reporte_id: reporteId,
@@ -1814,9 +1834,32 @@ Deno.serve(async (req: Request) => {
           // mitad. Si esto fuera `?? null` la columna (not null default 0) los convertiría igual,
           // pero dejarlo explícito evita que mañana alguien "arregle" el default y empiece a
           // perder renglones.
-          monto: Math.abs(bruto),
+          // El neto, CON SU SIGNO. Un negativo no siempre es un cargo escrito al reves: en el
+          // archivo de United hay 5 filas con cargo 0.00 y credito -8.35, que son devoluciones
+          // de MVR cobrados en un mes anterior. Tomando el valor absoluto, esas devoluciones se
+          // convertian en cargos: $41.75 cobrados que no se cobran, y $41.75 que te devuelven
+          // sin restar. $83.50 sobre un archivo de $317.30 -- un cuarto de mas.
+          //
+          // La convencion de signo de cada compania se resuelve DESPUES, mirando el archivo
+          // entero, no fila por fila.
+          monto: cargo + credito,
         };
-      });
+      }).filter((b): b is Exclude<typeof b, null> => b !== null);
+
+      // LA CONVENCION DE SIGNO SE DECIDE POR ARCHIVO, NO POR FILA.
+      //
+      // National General escribe -1.00 en todas sus filas: su forma de decir "la agencia paga un
+      // dolar". Progressive y Kemper escriben el mismo cargo en positivo. Y United usa el signo
+      // para algo de verdad: tiene cargos positivos, cargos neteados a cero, y devoluciones
+      // negativas de meses anteriores, todo en el mismo archivo.
+      //
+      // Por eso la regla no puede ser "todo en positivo" (perderia las devoluciones de United)
+      // ni "respetar el signo" (cobraria en negativo todo National General). Se mira el archivo
+      // entero: si TODAS sus cifras distintas de cero son negativas, es una convencion y se da
+      // vuelta. Si hay mezcla, los signos significan algo y se respetan.
+      const montosNoCero = batch.filter((b) => b.monto !== 0).map((b) => b.monto);
+      const todasNegativas = montosNoCero.length > 0 && montosNoCero.every((m) => m < 0);
+      if (todasNegativas) for (const b of batch) b.monto = -b.monto;
 
       await limpiarLineasPrevias(admin, reporteId!);
       for (const b of chunk(batch, 500)) {
