@@ -309,29 +309,34 @@ comment on function matchear_linea is
 -- ---------------------------------------------------------
 -- Solo informa. NO reprocesa nada: mover lineas ya conciliadas ahora mismo le cambiaria los
 -- totales a Arturo en medio del cierre de septiembre, y eso lo decide el.
+-- El agrupado va en un subquery y el string_agg afuera. La primera version los tenia juntos
+-- -- count(*) y sum() DENTRO del string_agg -- y Postgres lo rechaza entero con
+-- "42803: aggregate function calls cannot be nested". Un agregado no puede contener otro.
 select
   coalesce((
-    select string_agg(
-             a.nombre || ' (' || coalesce(oa.nombre, 'sin oficina') || ') tiene '
-               || count(*) || ' poliza' || case when count(*) = 1 then '' else 's' end
-               || ' marcada' || case when count(*) = 1 then '' else 's' end
-               || ' en ' || coalesce(op.nombre, 'sin oficina')
-               || ', con ' || coalesce(sum(lc.n), 0) || ' linea' || case when coalesce(sum(lc.n), 0) = 1 then '' else 's' end
-               || ' conciliada' || case when coalesce(sum(lc.n), 0) = 1 then '' else 's' end
-               || ' encima por $' || round(coalesce(sum(lc.com), 0), 2),
-             '   |   ')
-      from polizas p
-      join agentes a on a.id = p.agente_id
-      left join oficinas oa on oa.id = a.oficina_id
-      left join oficinas op on op.id = p.oficina_id
-      left join lateral (
-        select count(*) as n, coalesce(sum(x.monto), 0) as com
-          from lineas_comision x
-         where x.poliza_id = p.id
-           and x.estado in ('conciliado_auto', 'conciliado_confirmado')
-      ) lc on true
-     where p.oficina_id is distinct from a.oficina_id
-     group by a.nombre, oa.nombre, op.nombre
+    select string_agg(t.linea, '   |   ')
+      from (
+        select a.nombre || ' (' || coalesce(oa.nombre, 'sin oficina') || ') tiene '
+                 || count(*) || ' poliza' || case when count(*) = 1 then '' else 's' end
+                 || ' marcada' || case when count(*) = 1 then '' else 's' end
+                 || ' en ' || coalesce(op.nombre, 'sin oficina')
+                 || ', con ' || coalesce(sum(lc.n), 0)
+                 || ' linea' || case when coalesce(sum(lc.n), 0) = 1 then '' else 's' end
+                 || ' conciliada' || case when coalesce(sum(lc.n), 0) = 1 then '' else 's' end
+                 || ' encima por $' || round(coalesce(sum(lc.com), 0), 2) as linea
+          from polizas p
+          join agentes a on a.id = p.agente_id
+          left join oficinas oa on oa.id = a.oficina_id
+          left join oficinas op on op.id = p.oficina_id
+          left join lateral (
+            select count(*) as n, coalesce(sum(x.monto), 0) as com
+              from lineas_comision x
+             where x.poliza_id = p.id
+               and x.estado in ('conciliado_auto', 'conciliado_confirmado')
+          ) lc on true
+         where p.oficina_id is distinct from a.oficina_id
+         group by a.nombre, oa.nombre, op.nombre
+      ) t
   ), 'ninguna: el Book no se contradice en ninguna poliza') as lo_que_ya_estaba_cargado;
 
 notify pgrst, 'reload schema';
