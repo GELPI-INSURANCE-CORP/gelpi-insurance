@@ -1012,7 +1012,15 @@ Vas a recibir uno de estos tipos de documentos:
 - Statements de bono o contingencia de una aseguradora (bono_contingencia): un monto total, a veces desglosado por agente/productor.
 - El "Active Business Book" (actualizacion_abb): el libro maestro de pólizas vigentes con cliente, aseguradora, agente y oficina asignados.
 - Reportes de cargos por MVR (mvr): lo que una aseguradora le cobra a la agencia por correr reportes de manejo (Motor Vehicle Record). Progressive los titula "MVR Chargeback" y trae Named Insured / Driver Name / State / Order Date / Chargeback Type / Amount, pero United, Kemper y Responsive mandan el suyo con otros títulos. UN RENGLÓN ES UN CONDUCTOR, no una póliza: si una familia tiene cuatro conductores, son cuatro renglones con el mismo asegurado. El monto suele ser chico (0 a 15 dólares) y MUCHOS VIENEN EN CERO — un cero no es un error, es un MVR que no cobraron, y hay que traerlo igual. Si el asegurado viene "N/A" o vacío (los comerciales), dejalo tal cual: no lo inventes ni lo copies del conductor.
-- Reportes de cotizaciones (cotizaciones): el QuoteReport del sistema de la agencia. Una fila por cotización, con nombre y apellido del cliente en columnas separadas, quién la hizo (QuoteCreatedBy), la oficina (AgencyName), la compañía cotizada y el estado (Submitted/Quoted/Sold/Incomplete). Sirve para saber qué agente ordenó cada MVR.
+- Reportes de cotizaciones (cotizaciones): el QuoteReport del sistema de la agencia. Una fila por cotización. EL MAPEO DE ESTE TIPO ES FIJO Y NO HAY QUE INTERPRETARLO — el archivo siempre trae estos títulos exactos y van a estos campos, sin excepción:
+    ClientFirstName -> pila_crudo
+    ClientLastName  -> apellido_crudo
+    QuoteCreatedBy  -> agente_texto      (ESTE ES EL MÁS IMPORTANTE: es el único dato del archivo que dice qué agente hizo la cotización, y sin él todo el reporte es inútil porque no se puede identificar a quién pertenece cada MVR. Si existe una columna con ese nombre, SIEMPRE va acá.)
+    AgencyName      -> oficina_texto
+    Carrier         -> carrier_texto
+    QuoteStatus     -> estado_cotizacion
+    CreatedDate     -> fecha
+  Las demás columnas del archivo (teléfono, dirección, póliza, LOB, notas) van a columnas_sin_mapeo, no al mapeo.
 
 Tu trabajo es mapear las columnas del archivo a los campos destino que te pide la herramienta "registrar_extraccion" y devolver metadatos (tipo de reporte, aseguradora, período). Cuando se te indique explícitamente, también devolvés cada fila ya extraída.
 Reglas:
@@ -1675,20 +1683,45 @@ Deno.serve(async (req: Request) => {
       const { error: rpcErr } = await admin.rpc("procesar_costos", { p_reporte_id: reporteId });
       if (rpcErr) throw new ReporteError(`procesar_costos: ${rpcErr.message}`);
     } else if (tipoEfectivo === "cotizaciones") {
+      // RED DE SEGURIDAD. La primera vez que Arturo subió el QuoteReport entraron las 1393
+      // filas pero las 1393 sin agente: el modelo no mapeó "QuoteCreatedBy" a agente_texto, y
+      // sin eso ningún MVR se puede identificar — los 389 cargos quedaron sin dueño.
+      //
+      // El QuoteReport sale siempre del mismo sistema con los mismos títulos, así que no hay
+      // razón para que un dato que SÍ está en el archivo se pierda porque el modelo no eligió
+      // bien el destino. Si el campo mapeado viene vacío, se busca la columna por su nombre
+      // entre las que quedaron sin mapear.
+      const delExtra = (f: Record<string, unknown>, patron: RegExp): string | null => {
+        const crudo = f.campos_extra;
+        const obj = typeof crudo === "string" ? safeJsonParse<Record<string, unknown>>(crudo, {}) : crudo;
+        if (!obj || typeof obj !== "object") return null;
+        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+          if (!patron.test(k.replace(/[\s_-]/g, ""))) continue;
+          const s = String(v ?? "").trim();
+          if (s) return s;
+        }
+        return null;
+      };
+
       const batch = filasFinal.map((f) => {
-        const pila = (f.pila_crudo as string | null) ?? null;
-        const apellido = (f.apellido_crudo as string | null) ?? null;
+        const pila = ((f.pila_crudo as string | null) ?? delExtra(f, /clientfirstname|firstname|nombre/i)) || null;
+        const apellido = ((f.apellido_crudo as string | null) ?? delExtra(f, /clientlastname|lastname|apellido/i)) || null;
         return {
           reporte_id: reporteId,
           fila: f.fila ?? null,
           nombre_crudo: [pila, apellido].filter(Boolean).join(" ").trim() || null,
           pila_crudo: pila,
           apellido_crudo: apellido,
-          agente_texto: f.agente_texto ?? null,
-          oficina_texto: f.oficina_texto ?? null,
-          carrier_texto: f.carrier_texto ?? null,
-          estado_cotizacion: f.estado_cotizacion ?? null,
-          fecha: coerceDate(f.fecha),
+          // El agente es el campo que de verdad importa: sin él la cotización no sirve para
+          // identificar ningún MVR. Por eso es el que más vale la pena rescatar.
+          agente_texto:
+            ((f.agente_texto as string | null) ?? delExtra(f, /quotecreatedby|createdby|producer|agent/i)) || null,
+          oficina_texto:
+            ((f.oficina_texto as string | null) ?? delExtra(f, /agencyname|agency|oficina/i)) || null,
+          carrier_texto: ((f.carrier_texto as string | null) ?? delExtra(f, /^carrier$|compania/i)) || null,
+          estado_cotizacion:
+            ((f.estado_cotizacion as string | null) ?? delExtra(f, /quotestatus|status|estado/i)) || null,
+          fecha: coerceDate(f.fecha) ?? coerceDate(delExtra(f, /createddate|quotedate|fecha/i)),
         };
       });
 
