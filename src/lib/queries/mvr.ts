@@ -214,7 +214,20 @@ export async function getMvrDelMes(mes: string): Promise<MvrDetalle> {
   }>;
 
   const compañiaDe = new Map<string, string | null>(reps.map((r) => [r.id, r.aseguradoras?.nombre ?? null]));
-  const cargos = await traerTodos(reps.map((r) => r.id), compañiaDe);
+  // El QuoteReport del mes. En el consolidado se busca POR MES y no por el enlace: colgado esta
+  // de uno solo de los MVR, pero sirve para todos, y decir "no hay QuoteReport" cuando si lo hay
+  // mandaria a Arturo a subir de nuevo un archivo que ya esta.
+  const [cargos, cot] = await Promise.all([
+    traerTodos(reps.map((r) => r.id), compañiaDe),
+    supabase
+      .from("v_reportes")
+      .select("nombre_archivo, periodo, lineas_reales, ok_reales")
+      .eq("tipo", "cotizaciones")
+      .eq("mes_statement", mes)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   return {
     reporteId: "",
@@ -224,7 +237,14 @@ export async function getMvrDelMes(mes: string): Promise<MvrDetalle> {
     periodo: reps[0]?.periodo ?? mes,
     estado: reps.every((r) => r.estado === "cerrado") ? "cerrado" : "matcheado",
     aseguradora: [...new Set(reps.map((r) => r.aseguradoras?.nombre).filter(Boolean))].join(" + ") || null,
-    padron: null,
+    padron: cot.data
+      ? {
+          nombreArchivo: cot.data.nombre_archivo as string | null,
+          periodo: cot.data.periodo as string | null,
+          total: Number(cot.data.lineas_reales ?? 0),
+          conAgente: Number(cot.data.ok_reales ?? 0),
+        }
+      : null,
     resumen: resumirCargos(cargos),
     cargos,
   };
