@@ -1055,7 +1055,7 @@ Vas a recibir uno de estos tipos de documentos:
 - Reportes de ventas internas de la agencia (venta_interna): cada fila es una venta hecha por un agente/oficina de Gelpi.
 - Statements de bono o contingencia de una aseguradora (bono_contingencia): un monto total, a veces desglosado por agente/productor.
 - El "Active Business Book" (actualizacion_abb): el libro maestro de pólizas vigentes con cliente, aseguradora, agente y oficina asignados.
-- Reportes de cargos por MVR (mvr): lo que una aseguradora le cobra a la agencia por correr reportes de manejo (Motor Vehicle Record) y de siniestros (CLUE). Cada una manda el suyo distinto: Progressive titula "MVR Chargeback" y trae Named Insured / Driver Name / State / Order Date / Chargeback Type / Amount; National General trae Drivers Name / DL State / Order Date / TransType / Amount / Quoting Producer y NO trae asegurado; Kemper manda un "Point of Sale Detail" con Producer Code / State / Line Of Business / Program / Date Ordered / Quote ID / "Name Insured / Driver Name" / Report Type / Cost / Date Uploaded / Charges. LO QUE NO PUEDE FALTAR ES EL NOMBRE: el del asegurado y el del conductor son lo unico que permite saber de quien es el cargo, y un reporte sin nombres no sirve para nada. Si el archivo trae cualquier columna con un nombre de persona, mapeala -- a asegurado_crudo la del titular, a conductor_crudo la del conductor -- antes que mandarla a campos_extra; si viene UNA sola columna con los dos (Kemper), mandala a asegurado_crudo tal cual, con el sufijo "[NI]" incluido si lo trae, que el sistema lo interpreta. UN RENGLON ES UN CONDUCTOR, no una poliza: si una familia tiene cuatro conductores, son cuatro renglones. CUANDO HAY DOS COLUMNAS DE PLATA, elegi SIEMPRE la de lo efectivamente cobrado y no la de la tarifa: en Kemper eso es "Charges" y NO "Cost" (Cost dice cuanto vale el reporte, Charges cuanto descontaron de verdad, y en septiembre fueron $572.15 contra $399.65). El monto suele ser chico (0 a 15 dolares) y MUCHOS VIENEN EN CERO -- un cero no es un error, es un reporte que no cobraron, y hay que traerlo igual; si vienen en negativo, traelos en negativo tal cual, el signo lo arregla el sistema. El tipo de reporte (MVR, CLUE, "Loss Hist Chargeback") va a tipo_costo. Si el archivo trae numero de cotizacion o Quote ID, va a cotizacion_crudo: varias filas con el mismo numero son la misma cotizacion y el sistema las usa juntas. Si el asegurado viene "N/A" o vacio, dejalo tal cual: no lo inventes ni lo copies del conductor. Si hay una columna de productor o agente CON NOMBRE DE PERSONA (ej. "Quoting Producer"), va a agente_texto; si lo que hay es un codigo numerico de agencia (ej. el Producer Code 5539583 de Kemper, que es uno solo para toda la agencia), dejalo en campos_extra. NO TRAIGAS las filas de encabezado del archivo ("Producer Code:", "Report Period:", "Generated On") ni las de totales ("Grand Totals", "Total"): no son cargos de nadie y sumarlas duplicaria el total del reporte.
+- Reportes de cargos por MVR (mvr): lo que una aseguradora le cobra a la agencia por correr reportes de manejo (Motor Vehicle Record) y de siniestros (CLUE). Cada una manda el suyo distinto: Progressive titula "MVR Chargeback" y trae Named Insured / Driver Name / State / Order Date / Chargeback Type / Amount; National General trae Drivers Name / DL State / Order Date / TransType / Amount / Quoting Producer y NO trae asegurado; Kemper manda un "Point of Sale Detail" con Producer Code / State / Line Of Business / Program / Date Ordered / Quote ID / "Name Insured / Driver Name" / Report Type / Cost / Date Uploaded / Charges; United manda "Quote Id# / Driver Name / License Number / Agency / Transaction / Comments / User Id / Entry Date / Mvr Charge / Mvr Credit". LO QUE NO PUEDE FALTAR ES EL NOMBRE: el del asegurado y el del conductor son lo unico que permite saber de quien es el cargo, y un reporte sin nombres no sirve para nada. Si el archivo trae cualquier columna con un nombre de persona, mapeala -- a asegurado_crudo la del titular, a conductor_crudo la del conductor -- antes que mandarla a campos_extra; si viene UNA sola columna con los dos (Kemper), mandala a asegurado_crudo tal cual, con el sufijo "[NI]" incluido si lo trae, que el sistema lo interpreta. UN RENGLON ES UN CONDUCTOR, no una poliza: si una familia tiene cuatro conductores, son cuatro renglones. CUANDO HAY DOS COLUMNAS DE PLATA, mapea A MONTO LA DEL CARGO y deja la otra en campos_extra SIN TOCARLA, que el sistema hace la cuenta: en Kemper el cargo es "Charges" y NO "Cost"; en United el cargo es "Mvr Charge" y el credito es "Mvr Credit" (viene en negativo cuando el cliente pago el MVR y la agencia no lo paga). El monto suele ser chico (0 a 15 dolares) y MUCHOS VIENEN EN CERO -- un cero no es un error, es un reporte que no cobraron, y hay que traerlo igual; si vienen en negativo, traelos en negativo tal cual, el signo lo arregla el sistema. El tipo de reporte (MVR, CLUE, "Loss Hist Chargeback") va a tipo_costo. Si el archivo trae numero de cotizacion, Quote ID o "Quote Id#", va a cotizacion_crudo: varias filas con el mismo numero son la misma cotizacion y el sistema las usa juntas. Si el asegurado viene "N/A" o vacio, dejalo tal cual: no lo inventes ni lo copies del conductor. Si hay una columna de productor o agente CON NOMBRE DE PERSONA (ej. "Quoting Producer"), va a agente_texto; si lo que hay es un codigo numerico de agencia (ej. el Producer Code 5539583 de Kemper, que es uno solo para toda la agencia), dejalo en campos_extra; el "User Id" de United (NLOBO1, VIDAL03, 101418) va a campos_extra, que el sistema lo busca ahi. NO TRAIGAS las filas que no son un cargo de una persona: los encabezados del archivo ("Producer Code:", "Report Period:", "Generated On", "70 records found."), ni los totales del pie ("Grand Totals", "Total", "REQUESTED", "COLLECTED FROM INSURED", "MVR CONVERSION PERCENTAGE", "COST TO AGENT IF CONVERSION BELOW 40%"). Sumarlas duplicaria el total del reporte.
 - Reportes de cotizaciones (cotizaciones): el QuoteReport del sistema de la agencia. Una fila por cotización. EL MAPEO DE ESTE TIPO ES FIJO Y NO HAY QUE INTERPRETARLO — el archivo siempre trae estos títulos exactos y van a estos campos, sin excepción:
     ClientFirstName -> pila_crudo
     ClientLastName  -> apellido_crudo
@@ -1730,17 +1730,25 @@ Deno.serve(async (req: Request) => {
           ?? delExtra(f, /dlstate|licensestate/i)
           ?? delExtra(f, /govstate|^state$/i);
 
-        // OJO CON KEMPER: su "Point of Sale Detail" trae DOS columnas de plata, Cost y Charges, y
-        // no son lo mismo. Cost es la tarifa del reporte; Charges es lo que la compañía REALMENTE
-        // descuenta, y muchas filas valen $5.00 pero cobran $0.00 porque no las facturaron. En el
-        // archivo de septiembre: Cost suma $572.15 y Charges $399.65. Tomar la columna equivocada
-        // le cobraría a las oficinas $172.50 que nadie les cobró. Charges manda; Cost es el último
-        // recurso, para una compañía que solo mande esa.
-        const bruto =
+        // CUIDADO CON LAS DOS COLUMNAS DE PLATA. Ninguna compañía manda una sola cifra.
+        //
+        // Kemper manda Cost y Charges: Cost es la tarifa del reporte y Charges lo que descuenta
+        // de verdad. Más de la mitad de sus filas valen $5.00 o $1.85 y cobran $0.00 porque no
+        // las facturaron: en septiembre, $572.15 contra $399.65.
+        //
+        // United manda "Mvr Charge" y "Mvr Credit": cobra 8.35 y, cuando el cliente lo pagó, lo
+        // devuelve con -8.35 en la MISMA fila. Lo que la agencia paga es la suma de las dos. En
+        // septiembre fueron 65 pedidos ($542.75) menos 27 devueltos ($225.45) = $317.30.
+        //
+        // En los dos casos, tomar la primera columna que aparece le cobraría a las oficinas
+        // plata que nadie les cobró. Acá: la cifra neta manda, la tarifa es el último recurso.
+        const credito = coerceNumber(delExtra(f, /mvrcredit|^credit$|^credito$/i)) ?? 0;
+        const cargo =
           coerceNumber(f.monto)
-          ?? coerceNumber(delExtra(f, /^charges$|chargeamount|^amount$|^monto$/i))
+          ?? coerceNumber(delExtra(f, /^charges$|mvrcharge|chargeamount|^amount$|^monto$/i))
           ?? coerceNumber(delExtra(f, /^cost$|^charge$/i))
           ?? 0;
+        const bruto = cargo + credito;
 
         // Los nombres. Progressive manda asegurado y conductor en columnas separadas; Kemper los
         // manda en UNA sola ("Name Insured / Driver Name") y marca al titular con un sufijo [NI].
@@ -1795,7 +1803,12 @@ Deno.serve(async (req: Request) => {
           agente_texto:
             ((f.agente_texto as string | null) ??
               delExtra(f, /quotingproducer|quotecreatedby/i) ??
-              delExtra(f, /producername|^producer$/i)) || null,
+              delExtra(f, /producername|^producer$/i) ??
+              // United no manda nombre: manda el usuario que corrio el MVR (NLOBO1, VIDAL03,
+              // LLANESN) y el codigo de la agencia (101418) cuando lo corrio alguien desde el
+              // login compartido. Se guarda, pero solo sirve si ese codigo esta dado de alta
+              // como alias de un agente; si no, no identifica a nadie y el cruce sigue de largo.
+              delExtra(f, /^userid$/i)) || null,
           // Un MVR en cero NO es un dato faltante: es un MVR que la compañía no cobró. En el
           // archivo de agosto de Progressive eran 100 de 389, y en el de Kemper son más de la
           // mitad. Si esto fuera `?? null` la columna (not null default 0) los convertiría igual,
