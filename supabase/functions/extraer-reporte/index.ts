@@ -1698,19 +1698,14 @@ Deno.serve(async (req: Request) => {
         if (insErr) throw new ReporteError(`Insertando lineas_cotizacion: ${insErr.message}`);
       }
 
-      await admin.from("reportes").update({ ...metaUpdate, total_lineas: batch.length }).eq("id", reporteId);
+      await admin.from("reportes").update({ ...metaUpdate }).eq("id", reporteId);
 
-      // Subir cotizaciones nuevas puede identificar MVR que antes quedaron sin dueño, así que se
-      // reintentan. Sin esto habría que acordarse de resubir el MVR después de las cotizaciones,
-      // y el orden en que llegan los archivos no debería cambiar el resultado.
-      const { data: pendientes } = await admin
-        .from("lineas_costo")
-        .select("reporte_id")
-        .eq("estado", "sin_identificar");
-      for (const rid of new Set((pendientes ?? []).map((p) => p.reporte_id as string))) {
-        const { error: reErr } = await admin.rpc("procesar_costos", { p_reporte_id: rid });
-        if (reErr) throw new ReporteError(`procesar_costos (reintento ${rid}): ${reErr.message}`);
-      }
+      // procesar_cotizaciones() cierra el reporte (estado y contadores) y de paso reintenta los
+      // MVR que habían quedado sin dueño. Las dos cosas van en la base y no acá: quien cierra el
+      // reporte en este sistema es siempre la función que procesa las líneas -- procesar_ventas
+      // y procesar_matching hacen lo mismo -- y así el botón de reintentar también sirve.
+      const { error: rpcErr } = await admin.rpc("procesar_cotizaciones", { p_reporte_id: reporteId });
+      if (rpcErr) throw new ReporteError(`procesar_cotizaciones: ${rpcErr.message}`);
     } else if (tipoEfectivo === "venta_interna") {
       const batch = filasFinal.map((f) => ({
         reporte_id: reporteId,

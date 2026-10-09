@@ -111,7 +111,26 @@ function agruparReportesPorPeriodo(
     if (!grupos.has(clave)) grupos.set(clave, []);
     grupos.get(clave)!.push(r);
   }
-  return Array.from(grupos.entries()).map(([clave, reportes]) => ({ clave, reportes }));
+  // Un reporte que llegó pegado a otro —el QuoteReport dentro de una subida de MVR— se dibuja
+  // justo debajo del suyo, no como un renglón suelto. Arturo subió una cosa; la lista tiene que
+  // mostrarle una cosa.
+  return Array.from(grupos.entries()).map(([clave, reportes]) => {
+    const hijosDe = new Map<string, Reporte[]>();
+    for (const r of reportes) {
+      if (!r.subido_con_id) continue;
+      if (!hijosDe.has(r.subido_con_id)) hijosDe.set(r.subido_con_id, []);
+      hijosDe.get(r.subido_con_id)!.push(r);
+    }
+    const ordenados: Reporte[] = [];
+    for (const r of reportes) {
+      // Un hijo cuyo padre no está en este grupo (otro mes, o borrado) se muestra solo: mejor
+      // suelto que invisible.
+      if (r.subido_con_id && reportes.some((p) => p.id === r.subido_con_id)) continue;
+      ordenados.push(r);
+      for (const h of hijosDe.get(r.id) ?? []) ordenados.push(h);
+    }
+    return { clave, reportes: ordenados };
+  });
 }
 
 export default function SubirPage() {
@@ -654,10 +673,22 @@ export default function SubirPage() {
                               así que va primera y en negrita. Debajo, el tipo de papel, que casi
                               siempre dice "Statement de comisiones" y por eso no merece una columna
                               propia — solo importa cuando NO es eso. */}
-                          <td className="px-5 py-2.5">
+                          {/* El que llegó pegado a otro va con sangría y un codo, para que se lea
+                              como parte de esa subida y no como un archivo más. Y no repite
+                              "Sin compañía": el QuoteReport no tiene compañía porque trae las de
+                              todas, decirlo así no le aporta nada a nadie. */}
+                          <td className={clsx("py-2.5", r.subido_con_id ? "pl-11 pr-5" : "px-5")}>
                             <div className="flex flex-col">
-                              <span className="font-medium text-foreground">{r.aseguradora?.nombre ?? "Sin compañía"}</span>
-                              {r.tipo !== "comision_aseguradora" && (
+                              <span
+                                className={clsx(
+                                  r.subido_con_id ? "text-[13px] text-foreground" : "font-medium text-foreground"
+                                )}
+                              >
+                                {r.subido_con_id && <span className="mr-1.5 text-muted">└</span>}
+                                {r.aseguradora?.nombre ??
+                                  (r.subido_con_id ? TIPOS_REPORTE[r.tipo] ?? r.tipo : "Sin compañía")}
+                              </span>
+                              {r.tipo !== "comision_aseguradora" && !(r.subido_con_id && !r.aseguradora) && (
                                 <span className="text-[11px] text-muted">{TIPOS_REPORTE[r.tipo] ?? r.tipo}</span>
                               )}
                             </div>

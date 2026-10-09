@@ -9,6 +9,7 @@ import {
   DuplicadoError,
   listAseguradoras,
   uploadReporte,
+  enlazarSubida,
   type Aseguradora,
   type TipoReporte,
 } from "@/lib/queries/subir";
@@ -199,14 +200,16 @@ export default function SubirReporteModal({
     // a quién pertenece cada cargo; si entraran después, los MVR se conciliarían sin dueño y
     // habría que reprocesarlos. (El reproceso existe igual, por si el QuoteReport se sube otro
     // día, pero cuando vienen juntos conviene el orden correcto.)
+    let cotizId: string | null = null;
     if (archivoCotiz) {
       try {
-        await uploadReporte({
+        const res = await uploadReporte({
           file: archivoCotiz,
           tipo: "cotizaciones",
           aseguradoraId: null,
           periodo,
         });
+        cotizId = res.reporteId;
       } catch (err) {
         // Un QuoteReport repetido no es un error: es el mismo archivo del mes, que ya sirve.
         // Cortar acá dejaría el MVR sin subir por algo que no hace falta volver a hacer.
@@ -218,14 +221,16 @@ export default function SubirReporteModal({
       }
     }
 
+    let primerId: string | null = null;
     for (const file of archivos) {
       try {
-        await uploadReporte({
+        const res = await uploadReporte({
           file,
           tipo,
           aseguradoraId: pideAseguradora ? aseguradoraId : null,
           periodo,
         });
+        primerId ??= res.reporteId;
       } catch (err) {
         fallados.push(
           err instanceof DuplicadoError
@@ -234,6 +239,11 @@ export default function SubirReporteModal({
         );
       }
     }
+    // Arturo subió UNA cosa, así que la lista tiene que mostrarle UNA cosa. El QuoteReport queda
+    // colgado del MVR y se dibuja adentro, en vez de aparecer al lado como "Sin compañía", que
+    // no le dice nada a nadie.
+    if (cotizId && primerId) await enlazarSubida(cotizId, primerId);
+
     setSubiendo(false);
     onSubido();
     // Si alguno falló se queda abierto con el detalle: cerrar y mostrar el error atrás deja al

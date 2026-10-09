@@ -38,6 +38,9 @@ export interface Reporte {
   hash_archivo: string;
   subido_por: string | null;
   periodo: string | null;
+  // El reporte llegó en la misma subida que este otro, y la lista lo dibuja anidado adentro.
+  // Es solo presentación: los dos son reportes independientes y se borran por separado.
+  subido_con_id: string | null;
   estado: EstadoReporte;
   total_lineas: number;
   total_ok: number;
@@ -273,6 +276,14 @@ export async function uploadReporte({
   }
 
   return { reporteId };
+}
+
+// Marca que un reporte llegó en la misma subida que otro, para que la lista lo muestre anidado
+// adentro en vez de como un renglón suelto. Es solo presentación: siguen siendo independientes.
+export async function enlazarSubida(hijoId: string, padreId: string): Promise<void> {
+  // Si falla no se corta nada: los dos archivos ya entraron y se procesaron. Lo único que se
+  // pierde es que el QuoteReport se vea al lado en vez de adentro.
+  await supabase.from("reportes").update({ subido_con_id: padreId }).eq("id", hijoId);
 }
 
 export async function reintentarExtraccion(reporteId: string): Promise<void> {
