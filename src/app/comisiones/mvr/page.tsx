@@ -84,11 +84,28 @@ function repartir(cargos: CargoMvr[]) {
 function enPalabras(c: CargoMvr): string {
   const conDueno = c.estado === "conciliado_auto" || c.estado === "conciliado_confirmado";
   if (conDueno) {
-    if (c.regla_match === "manual") return "Lo asignaste vos";
-    if (c.regla_match === "productor_del_archivo") return "Lo dice el archivo de la compañía";
-    if (c.regla_match === "book") return "El cliente es del Book";
-    if (c.regla_match === "misma_cotizacion") return "Otro cargo de la misma cotización";
-    return "Pegó contra las cotizaciones";
+    switch (c.regla_match) {
+      case "manual":
+        return "Lo asignaste vos";
+      case "memoria_tuya":
+        return "Ya dijiste antes de quién es este cliente";
+      case "memoria_archivo":
+        return "Otra compañía dijo de quién es este cliente";
+      case "misma_cotizacion":
+        return "Otro cargo de la misma cotización";
+      case "book":
+        return "El cliente es del Book";
+      case "book_sobre_cotizacion":
+        return "La cotización decía otro; manda el Book";
+      case "cotizacion_compartida":
+        return "Cotizado desde el usuario compartido — revisalo";
+      case "codigo_de_la_agencia":
+        return "El archivo dice que lo corrió la agencia";
+      case "productor_del_archivo":
+        return "Lo dice el archivo de la compañía";
+      default:
+        return "Pegó contra las cotizaciones";
+    }
   }
   if (c.estado === "cuenta_casa") return "Se lo come la agencia";
   switch (c.regla_match) {
@@ -99,7 +116,7 @@ function enPalabras(c: CargoMvr): string {
     case "productor_compartido":
       return "El archivo lo pone bajo el usuario compartido";
     case "sin_candidato":
-      return "No aparece en las cotizaciones";
+      return "No aparece en las cotizaciones ni en el Book";
     case "score_bajo":
       return `Parecido bajo (${c.score ?? 0}%)`;
     default:
