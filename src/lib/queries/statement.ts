@@ -22,6 +22,9 @@ export function grupoDeEstado(estado: string): GrupoLinea {
 export interface LineaStatement {
   id: string;
   fila: number | null;
+  // "manual" cuando la escribio una persona y no vino en el archivo de la compania: no se borra
+  // al reprocesar, y en la tabla lleva su marca para que se sepa de donde salio el numero.
+  origen: string;
   numeroPoliza: string | null;
   cliente: string | null;
   clienteBook: string | null;
@@ -110,7 +113,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       .single(),
     fetchTodo<Record<string, unknown>>(
       "v_lineas_comision",
-      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, fecha_vigencia, estado, regla_match, score, agente_id, agente, oficina_id, oficina, cliente, poliza_abb, poliza_id, campos_extra",
+      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, fecha_vigencia, estado, regla_match, score, agente_id, agente, oficina_id, oficina, cliente, poliza_abb, poliza_id, campos_extra, origen",
       reporteId
     ),
     fetchTodo<Record<string, unknown>>(
@@ -135,6 +138,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
     return {
       id,
       fila: (l.fila as number) ?? null,
+      origen: (l.origen as string) ?? "archivo",
       numeroPoliza: (l.numero_poliza_crudo as string) ?? null,
       cliente: (l.nombre_asegurado_crudo as string) ?? null,
       clienteBook: (l.cliente as string) ?? null,
@@ -501,4 +505,47 @@ export async function getStatementsConsolidados(reporteIds: string[]): Promise<S
     lineas,
     periodosDistintos: [...new Set(reportes.map((r) => r.periodo).filter((p): p is string => Boolean(p)))],
   };
+}
+
+// =========================================================
+// La línea a mano
+// =========================================================
+// Ningún archivo viene completo: la compañía se olvida una comisión, manda un ajuste por
+// teléfono, o paga algo que no figura en el PDF. Sin esto la única salida es no cargarlo, y
+// entonces el statement del sistema no cuadra con el cheque.
+export interface LineaManual {
+  asegurado: string;
+  numeroPoliza?: string | null;
+  tipo?: string;
+  prima?: number | null;
+  tasa?: number | null;
+  monto: number;
+  fechaVigencia?: string | null;
+  agenteId?: string | null;
+  motivo?: string | null;
+}
+
+export async function agregarLineaManual(reporteId: string, l: LineaManual): Promise<string> {
+  const { data, error } = await supabase.rpc("agregar_linea_manual", {
+    p_reporte_id: reporteId,
+    p_asegurado: l.asegurado,
+    p_numero_poliza: l.numeroPoliza || null,
+    p_tipo: l.tipo || "otro",
+    p_prima: l.prima ?? null,
+    p_tasa: l.tasa ?? null,
+    p_monto: l.monto,
+    p_fecha_vigencia: l.fechaVigencia || null,
+    p_agente_id: l.agenteId || null,
+    p_motivo: l.motivo || null,
+  });
+  if (error) throw new Error(error.message || "No se pudo agregar la línea.");
+  return String(data);
+}
+
+export async function borrarLineaManual(lineaId: string, motivo?: string | null): Promise<void> {
+  const { error } = await supabase.rpc("borrar_linea_manual", {
+    p_linea_id: lineaId,
+    p_motivo: motivo ?? null,
+  });
+  if (error) throw new Error(error.message || "No se pudo borrar la línea.");
 }

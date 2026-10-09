@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowLeft, Check, ChevronDown, Download, Info, Pencil, RotateCcw } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Download, Info, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import {
   Banner,
   Badge,
@@ -27,6 +27,8 @@ import BorrarStatement from "@/components/reportes/BorrarStatement";
 import { hayQueOfrecerSugerencia } from "@/lib/sugerencias";
 import {
   getStatementDetalle,
+  agregarLineaManual,
+  borrarLineaManual,
   finalizarStatement,
   reabrirStatement,
   reasignarLinea,
@@ -69,6 +71,25 @@ function StatementContent() {
   const [pagina, setPagina] = useState(1);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // La línea a mano. Vive en texto y no en números porque un input vacío no es cero: dejar la
+  // prima en blanco tiene que guardar null, no 0.00, o el statement diría que la póliza no tenía
+  // prima en vez de que no la sabemos.
+  const LINEA_VACIA = {
+    asegurado: "",
+    numeroPoliza: "",
+    tipo: "nueva",
+    prima: "",
+    tasa: "",
+    monto: "",
+    fechaVigencia: "",
+    agenteId: "",
+    motivo: "",
+  };
+  const [agregandoLinea, setAgregandoLinea] = useState(false);
+  const [nuevaLinea, setNuevaLinea] = useState(LINEA_VACIA);
+  const [guardandoLinea, setGuardandoLinea] = useState(false);
+  const [errorLinea, setErrorLinea] = useState<string | null>(null);
   const [agenteSeleccionado, setAgenteSeleccionado] = useState<Record<string, string>>({});
   const [accionEnCursoId, setAccionEnCursoId] = useState<string | null>(null);
 
@@ -258,6 +279,55 @@ function StatementContent() {
   );
 
   const agentesOptions = agentes.map((a) => ({ value: a.id, label: a.nombre }));
+
+  // Un campo numérico vacío vale null, no cero: "no sé la prima" y "la prima es cero" son cosas
+  // distintas y el statement las muestra distinto.
+  function numeroONulo(s: string): number | null {
+    const t = s.trim();
+    if (!t) return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  async function guardarLineaManual() {
+    const monto = numeroONulo(nuevaLinea.monto);
+    if (!nuevaLinea.asegurado.trim()) return setErrorLinea("Falta el asegurado.");
+    if (monto === null) return setErrorLinea("Falta la comisión. Si es un cargo, ponela en negativo.");
+    if (!reporteId) return setErrorLinea("Falta el statement.");
+    setGuardandoLinea(true);
+    setErrorLinea(null);
+    try {
+      await agregarLineaManual(reporteId, {
+        asegurado: nuevaLinea.asegurado,
+        numeroPoliza: nuevaLinea.numeroPoliza,
+        tipo: nuevaLinea.tipo,
+        prima: numeroONulo(nuevaLinea.prima),
+        tasa: numeroONulo(nuevaLinea.tasa),
+        monto,
+        fechaVigencia: nuevaLinea.fechaVigencia || null,
+        agenteId: nuevaLinea.agenteId || null,
+        motivo: nuevaLinea.motivo,
+      });
+      setNuevaLinea(LINEA_VACIA);
+      setAgregandoLinea(false);
+      await cargar();
+    } catch (e) {
+      setErrorLinea(e instanceof Error ? e.message : "No se pudo agregar la línea.");
+    } finally {
+      setGuardandoLinea(false);
+    }
+  }
+
+  async function quitarLineaManual(l: LineaStatement) {
+    if (!window.confirm(`Borrar la línea de ${l.cliente ?? "este cliente"} por ${money(l.monto)}? La escribiste a mano, así que no se puede recuperar del archivo.`))
+      return;
+    try {
+      await borrarLineaManual(l.id, "Borrada desde el statement");
+      await cargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo borrar la línea.");
+    }
+  }
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -775,6 +845,13 @@ function StatementContent() {
               >
                 No es de nadie / MVR
               </Button>
+              {/* Agregar a mano lo que el archivo no trajo. Va al lado de exportar porque son
+                  las dos cosas que se hacen con el statement ya revisado: completarlo y
+                  mandarlo. */}
+              <Button size="sm" variant="secondary" onClick={() => { setErrorLinea(null); setAgregandoLinea(true); }}>
+                <Plus size={14} />
+                Agregar línea a mano
+              </Button>
               <Button size="sm" variant="ghost" onClick={exportarCsv} disabled={lineasFiltradas.length === 0}>
                 <Download className="w-3.5 h-3.5" />
                 Exportar a CSV
@@ -938,6 +1015,7 @@ function StatementContent() {
                   onConfirmar={confirmarLinea}
                   onAsignar={asignarLinea}
                   onCorregir={abrirCorreccion}
+                  onBorrarManual={quitarLineaManual}
                 />
               ))}
             </tbody>
@@ -950,6 +1028,127 @@ function StatementContent() {
 
         {barraPaginacion}
       </Card>
+
+
+      {/* ----------------------------------------------------------------
+          La línea a mano
+          ----------------------------------------------------------------
+          Arturo, varias veces: "siempre amo la adición manual para cualquier statement. Sea
+          Granada, sea Ascendant, sea que sea". Ningún archivo viene completo — la compañía se
+          olvida una comisión, manda un ajuste por teléfono, paga algo que no está en el PDF — y
+          sin esto el statement del sistema no cuadra con el cheque y no hay forma de arreglarlo.
+
+          Sólo el asegurado y el monto son obligatorios: lo demás se completa si se sabe. Si
+          escribe el número de póliza y está en el Book, la línea queda enganchada al cliente de
+          verdad y, si no eligió agente, lo toma de ahí. */}
+      <Modal open={agregandoLinea} onClose={() => setAgregandoLinea(false)} title="Agregar una línea a mano">
+        <div className="flex flex-col gap-3 text-[13px]">
+          <div className="rounded-lg bg-background px-3 py-2 text-muted">
+            Esta línea no está en el archivo de la compañía. Queda marcada como escrita a mano y
+            <span className="text-foreground"> no se borra al reprocesar el statement</span>.
+          </div>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-muted">Asegurado *</span>
+            <TextInput
+              value={nuevaLinea.asegurado}
+              onChange={(e) => setNuevaLinea({ ...nuevaLinea, asegurado: e.target.value })}
+              placeholder="Como lo escribe la compañía"
+              autoFocus
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Número de póliza</span>
+              <TextInput
+                value={nuevaLinea.numeroPoliza}
+                onChange={(e) => setNuevaLinea({ ...nuevaLinea, numeroPoliza: e.target.value })}
+                placeholder="Si lo sabés"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Tipo</span>
+              <Select
+                value={nuevaLinea.tipo}
+                onChange={(v) => setNuevaLinea({ ...nuevaLinea, tipo: v })}
+                options={Object.entries(TIPOS_TRANSACCION).map(([value, label]) => ({ value, label }))}
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Prima</span>
+              <TextInput
+                type="number"
+                step="0.01"
+                value={nuevaLinea.prima}
+                onChange={(e) => setNuevaLinea({ ...nuevaLinea, prima: e.target.value })}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Tasa %</span>
+              <TextInput
+                type="number"
+                step="0.001"
+                value={nuevaLinea.tasa}
+                onChange={(e) => setNuevaLinea({ ...nuevaLinea, tasa: e.target.value })}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Comisión *</span>
+              <TextInput
+                type="number"
+                step="0.01"
+                value={nuevaLinea.monto}
+                onChange={(e) => setNuevaLinea({ ...nuevaLinea, monto: e.target.value })}
+                placeholder="En negativo si es un cargo"
+              />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Vigencia de la póliza</span>
+              <TextInput
+                type="date"
+                value={nuevaLinea.fechaVigencia}
+                onChange={(e) => setNuevaLinea({ ...nuevaLinea, fechaVigencia: e.target.value })}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-muted">Agente</span>
+              <Select
+                value={nuevaLinea.agenteId}
+                onChange={(v) => setNuevaLinea({ ...nuevaLinea, agenteId: v })}
+                options={[{ value: "", label: "Dejarlo sin asignar" }, ...agentesOptions]}
+              />
+            </label>
+          </div>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-muted">Por qué la agregás</span>
+            <TextArea
+              rows={2}
+              value={nuevaLinea.motivo}
+              onChange={(e) => setNuevaLinea({ ...nuevaLinea, motivo: e.target.value })}
+              placeholder="Ej: la compañía la pagó por transferencia y no la puso en el statement"
+            />
+          </label>
+
+          {errorLinea && <div className="rounded-lg bg-bad-tint px-3 py-2 text-bad-fg">{errorLinea}</div>}
+
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setAgregandoLinea(false)}>
+              Cancelar
+            </Button>
+            <Button variant="primary" onClick={guardarLineaManual} disabled={guardandoLinea}>
+              {guardandoLinea ? "Agregando…" : "Agregar al statement"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={lineaAjuste !== null && lineaAjuste.length > 0}
@@ -1150,6 +1349,7 @@ function FilaLinea({
   onConfirmar,
   onAsignar,
   onCorregir,
+  onBorrarManual,
 }: {
   l: LineaStatement;
   selected: boolean;
@@ -1161,6 +1361,7 @@ function FilaLinea({
   onConfirmar: (l: LineaStatement) => void;
   onAsignar: (l: LineaStatement, agenteId: string) => void;
   onCorregir: (l: LineaStatement) => void;
+  onBorrarManual: (l: LineaStatement) => void;
 }) {
   const estado = ESTADOS_LINEA[l.estadoLinea] ?? { label: l.estadoLinea, tone: "neutral" as const };
   // Si la linea se marco como gasto de la agencia, su categoria manda sobre las etiquetas genericas
@@ -1195,7 +1396,25 @@ function FilaLinea({
       </td>
       <td className="px-4 py-2.5">
         <div className="flex flex-col gap-0.5">
-          <span className="text-foreground">{l.cliente ?? l.clienteBook ?? "—"}</span>
+          <span className="flex items-center gap-1.5 text-foreground">
+            {l.cliente ?? l.clienteBook ?? "—"}
+            {/* De dónde salió el número. Una línea escrita a mano no se puede contrastar contra
+                el archivo de la compañía, así que tiene que decirlo ella misma: el que mire el
+                statement dentro de seis meses no tiene otra forma de saberlo. */}
+            {l.origen === "manual" && (
+              <>
+                <Badge tone="info">A mano</Badge>
+                <button
+                  type="button"
+                  onClick={() => onBorrarManual(l)}
+                  className="text-muted hover:text-bad-fg"
+                  title="Borrar esta línea escrita a mano"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </>
+            )}
+          </span>
           {l.clienteBook && l.cliente && l.clienteBook !== l.cliente && (
             <span className="text-[11px] text-muted">Book: {l.clienteBook}</span>
           )}

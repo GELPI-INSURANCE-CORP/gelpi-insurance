@@ -388,7 +388,10 @@ export async function reprocesarReporte(reporteId: string): Promise<void> {
     const { error } = await supabase.from("excepciones").delete().in("linea_venta_id", idsVenta);
     if (error) throw error;
   }
-  await supabase.from("lineas_comision").delete().eq("reporte_id", reporteId);
+  // Lo escrito a mano sobrevive al reproceso: no esta en el archivo, asi que volver a leerlo no
+  // lo traeria de vuelta. La base lo impide igual con un trigger; el filtro esta aca para que el
+  // camino normal no dependa de chocarse con un error.
+  await supabase.from("lineas_comision").delete().eq("reporte_id", reporteId).neq("origen", "manual");
   await supabase.from("lineas_venta").delete().eq("reporte_id", reporteId);
   const { error: updErr } = await supabase
     .from("reportes")
@@ -430,6 +433,12 @@ function construirQueryReportes(filtros: FiltrosReportes) {
   if (filtros.familia === "book") q = q.eq("tipo", TIPO_BOOK);
   else if (filtros.familia === "statements") q = q.neq("tipo", TIPO_BOOK);
   if (filtros.tipo) q = q.eq("tipo", filtros.tipo);
+  // El QuoteReport no es un statement y no va en esta lista. Arturo: "que el QuoteReport sea
+  // como su base de datos... o me lo ponen en otra funcion, porque se ve feo en esa parte".
+  // Tiene razon: no es plata, no se concilia y no se le paga a nadie — es el padron contra el
+  // que se cruzan los MVR. Vive donde se usa, que es la pantalla del MVR, y aca estorba. Se
+  // sigue pudiendo pedir explicitamente por tipo, para no dejarlo inalcanzable.
+  if (filtros.tipo !== "cotizaciones") q = q.neq("tipo", "cotizaciones");
   if (filtros.aseguradoraId) q = q.eq("aseguradora_id", filtros.aseguradoraId);
   if (filtros.estado) q = q.eq("estado", filtros.estado);
 

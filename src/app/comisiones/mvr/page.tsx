@@ -402,6 +402,30 @@ function MvrContenido() {
             ))}
           </div>
         </div>
+
+        {/* Contra qué se cruzó. El QuoteReport ya no sale en la lista de archivos — no es un
+            statement, es el padrón — pero tiene que poder verse cuál se usó: si quedó mucho sin
+            dueño, lo primero a mirar es si el padrón es del mes que corresponde. */}
+        <div className="border-t border-border px-5 py-3 text-[12px] text-muted">
+          {datos.padron ? (
+            <>
+              Cruzado contra el QuoteReport de{" "}
+              <span className="text-foreground">{etiquetaPeriodo(datos.padron.periodo) ?? "sin período"}</span> ·{" "}
+              {datos.padron.total.toLocaleString("es")} cotizaciones,{" "}
+              {datos.padron.conAgente.toLocaleString("es")} con agente
+              {datos.padron.nombreArchivo ? ` · ${datos.padron.nombreArchivo}` : ""}
+            </>
+          ) : (
+            <>
+              No hay QuoteReport de este mes cargado todavía, así que estos cargos sólo se pueden
+              identificar por el Book o por el productor del archivo. Subí el QuoteReport desde{" "}
+              <Link href="/comisiones/subir/" className="text-brand underline">
+                Subir statement o MVR
+              </Link>
+              : se engancha solo con el MVR del mismo mes.
+            </>
+          )}
+        </div>
       </Card>
 
       <Card className="flex flex-col">

@@ -35,12 +35,24 @@ export interface ResumenMvr {
   por_oficina: { oficina: string; cargos: number; monto: number }[];
 }
 
+// El QuoteReport contra el que se cruzaron estos cargos. No es un reporte que haya que revisar
+// -- por eso se saco de la lista de archivos -- pero sí hay que poder ver cuál se uso y cuántas
+// cotizaciones tenía: si el cruce dejó mucho sin dueño, lo primero que hay que mirar es si el
+// padrón es el del mes correcto.
+export interface PadronCotizaciones {
+  nombreArchivo: string | null;
+  periodo: string | null;
+  total: number;
+  conAgente: number;
+}
+
 export interface MvrDetalle {
   reporteId: string;
   nombreArchivo: string | null;
   periodo: string | null;
   estado: string;
   aseguradora: string | null;
+  padron: PadronCotizaciones | null;
   resumen: ResumenMvr;
   cargos: CargoMvr[];
 }
@@ -77,7 +89,7 @@ async function traerTodos(reporteId: string): Promise<CargoMvr[]> {
 }
 
 export async function getMvrDetalle(reporteId: string): Promise<MvrDetalle> {
-  const [rep, res, cargos] = await Promise.all([
+  const [rep, res, cargos, cot] = await Promise.all([
     supabase
       .from("reportes")
       .select("id, nombre_archivo, periodo, estado, aseguradoras(nombre)")
@@ -85,6 +97,14 @@ export async function getMvrDetalle(reporteId: string): Promise<MvrDetalle> {
       .single(),
     supabase.rpc("resumen_costos_reporte", { p_reporte_id: reporteId }),
     traerTodos(reporteId),
+    // El QuoteReport que quedo colgado de este MVR. Se busca por el enlace y no por el mes para
+    // que diga exactamente cual se uso, no cual deberia haberse usado.
+    supabase
+      .from("reportes")
+      .select("nombre_archivo, periodo, total_lineas, total_ok")
+      .eq("subido_con_id", reporteId)
+      .eq("tipo", "cotizaciones")
+      .maybeSingle(),
   ]);
   if (rep.error) throw rep.error;
   if (res.error) throw res.error;
@@ -101,6 +121,14 @@ export async function getMvrDetalle(reporteId: string): Promise<MvrDetalle> {
     periodo: r.periodo,
     estado: r.estado,
     aseguradora: r.aseguradoras?.nombre ?? null,
+    padron: cot.data
+      ? {
+          nombreArchivo: cot.data.nombre_archivo as string | null,
+          periodo: cot.data.periodo as string | null,
+          total: Number(cot.data.total_lineas ?? 0),
+          conAgente: Number(cot.data.total_ok ?? 0),
+        }
+      : null,
     resumen: (res.data ?? {}) as unknown as ResumenMvr,
     cargos,
   };

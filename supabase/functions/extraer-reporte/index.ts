@@ -518,7 +518,11 @@ async function limpiarLineasPrevias(admin: SupabaseClient, reporteId: string): P
   for (const ids of chunk(idsVenta, 200)) {
     await admin.from("excepciones").delete().in("linea_venta_id", ids);
   }
-  await admin.from("lineas_comision").delete().eq("reporte_id", reporteId);
+  // Las lineas escritas a mano NO se borran: no estan en el archivo, asi que volver a leerlo no
+  // las traeria de vuelta. La base ademas lo impide con un trigger, pero el filtro va igual —
+  // depender de que la otra punta tire un error para hacer lo correcto es una mala forma de
+  // tener razon.
+  await admin.from("lineas_comision").delete().eq("reporte_id", reporteId).neq("origen", "manual");
   await admin.from("lineas_venta").delete().eq("reporte_id", reporteId);
 }
 

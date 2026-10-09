@@ -419,7 +419,7 @@ export default function SubirReporteModal({
             ordenó el reporte. Eso únicamente lo sabe el QuoteReport. Va acá y no en otra subida
             aparte -- un clic, los dos archivos. */}
         {tipo === "mvr" && (
-          <Campo label="Reporte de cotizaciones">
+          <Campo label="QuoteReport — sólo si cambió">
             <div
               onDragOver={(e: DragEvent<HTMLDivElement>) => {
                 e.preventDefault();
@@ -444,9 +444,11 @@ export default function SubirReporteModal({
               )}
             >
               <UploadCloud size={20} className="text-muted" />
-              <span className="text-[13px] text-foreground">El QuoteReport del sistema</span>
+              <span className="text-[13px] text-foreground">Dejalo vacío si ya lo subiste este mes</span>
               <span className="text-xs text-muted">
-                Es lo que dice qué agente ordenó cada MVR. Si ya lo subiste este mes, dejalo vacío.
+                El QuoteReport no es un statement: es el padrón contra el que se cruzan los MVR.
+                Se sube una vez por mes y sirve para todas las compañías, así que no hace falta
+                volver a cargarlo con cada MVR. Por eso tampoco sale en la lista de archivos.
               </span>
             </div>
             <input
