@@ -4,10 +4,17 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import clsx from "clsx";
-import { ArrowLeft, Home, Download } from "lucide-react";
+import { ArrowLeft, Home, Download, RefreshCw } from "lucide-react";
 import { Card, CardHead, Kpi, Button, Badge, Select, Loading, EmptyState } from "@/components/agentes/ui";
 import { money, etiquetaPeriodo } from "@/lib/format";
-import { getMvrDetalle, asignarCargos, cargosACuentaCasa, type MvrDetalle, type CargoMvr } from "@/lib/queries/mvr";
+import {
+  getMvrDetalle,
+  asignarCargos,
+  cargosACuentaCasa,
+  releerArchivoMvr,
+  type MvrDetalle,
+  type CargoMvr,
+} from "@/lib/queries/mvr";
 import { listAgentes, type AgenteSimple } from "@/lib/queries/conciliacion";
 
 // Un cargo de MVR no tiene póliza ni prima: tiene asegurado, conductor, estado de la licencia y
@@ -124,6 +131,7 @@ function MvrContenido() {
   const [elegidos, setElegidos] = useState<Set<string>>(new Set());
   const [agenteLote, setAgenteLote] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [releyendo, setReleyendo] = useState(false);
 
   const cargar = useCallback(async () => {
     if (!reporteId) return;
@@ -213,6 +221,23 @@ function MvrContenido() {
     }
   }
 
+  // Volver a leer el archivo guardado con la funcion de extraccion de hoy. Existe porque un MVR
+  // mal leido no se arregla cruzando de nuevo: si los nombres no entraron, no estan en la base
+  // para recuperarlos. Antes la unica salida era borrar el reporte y subir el archivo otra vez.
+  async function releer() {
+    if (!window.confirm("Volver a leer el archivo con la version de hoy? Los cargos actuales se reemplazan por los que salgan de esta lectura.")) return;
+    setReleyendo(true);
+    setError(null);
+    try {
+      await releerArchivoMvr(reporteId);
+      await cargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo volver a leer el archivo.");
+    } finally {
+      setReleyendo(false);
+    }
+  }
+
   async function aLaCasa() {
     if (elegidos.size === 0) return setError("No marcaste ningún cargo.");
     if (!window.confirm(`Mandar ${elegidos.size} cargo(s) a cuenta de la casa? No se le descuentan a ninguna oficina.`))
@@ -248,10 +273,16 @@ function MvrContenido() {
           title={`Cargos por MVR · ${datos.aseguradora ?? "Sin compañía"}`}
           subtitle={`${etiquetaPeriodo(datos.periodo) ?? "Sin período"} · ${datos.nombreArchivo ?? ""}`}
           actions={
-            <Button variant="ghost" onClick={() => bajarCsv(datos, visibles)}>
-              <Download size={14} />
-              Bajar a Excel
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={releer} disabled={releyendo}>
+                <RefreshCw size={14} />
+                {releyendo ? "Leyendo…" : "Volver a leer el archivo"}
+              </Button>
+              <Button variant="ghost" onClick={() => bajarCsv(datos, visibles)}>
+                <Download size={14} />
+                Bajar a Excel
+              </Button>
+            </div>
           }
         />
         <div className="grid grid-cols-2 gap-3 px-5 pb-5 md:grid-cols-4">

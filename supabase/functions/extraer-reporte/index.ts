@@ -474,6 +474,21 @@ const REGLAS_MANUALES = new Set(["manual", "override_manual", "alta_manual", "cu
 // pegado al insert y no al principio: si la extracción falla a mitad de camino, los datos viejos
 // siguen ahí en vez de quedar el reporte en cero.
 async function limpiarLineasPrevias(admin: SupabaseClient, reporteId: string): Promise<void> {
+  // MVR y cotizaciones van PRIMERO, antes de cualquier salida temprana. Estaban al final, debajo
+  // de un `return` que se dispara cuando el reporte no tiene lineas de comision ni de venta — que
+  // es exactamente el caso de un MVR y de un QuoteReport. O sea: volver a leer uno de esos
+  // archivos no borraba nada y los 389 cargos se insertaban encima de los 389 que ya estaban. El
+  // boton de reprocesar habria duplicado el reporte entero y el total por oficina habria salido
+  // al doble sin que nada se quejara.
+  //
+  // Sin rescate de trabajo manual, a proposito: un MVR no se reasigna a mano como una comision —
+  // si el cruce lo puso en la oficina equivocada, lo que se corrige es la cotizacion o el Book, no
+  // el cargo de 8 dolares. Las excepciones de costo se van solas: linea_costo_id es ON DELETE
+  // CASCADE. Y los costos se borran ANTES que las cotizaciones porque lineas_costo.cotizacion_id
+  // apunta a lineas_cotizacion.
+  await admin.from("lineas_costo").delete().eq("reporte_id", reporteId);
+  await admin.from("lineas_cotizacion").delete().eq("reporte_id", reporteId);
+
   const { data: comision } = await admin
     .from("lineas_comision")
     .select("id, poliza_id, agente_id, oficina_id, regla_match")
@@ -505,13 +520,6 @@ async function limpiarLineasPrevias(admin: SupabaseClient, reporteId: string): P
   }
   await admin.from("lineas_comision").delete().eq("reporte_id", reporteId);
   await admin.from("lineas_venta").delete().eq("reporte_id", reporteId);
-
-  // MVR y cotizaciones. Van al final y sin rescate de trabajo manual a propósito: un MVR no se
-  // reasigna a mano como una comisión — si el cruce lo puso en la oficina equivocada, lo que se
-  // corrige es la cotización o el Book, no el cargo de 8 dólares. Y los costos se borran ANTES
-  // que las cotizaciones porque lineas_costo.cotizacion_id apunta a lineas_cotizacion.
-  await admin.from("lineas_costo").delete().eq("reporte_id", reporteId);
-  await admin.from("lineas_cotizacion").delete().eq("reporte_id", reporteId);
 }
 
 // ---------------------------------------------------------------------------

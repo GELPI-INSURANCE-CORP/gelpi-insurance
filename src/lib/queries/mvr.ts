@@ -128,3 +128,43 @@ export async function cargosACuentaCasa(ids: string[], motivo?: string | null): 
   if (error) throw new Error(error.message || "No se pudo mandar a cuenta de la casa.");
   return Number(data ?? 0);
 }
+
+// Volver a leer el MISMO archivo, el que ya está guardado, con la función de extracción de hoy.
+// Hace falta porque un MVR mal leído no se arregla reprocesando el cruce: los nombres no están
+// en la base para recuperarlos -- lineas_costo guarda el dato ya interpretado, no la fila cruda.
+// Hasta ahora la única salida era borrar el reporte y volver a subir el archivo a mano.
+//
+// No es reprocesarReporte(): esa salva a mano lo resuelto en lineas_comision escribiéndolo en el
+// Book, y un MVR no tiene nada de eso. El borrado de las líneas lo hace la propia función de
+// extracción al empezar, y las excepciones se van solas con ellas (linea_costo_id es ON DELETE
+// CASCADE).
+export async function releerArchivoMvr(reporteId: string): Promise<void> {
+  const { data: actual, error } = await supabase
+    .from("reportes")
+    .select("estado, updated_at, storage_path")
+    .eq("id", reporteId)
+    .single();
+  if (error) throw error;
+  if (!actual?.storage_path) {
+    throw new Error("Este reporte se creó a mano y no tiene archivo guardado: no hay nada que volver a leer.");
+  }
+  // Mismo cuidado que en los statements: cada corrida borra al empezar e inserta al terminar, y
+  // dos corridas pisadas dejan el reporte cargado dos veces.
+  if (actual.estado === "extrayendo" || actual.estado === "subido") {
+    const minutos = (Date.now() - new Date(actual.updated_at).getTime()) / 60000;
+    if (minutos < 10) {
+      throw new Error(
+        `Este reporte ya se está leyendo (empezó hace ${Math.max(1, Math.round(minutos))} min). Esperá a que termine.`
+      );
+    }
+  }
+
+  const { error: updErr } = await supabase
+    .from("reportes")
+    .update({ estado: "subido", error: null, total_lineas: 0, total_ok: 0, total_excepciones: 0 })
+    .eq("id", reporteId);
+  if (updErr) throw updErr;
+
+  const { error: fnErr } = await supabase.functions.invoke("extraer-reporte", { body: { reporte_id: reporteId } });
+  if (fnErr) throw fnErr;
+}
