@@ -691,21 +691,36 @@ export default function SubirPage() {
                               como parte de esa subida y no como un archivo más. Y no repite
                               "Sin compañía": el QuoteReport no tiene compañía porque trae las de
                               todas, decirlo así no le aporta nada a nadie. */}
+                          {/* En un statement lo que se busca con el ojo es la compañía, así que
+                              va grande. En un MVR no: la compañía es un detalle y lo que importa
+                              es que ESO es un cargo por MVR, que es otra cosa y se trabaja
+                              distinto. Arturo: "que diga en grande CARGOS POR MVR y que diga el
+                              nombre de la compañía chiquito. Al revés". */}
                           <td className={clsx("py-2.5", r.subido_con_id ? "pl-11 pr-5" : "px-5")}>
-                            <div className="flex flex-col">
-                              <span
-                                className={clsx(
-                                  r.subido_con_id ? "text-[13px] text-foreground" : "font-medium text-foreground"
-                                )}
-                              >
-                                {r.subido_con_id && <span className="mr-1.5 text-muted">└</span>}
-                                {r.aseguradora?.nombre ??
-                                  (r.subido_con_id ? TIPOS_REPORTE[r.tipo] ?? r.tipo : "Sin compañía")}
-                              </span>
-                              {r.tipo !== "comision_aseguradora" && !(r.subido_con_id && !r.aseguradora) && (
-                                <span className="text-[11px] text-muted">{TIPOS_REPORTE[r.tipo] ?? r.tipo}</span>
-                              )}
-                            </div>
+                            {(() => {
+                              const esCargo = r.tipo === "mvr";
+                              const compania = r.aseguradora?.nombre ?? null;
+                              const tipo = TIPOS_REPORTE[r.tipo] ?? r.tipo;
+                              const arriba = esCargo ? tipo : compania ?? (r.subido_con_id ? tipo : "Sin compañía");
+                              const abajo = esCargo
+                                ? compania ?? "Sin compañía"
+                                : r.tipo !== "comision_aseguradora" && !(r.subido_con_id && !compania)
+                                  ? tipo
+                                  : null;
+                              return (
+                                <div className="flex flex-col">
+                                  <span
+                                    className={clsx(
+                                      r.subido_con_id ? "text-[13px] text-foreground" : "font-medium text-foreground"
+                                    )}
+                                  >
+                                    {r.subido_con_id && <span className="mr-1.5 text-muted">└</span>}
+                                    {arriba}
+                                  </span>
+                                  {abajo && <span className="text-[11px] text-muted">{abajo}</span>}
+                                </div>
+                              );
+                            })()}
                           </td>
                           {/* De qué mes es el statement. Cuando la IA no pudo leerle el período al
                               archivo se dice, en vez de inventar un mes: sin eso, el statement se
