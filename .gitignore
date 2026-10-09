@@ -44,3 +44,6 @@ next-env.d.ts
 # supabase
 supabase/.temp/
 supabase/.branches/
+
+# Ajustes personales de Claude Code: permisos de esta maquina, no del equipo
+.claude/settings.local.json
