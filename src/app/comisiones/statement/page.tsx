@@ -1164,9 +1164,15 @@ function FilaLinea({
 }) {
   const estado = ESTADOS_LINEA[l.estadoLinea] ?? { label: l.estadoLinea, tone: "neutral" as const };
   // Si la linea se marco como gasto de la agencia, su categoria manda sobre las etiquetas genericas
+  // Arturo, viendo $107 en la cuenta de la casa del statement de Ascendant: "¿qué cosa es eso?
+  // [...] O que digan MVR, para uno poder saber." Un cargo de MVR, un fee de inspección y uno de
+  // underwriting llegaban los tres como "Cuenta de la casa" y en pantalla eran indistinguibles.
+  // El MVR es el que se repite todos los meses, así que es el que vale la pena nombrar.
   const etiquetaAjuste = l.categoriaAjuste
     ? CATEGORIAS_AJUSTE.find((c) => c.value === l.categoriaAjuste)?.label ?? l.categoriaAjuste
-    : null;
+    : l.regla === "cargo_mvr"
+      ? "Cargo por MVR"
+      : null;
   return (
     <tr className={clsx("border-t border-border", selected && "bg-brand-tint/40")}>
       <td className="px-4 py-2.5">

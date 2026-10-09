@@ -305,7 +305,18 @@ function clasificacionInicial(f: Record<string, unknown>): { estado: string; reg
   if (esReferenciaPeriodoAnterior(f)) return { estado: "descartado", regla: "no_es_de_este_mes" };
   const cargo = etiquetaDeCargo(f);
   const sinPoliza = String(f.numero_poliza ?? "").replace(/[^A-Za-z0-9]/g, "") === "";
-  if (cargo && sinPoliza) return { estado: "cuenta_casa", regla: "cargo_de_la_compania" };
+  if (cargo && sinPoliza) {
+    // Arturo, viendo $107 en la cuenta de la casa del statement de Ascendant: "¿qué cosa es eso?
+    // [...] Si son los cargos de MVR, sí, ponlo como cargos de la casa, está bien. O que digan
+    // MVR, para uno poder saber."
+    //
+    // Hasta acá todos los cargos de la compañía se guardaban con la misma regla, así que en
+    // pantalla un MVR, un fee de inspección y un cargo de underwriting se veían iguales: "cargo
+    // de la compañía" y nada más. El texto que los delató ya estaba calculado y se tiraba.
+    // Ahora el MVR se distingue, que es el que se repite todos los meses y el que él busca.
+    const esMvr = /\bmvr\b|motor\s*vehicle/i.test(cargo);
+    return { estado: "cuenta_casa", regla: esMvr ? "cargo_mvr" : "cargo_de_la_compania" };
+  }
   return { estado: "pendiente", regla: null };
 }
 
