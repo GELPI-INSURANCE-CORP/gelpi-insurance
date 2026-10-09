@@ -107,11 +107,20 @@ export default function SubirReporteModal({
   const [periodoMes, setPeriodoMes] = useState(() => String(mesAnteriorPorDefecto().mes).padStart(2, "0"));
   const [periodoAnio, setPeriodoAnio] = useState(() => String(mesAnteriorPorDefecto().anio));
   const [archivos, setArchivos] = useState<File[]>([]);
+  // Arturo: "no me puedes ponerlo por diferentes lugares, tiene que ser una parte, que sea un
+  // clic". Un MVR no se puede identificar sin el QuoteReport -- es el único papel que dice qué
+  // agente ordenó cada reporte de manejo -- así que la segunda caja vive acá, en la misma
+  // pantalla, y no en otra subida aparte. Por debajo salen dos reportes (para que borrar el MVR
+  // no borre las cotizaciones, y para que el mismo QuoteReport sirva también para los MVR de
+  // United, Kemper y Responsive sin volver a subirlo), pero eso no se le pide al usuario.
+  const [archivoCotiz, setArchivoCotiz] = useState<File | null>(null);
   const [arrastrando, setArrastrando] = useState(false);
+  const [arrastrandoCotiz, setArrastrandoCotiz] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
   const [creando, setCreando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputFile = useRef<HTMLInputElement>(null);
+  const inputCotiz = useRef<HTMLInputElement>(null);
 
   // Cada vez que se abre, el formulario arranca limpio. Dejar la compañía del mes pasado elegida es
   // la forma más fácil de subir un statement de United como si fuera de Progressive.
@@ -124,6 +133,7 @@ export default function SubirReporteModal({
     setPeriodoMes(String(def.mes).padStart(2, "0"));
     setPeriodoAnio(String(def.anio));
     setArchivos([]);
+    setArchivoCotiz(null);
     setError(null);
   }, [open]);
 
@@ -184,6 +194,30 @@ export default function SubirReporteModal({
     setSubiendo(true);
     setError(null);
     const fallados: string[] = [];
+
+    // Las cotizaciones van PRIMERO. El cruce del MVR las necesita ya cargadas para identificar
+    // a quién pertenece cada cargo; si entraran después, los MVR se conciliarían sin dueño y
+    // habría que reprocesarlos. (El reproceso existe igual, por si el QuoteReport se sube otro
+    // día, pero cuando vienen juntos conviene el orden correcto.)
+    if (archivoCotiz) {
+      try {
+        await uploadReporte({
+          file: archivoCotiz,
+          tipo: "cotizaciones",
+          aseguradoraId: null,
+          periodo,
+        });
+      } catch (err) {
+        // Un QuoteReport repetido no es un error: es el mismo archivo del mes, que ya sirve.
+        // Cortar acá dejaría el MVR sin subir por algo que no hace falta volver a hacer.
+        if (!(err instanceof DuplicadoError)) {
+          fallados.push(
+            `${archivoCotiz.name}: ${err instanceof Error ? err.message : "no se pudo subir"}`
+          );
+        }
+      }
+    }
+
     for (const file of archivos) {
       try {
         await uploadReporte({
@@ -207,6 +241,7 @@ export default function SubirReporteModal({
     if (fallados.length > 0) {
       setError(fallados.join(" · "));
       setArchivos([]);
+      setArchivoCotiz(null);
       return;
     }
     onClose();
@@ -312,7 +347,7 @@ export default function SubirReporteModal({
           </div>
         </Campo>
 
-        <Campo label="Archivo">
+        <Campo label={tipo === "mvr" ? "Archivo de MVR" : "Archivo"}>
           <div
             onDragOver={(e: DragEvent<HTMLDivElement>) => {
               e.preventDefault();
@@ -368,6 +403,77 @@ export default function SubirReporteModal({
             </ul>
           )}
         </Campo>
+
+        {/* La segunda caja sale sólo en MVR, porque es el único tipo que no se puede repartir
+            solo: el archivo de la compañía trae el nombre del asegurado pero no dice qué agente
+            ordenó el reporte. Eso únicamente lo sabe el QuoteReport. Va acá y no en otra subida
+            aparte -- un clic, los dos archivos. */}
+        {tipo === "mvr" && (
+          <Campo label="Reporte de cotizaciones">
+            <div
+              onDragOver={(e: DragEvent<HTMLDivElement>) => {
+                e.preventDefault();
+                setArrastrandoCotiz(true);
+              }}
+              onDragLeave={() => setArrastrandoCotiz(false)}
+              onDrop={(e: DragEvent<HTMLDivElement>) => {
+                e.preventDefault();
+                setArrastrandoCotiz(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) {
+                  setArchivoCotiz(f);
+                  setError(null);
+                }
+              }}
+              onClick={() => inputCotiz.current?.click()}
+              className={clsx(
+                "flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors",
+                arrastrandoCotiz
+                  ? "border-brand bg-brand-tint/50"
+                  : "border-border hover:border-brand/60 hover:bg-background"
+              )}
+            >
+              <UploadCloud size={20} className="text-muted" />
+              <span className="text-[13px] text-foreground">El QuoteReport del sistema</span>
+              <span className="text-xs text-muted">
+                Es lo que dice qué agente ordenó cada MVR. Si ya lo subiste este mes, dejalo vacío.
+              </span>
+            </div>
+            <input
+              ref={inputCotiz}
+              type="file"
+              accept=".pdf,.csv,.xlsx,.xls"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) {
+                  setArchivoCotiz(f);
+                  setError(null);
+                }
+                e.target.value = "";
+              }}
+            />
+            {archivoCotiz && (
+              <ul className="mt-2 flex flex-col gap-1">
+                <li className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs">
+                  <FileText size={13} className="flex-shrink-0 text-muted" />
+                  <span className="flex-1 truncate text-foreground">{archivoCotiz.name}</span>
+                  <span className="flex-shrink-0 text-muted">
+                    {(archivoCotiz.size / 1024).toFixed(0)} KB
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setArchivoCotiz(null)}
+                    className="flex-shrink-0 text-muted hover:text-foreground"
+                    aria-label={`Quitar ${archivoCotiz.name}`}
+                  >
+                    <X size={13} />
+                  </button>
+                </li>
+              </ul>
+            )}
+          </Campo>
+        )}
 
         {error && (
           <p className="rounded-lg border border-bad-fg/30 bg-bad-bg px-3 py-2.5 text-xs leading-relaxed text-bad-fg">
