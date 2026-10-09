@@ -1711,7 +1711,11 @@ Deno.serve(async (req: Request) => {
       // campo mapeado viene vacío se busca la columna por su nombre entre las que quedaron sin
       // mapear. Un dato que SÍ está en el archivo no se puede perder porque el modelo eligió mal.
       const batch = filasFinal.map((f) => {
-        const estado = (f.estado_us as string | null) ?? delExtra(f, /dlstate|govstate|licensestate|^state$/i);
+        // National General trae "Gov State" Y "DL State", y en ese orden. La tarifa del MVR depende
+        // de la licencia, no del estado de la poliza, asi que se pide primero la de la licencia.
+        const estado = (f.estado_us as string | null)
+          ?? delExtra(f, /dlstate|licensestate/i)
+          ?? delExtra(f, /govstate|^state$/i);
         // Las dos compañías que mandan MVR lo firman al revés: Progressive cobra 8.00 y National
         // General cobra -1.00, por el mismo cargo. Si se guardaran tal cual, los totales por
         // oficina se cancelarían entre sí. Un archivo de cargos solo cobra, nunca devuelve, así
@@ -1721,7 +1725,9 @@ Deno.serve(async (req: Request) => {
           reporte_id: reporteId,
           fila: f.fila ?? null,
           tipo_costo:
-            ((f.tipo_costo as string | null) ?? delExtra(f, /transtype|chargebacktype|^product$|^type$/i)) || "mvr",
+            ((f.tipo_costo as string | null)
+              ?? delExtra(f, /transtype|chargebacktype/i)
+              ?? delExtra(f, /^product$|^type$/i)) || "mvr",
           asegurado_crudo:
             ((f.asegurado_crudo as string | null) ?? delExtra(f, /namedinsured|insuredname|^insured$/i)) || null,
           conductor_crudo:
