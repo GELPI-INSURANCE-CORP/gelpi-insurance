@@ -1027,6 +1027,17 @@ Reglas:
 - Fechas siempre en formato ISO YYYY-MM-DD.
 - Montos como número; los chargebacks/cancelaciones son montos NEGATIVOS.
 - tipo_transaccion: traducí códigos de aseguradora (NB/NBS/NEW->nueva, RWL/REN->renovacion, END/ENDT/XLC->endoso, CAN/CNL/CXL/CB->cancelacion, ADJ->ajuste) o dejá "otro".
+- Algunas compañías no usan códigos sino frases enteras. Ascendant escribe así, y se traduce así:
+    "Policy Cancelled On <fecha>"  -> cancelacion
+    "Policy Reinstated"            -> ajuste
+    "Policy Expired"               -> cancelacion
+    "MVR Charges"                  -> ajuste   (es un cargo que la compañía descuenta, no comisión de una venta)
+    "Premium Paid"                 -> ajuste
+    "Advance Commission Payment"   -> otro
+  Lo último NO es un olvido y no hay que "mejorarlo": Ascendant usa esa misma frase para pólizas
+  nuevas Y para renovaciones, y el archivo no trae nada que las distinga. Marcarla como "nueva"
+  le pagaría al agente por renovaciones. Queda en "otro" a propósito, para que una persona la
+  clasifique.
 - monto cuando hay VARIAS columnas de comisión (ej. Progressive trae "Gross Comm" y "Net Due Agent", o "Agency Due"): elegí SIEMPRE la NETA, la que la aseguradora realmente deposita después de sus descuentos, porque es la que tiene que cuadrar contra el cheque. En la mayoría de las filas las dos coinciden; donde difieren, la neta es la correcta. Caso real: la fila "MVR FEE" de Progressive tiene Gross Comm = 0 y Net Due Agent = -1534, que es el cargo que la aseguradora le descuenta a la agencia — tomando la bruta ese descuento desaparecía y el total no cuadraba con el depósito.
 - Kemper manda "Current Com." (la comisión de la fila) y "Total Net Amount" (esa comisión más los cargos que la compañía descuenta). La neta es "Total Net Amount": es la que incluye los fees y la que cuadra con el depósito. Su "Com. Pct." viene como fracción (0.1 = 10%): devolvela tal cual está en la celda, el sistema la convierte.
 - Filas que NO son una transacción de póliza y vienen sin número de póliza: los saldos arrastrados ("Bal Forward", "Balance Forward") y los pagos con que se cancelan ("EFT-Disburse", "Disbursement") no son plata producida este mes; los cargos de la compañía ("MVR FEE", "Fee-UWReports", inspecciones) SÍ lo son y tienen que restar. En los dos casos copiá el texto del código de transacción TAL CUAL viene en tipo_transaccion, sin traducirlo ni inventarle un nombre: el sistema lo usa para clasificarlas y para mostrar de qué era el cargo.
