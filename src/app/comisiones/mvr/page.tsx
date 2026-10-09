@@ -83,6 +83,7 @@ function enPalabras(c: CargoMvr): string {
   if (conDueno) {
     if (c.regla_match === "manual") return "Lo asignaste vos";
     if (c.regla_match === "productor_del_archivo") return "Lo dice el archivo de la compañía";
+    if (c.regla_match === "book") return "El cliente es del Book";
     return "Pegó contra las cotizaciones";
   }
   if (c.estado === "cuenta_casa") return "Se lo come la agencia";
