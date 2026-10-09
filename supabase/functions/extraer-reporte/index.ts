@@ -800,6 +800,7 @@ const CAMPOS_VENTA = [
 // En el archivo de agosto de Progressive eran 389 renglones para 190 casos.
 const CAMPOS_MVR = [
   "asegurado_crudo", "conductor_crudo", "estado_us", "fecha_orden", "tipo_costo", "monto",
+  "agente_texto",
 ] as const;
 
 // El QuoteReport del sistema de la agencia. Siempre viene igual, pero pasa por el mismo mapeo
@@ -869,7 +870,8 @@ function buildFilaSchema(variante: Variante): Record<string, unknown> {
       conductor_crudo: { type: ["string", "null"], description: "Driver Name, tal cual viene." },
       estado_us: { type: ["string", "null"], description: "Estado de 2 letras: FL, TX, NJ, NY, KY. La tarifa depende de él." },
       fecha_orden: { type: ["string", "null"], description: "YYYY-MM-DD" },
-      tipo_costo: { type: ["string", "null"], description: "Ej: 'Personal Lines MVR', 'Commercial Lines MVR'." },
+      tipo_costo: { type: ["string", "null"], description: "Ej: 'Personal Lines MVR', 'Commercial Lines MVR', 'Loss Hist Chargeback'." },
+      agente_texto: { type: ["string", "null"], description: "Columna de productor o agente CON NOMBRE de persona, si el archivo la trae (ej. National General manda 'Quoting Producer'). NO uses una columna que traiga un codigo numerico de agencia." },
       monto: { type: ["number", "string", "null"], description: "Lo cobrado. Puede ser 0." },
       confianza: { type: ["number", "null"] },
       campos_extra: campoExtraProp,
@@ -993,6 +995,24 @@ function safeJsonParse<T>(s: unknown, fallback: T): T {
   }
 }
 
+// Rescata un dato que SÍ vino en el archivo pero que el modelo no mandó al campo correcto: lo
+// busca por el nombre de la columna entre las que quedaron sin mapear. Se usa en las dos ramas
+// que dependen de nombres propios -- cotizaciones y MVR -- porque en las dos un campo vacío no
+// degrada el resultado, lo anula: sin agente la cotización no identifica nada, y sin nombre el
+// cargo no se puede atribuir a ninguna oficina. Las dos veces que pasó fue el reporte entero,
+// no unas filas sueltas: 1393 cotizaciones sin agente y 389 MVR sin nombre.
+function delExtra(f: Record<string, unknown>, patron: RegExp): string | null {
+  const crudo = f.campos_extra;
+  const obj = typeof crudo === "string" ? safeJsonParse<Record<string, unknown>>(crudo, {}) : crudo;
+  if (!obj || typeof obj !== "object") return null;
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (!patron.test(k.replace(/[\s_-]/g, ""))) continue;
+    const s = String(v ?? "").trim();
+    if (s) return s;
+  }
+  return null;
+}
+
 // Reconstruye el mismo shape de `ExtraccionResultado` que se usaba con la tool-use original,
 // deshaciendo la codificación a string de mapeo_columnas/campos_extra.
 function normalizarExtraccion(raw: any): ExtraccionResultado {
@@ -1022,7 +1042,7 @@ Vas a recibir uno de estos tipos de documentos:
 - Reportes de ventas internas de la agencia (venta_interna): cada fila es una venta hecha por un agente/oficina de Gelpi.
 - Statements de bono o contingencia de una aseguradora (bono_contingencia): un monto total, a veces desglosado por agente/productor.
 - El "Active Business Book" (actualizacion_abb): el libro maestro de pólizas vigentes con cliente, aseguradora, agente y oficina asignados.
-- Reportes de cargos por MVR (mvr): lo que una aseguradora le cobra a la agencia por correr reportes de manejo (Motor Vehicle Record). Progressive los titula "MVR Chargeback" y trae Named Insured / Driver Name / State / Order Date / Chargeback Type / Amount, pero United, Kemper y Responsive mandan el suyo con otros títulos. UN RENGLÓN ES UN CONDUCTOR, no una póliza: si una familia tiene cuatro conductores, son cuatro renglones con el mismo asegurado. El monto suele ser chico (0 a 15 dólares) y MUCHOS VIENEN EN CERO — un cero no es un error, es un MVR que no cobraron, y hay que traerlo igual. Si el asegurado viene "N/A" o vacío (los comerciales), dejalo tal cual: no lo inventes ni lo copies del conductor.
+- Reportes de cargos por MVR (mvr): lo que una aseguradora le cobra a la agencia por correr reportes de manejo (Motor Vehicle Record). Progressive los titula "MVR Chargeback" y trae Named Insured / Driver Name / State / Order Date / Chargeback Type / Amount; National General trae Drivers Name / DL State / Order Date / TransType / Amount / Quoting Producer y NO trae asegurado; United, Kemper y Responsive mandan el suyo con otros títulos. LO QUE NO PUEDE FALTAR ES EL NOMBRE: el nombre del asegurado y el del conductor son lo único que permite saber de quién es el cargo, y un reporte sin nombres no sirve para nada. Si el archivo trae cualquier columna con un nombre de persona, mapeala — a asegurado_crudo la del titular, a conductor_crudo la del conductor — antes que mandarla a campos_extra. UN RENGLÓN ES UN CONDUCTOR, no una póliza: si una familia tiene cuatro conductores, son cuatro renglones con el mismo asegurado. El monto suele ser chico (0 a 15 dólares) y MUCHOS VIENEN EN CERO — un cero no es un error, es un MVR que no cobraron, y hay que traerlo igual; si vienen en negativo, traelos en negativo tal cual, el signo lo arregla el sistema. Si el asegurado viene "N/A" o vacío, dejalo tal cual: no lo inventes ni lo copies del conductor. Si hay una columna de productor o agente CON NOMBRE DE PERSONA (ej. "Quoting Producer"), va a agente_texto; si lo que hay es un código numérico de agencia, dejalo en campos_extra.
 - Reportes de cotizaciones (cotizaciones): el QuoteReport del sistema de la agencia. Una fila por cotización. EL MAPEO DE ESTE TIPO ES FIJO Y NO HAY QUE INTERPRETARLO — el archivo siempre trae estos títulos exactos y van a estos campos, sin excepción:
     ClientFirstName -> pila_crudo
     ClientLastName  -> apellido_crudo
@@ -1680,20 +1700,51 @@ Deno.serve(async (req: Request) => {
     // Ramas por tipo de reporte
     // -----------------------------------------------------------------------
     if (tipoEfectivo === "mvr") {
-      const batch = filasFinal.map((f) => ({
-        reporte_id: reporteId,
-        fila: f.fila ?? null,
-        tipo_costo: (f.tipo_costo as string | null) ?? "mvr",
-        asegurado_crudo: f.asegurado_crudo ?? null,
-        conductor_crudo: f.conductor_crudo ?? null,
-        estado_us: typeof f.estado_us === "string" ? f.estado_us.trim().toUpperCase().slice(0, 2) : null,
-        fecha_orden: coerceDate(f.fecha_orden),
-        // Un MVR en cero NO es un dato faltante: es un MVR que la compañía no cobró. En el
-        // archivo de agosto de Progressive eran 100 de 389. Si esto fuera `?? null` la columna
-        // (not null default 0) los convertiría igual, pero dejarlo explícito evita que mañana
-        // alguien "arregle" el default y empiece a perder renglones.
-        monto: coerceNumber(f.monto) ?? 0,
-      }));
+      // RED DE SEGURIDAD, igual que en las cotizaciones y por el mismo motivo. El MVR de
+      // Progressive de septiembre entró con sus 389 filas y las 389 SIN UN SOLO NOMBRE: el
+      // modelo mapeó el monto y nada más. Sin nombre no hay contra qué cruzar, así que los 389
+      // cargos quedaron sin dueño, y sin dueño no hay agente, sin agente no hay oficina y sin
+      // oficina no hay nada que repartir. La pantalla solo podía mostrar "sin identificar"
+      // porque era literalmente todo lo que había.
+      //
+      // Cada compañía titula sus columnas distinto pero todas traen lo mismo, así que cuando el
+      // campo mapeado viene vacío se busca la columna por su nombre entre las que quedaron sin
+      // mapear. Un dato que SÍ está en el archivo no se puede perder porque el modelo eligió mal.
+      const batch = filasFinal.map((f) => {
+        const estado = (f.estado_us as string | null) ?? delExtra(f, /dlstate|govstate|licensestate|^state$/i);
+        // Las dos compañías que mandan MVR lo firman al revés: Progressive cobra 8.00 y National
+        // General cobra -1.00, por el mismo cargo. Si se guardaran tal cual, los totales por
+        // oficina se cancelarían entre sí. Un archivo de cargos solo cobra, nunca devuelve, así
+        // que el signo es decoración de cada compañía y lo que vale es cuánto.
+        const bruto = coerceNumber(f.monto) ?? coerceNumber(delExtra(f, /^amount$|chargeamount|^charge$|^monto$/i)) ?? 0;
+        return {
+          reporte_id: reporteId,
+          fila: f.fila ?? null,
+          tipo_costo:
+            ((f.tipo_costo as string | null) ?? delExtra(f, /transtype|chargebacktype|^product$|^type$/i)) || "mvr",
+          asegurado_crudo:
+            ((f.asegurado_crudo as string | null) ?? delExtra(f, /namedinsured|insuredname|^insured$/i)) || null,
+          conductor_crudo:
+            ((f.conductor_crudo as string | null) ?? delExtra(f, /driversname|drivername|^driver$/i)) || null,
+          estado_us: typeof estado === "string" ? estado.trim().toUpperCase().slice(0, 2) : null,
+          fecha_orden: coerceDate(f.fecha_orden) ?? coerceDate(delExtra(f, /orderdate|fechaorden|^date$/i)),
+          // El productor que trae el archivo NO dice de quién es el cargo, y guardarlo como si lo
+          // dijera sería cobrarle a la persona equivocada. National General manda "Quoting
+          // Producer" con el usuario que estaba logueado: Thalía cotiza bajo el usuario de
+          // Arturo, así que sus MVR le caerían a él. Se guarda porque sirve de pista cuando el
+          // cliente no aparece en ninguna cotización, pero el cruce contra el cliente manda
+          // siempre. Esa regla vive en matchear_costo(), no acá.
+          agente_texto:
+            ((f.agente_texto as string | null) ??
+              delExtra(f, /quotingproducer|quotecreatedby/i) ??
+              delExtra(f, /producername|^producer$/i)) || null,
+          // Un MVR en cero NO es un dato faltante: es un MVR que la compañía no cobró. En el
+          // archivo de agosto de Progressive eran 100 de 389. Si esto fuera `?? null` la columna
+          // (not null default 0) los convertiría igual, pero dejarlo explícito evita que mañana
+          // alguien "arregle" el default y empiece a perder renglones.
+          monto: Math.abs(bruto),
+        };
+      });
 
       await limpiarLineasPrevias(admin, reporteId!);
       for (const b of chunk(batch, 500)) {
@@ -1713,18 +1764,6 @@ Deno.serve(async (req: Request) => {
       // razón para que un dato que SÍ está en el archivo se pierda porque el modelo no eligió
       // bien el destino. Si el campo mapeado viene vacío, se busca la columna por su nombre
       // entre las que quedaron sin mapear.
-      const delExtra = (f: Record<string, unknown>, patron: RegExp): string | null => {
-        const crudo = f.campos_extra;
-        const obj = typeof crudo === "string" ? safeJsonParse<Record<string, unknown>>(crudo, {}) : crudo;
-        if (!obj || typeof obj !== "object") return null;
-        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-          if (!patron.test(k.replace(/[\s_-]/g, ""))) continue;
-          const s = String(v ?? "").trim();
-          if (s) return s;
-        }
-        return null;
-      };
-
       const batch = filasFinal.map((f) => {
         const pila = ((f.pila_crudo as string | null) ?? delExtra(f, /clientfirstname|firstname|nombre/i)) || null;
         const apellido = ((f.apellido_crudo as string | null) ?? delExtra(f, /clientlastname|lastname|apellido/i)) || null;
