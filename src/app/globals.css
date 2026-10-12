@@ -72,40 +72,94 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
-
 /* =========================================================
    Impresión: el estado de cuenta de la oficina
    =========================================================
    Este documento se guarda en PDF con el botón de imprimir del navegador, así que la hoja de
    impresión ES el formato del PDF. No hay librería que lo dibuje.
 
-   La técnica es esconder todo y volver a mostrar solo lo que cuelga de [data-imprimible]. Se
-   hace con visibility y no con display:none porque un padre con display:none se lleva a sus
-   hijos sin importar lo que digan: habría que ir escondiendo la barra lateral, el encabezado y
-   cada contenedor uno por uno, y cualquier pantalla nueva rompería el truco. Con visibility los
-   padres siguen existiendo (por eso el reposicionado de abajo) pero no pintan nada. */
+   Se esconde todo menos [data-imprimible], los contenedores que lo cuelgan y lo que lleva
+   adentro.
+
+   Antes esto se hacía con visibility:hidden, para no tener que ir escondiendo la barra lateral y
+   cada contenedor uno por uno. Pero visibility deja a los padres ocupando su lugar, así que
+   había que sacar el documento del flujo con position:absolute -- y un elemento fuera del flujo
+   no le suma alto a nada. El navegador terminaba paginando contra el alto que le quedaba al body
+   (911px, una hoja) en vez de contra el del documento (1.672px, dos): de ahí salía la primera
+   hoja cortada por la mitad y la segunda como un papel suelto, sin logo ni oficina.
+
+   Ahora se esconde con display:none y el documento se queda en el flujo, que es la única forma
+   en que el navegador sabe paginar. A los contenedores que lo cuelgan los alcanza :has(), así
+   que sigue sin hacer falta nombrarlos: una pantalla nueva solo tiene que marcar su documento
+   con [data-imprimible]. :has() es de Chrome 105 en adelante, y de Chrome es de donde sale el
+   PDF. */
 @media print {
-  body * {
-    visibility: hidden;
+  /* margin: 0 no es una decisión de diseño. Chrome dibuja SU encabezado y SU pie -- la fecha, el
+     título de la pestaña, la URL entera y "1/2" -- DENTRO del margen de @page. Sin margen no
+     tiene dónde ponerlos y desaparecen solos, sin depender de que alguien se acuerde de destildar
+     "Headers and footers" en el diálogo. El margen de verdad del papel lo pone el documento más
+     abajo, con su propio padding. */
+  @page {
+    size: letter portrait;
+    margin: 0;
   }
-  [data-imprimible],
-  [data-imprimible] * {
-    visibility: visible;
+
+  html,
+  body {
+    /* El fondo de la app es gris; el papel es blanco. */
+    background: #fff !important;
+    height: auto !important;
   }
-  /* Los contenedores invisibles conservan su tamaño y su posición, así que el documento saldría
-     corrido hacia la derecha por el ancho de la barra lateral. Se saca del flujo y se ancla. */
+
+  /* Todo lo que no es el documento, no lo contiene y no está adentro. */
+  body *:not(:has([data-imprimible])):not([data-imprimible]):not([data-imprimible] *) {
+    display: none !important;
+  }
+
+  /* Los que sí lo contienen siguen existiendo, pero sin aportar ancho, márgenes ni rejilla
+     propia: si no, el documento sale corrido por donde estaba la barra lateral. */
+  body :has([data-imprimible]) {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
   [data-imprimible] {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
+    /* El margen real de la hoja, por lo dicho arriba sobre @page. 13/14mm queda por encima del
+       borde que ninguna impresora puede pintar (unos 6mm), así que también sirve en papel. */
+    padding: 13mm 14mm !important;
   }
+
   /* Fondos y colores: por defecto el navegador no imprime fondos, y el encabezado y los totales
      dependen de ellos para leerse como un documento y no como texto suelto. */
   * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+
+  /* La tabla de compañías y el desglose del dinero van en dos columnas, así que la tabla imprime
+     en unos 420px y no en los 880 de la pantalla. A ese ancho las columnas se tocaban: el
+     encabezado salía "PREMIUMCOMMISSION" y el total "249$208,626.04$26,025.29". Y las filas de
+     35px, pensadas para la pantalla, regalaban alto que acá se necesita. */
+  [data-imprimible] table {
+    font-size: 11px;
+  }
+  [data-imprimible] table th + th,
+  [data-imprimible] table td + td {
+    padding-left: 12px;
+  }
+  [data-imprimible] table th,
+  [data-imprimible] table td {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  [data-imprimible] table tfoot td {
+    padding-top: 9px;
+  }
+
   /* Que una compañía no quede partida entre dos hojas. */
   tr,
   img {
@@ -113,9 +167,5 @@ body {
   }
   thead {
     display: table-header-group;
-  }
-  @page {
-    size: letter portrait;
-    margin: 14mm;
   }
 }
