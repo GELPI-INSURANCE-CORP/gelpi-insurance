@@ -130,7 +130,7 @@ body {
   [data-imprimible] {
     /* El margen real de la hoja, por lo dicho arriba sobre @page. 13/14mm queda por encima del
        borde que ninguna impresora puede pintar (unos 6mm), así que también sirve en papel. */
-    padding: 13mm 14mm !important;
+    padding: 11mm 14mm !important;
   }
 
   /* Fondos y colores: por defecto el navegador no imprime fondos, y el encabezado y los totales

@@ -184,7 +184,7 @@ function Contenido() {
           data-imprimible
           className="mx-auto w-full max-w-[880px] rounded-2xl border border-border bg-surface px-14 py-12 shadow-sm print:max-w-none print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none"
         >
-          <header className="flex items-center justify-between gap-8 border-b border-border pb-6 print:pb-5">
+          <header className="flex items-center justify-between gap-8 border-b border-border pb-6 print:pb-3">
             <Image
               src={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/logo-gelpi-oficial.webp`}
               alt="Gelpi Insurance"
@@ -197,7 +197,7 @@ function Contenido() {
             </p>
           </header>
 
-          <div className="mt-7 flex items-start justify-between gap-8 print:mt-5">
+          <div className="mt-7 flex items-start justify-between gap-8 print:mt-3.5">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Office</p>
               <h1 className="mt-1.5 text-[24px] font-semibold leading-tight tracking-tight text-foreground">
@@ -215,10 +215,10 @@ function Contenido() {
           {/* El número que la oficina viene a ver. Va grande y arriba; el desglose lo justifica
               después, no al revés. En pantalla lleva fondo; en papel, un filo fino, porque un
               bloque de color lleno se ve pesado impreso. */}
-          <section className="my-9 flex flex-wrap items-center justify-between gap-x-10 gap-y-6 rounded-2xl bg-brand-tint px-8 py-7 print:my-4 print:px-5 print:py-3 print:break-inside-avoid print:bg-transparent print:ring-1 print:ring-brand-dark/25">
+          <section className="my-9 flex flex-wrap items-center justify-between gap-x-10 gap-y-6 rounded-2xl bg-brand-tint px-8 py-7 print:my-3 print:px-5 print:py-3 print:break-inside-avoid print:bg-transparent print:ring-1 print:ring-brand-dark/25">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Office payout</p>
-              <p className="mt-3 text-[56px] font-semibold leading-none tracking-tight tabular-nums text-brand-dark">
+              <p className="mt-3 text-[56px] font-semibold leading-none tracking-tight tabular-nums text-brand-dark print:text-[42px]">
                 {money(datos.neto)}
               </p>
             </div>
