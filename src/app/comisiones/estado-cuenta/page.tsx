@@ -153,6 +153,22 @@ function Contenido() {
   }
 
 
+  // Las dos mitades del estado de cuenta. El royalty sale de la comisión generada MÁS los
+  // ajustes marcados "lleva royalty" -- y de nada más: es la misma cuenta que hace
+  // royalty_por_oficina() en la base (20261001000001). Separarlas acá es lo que permite que el
+  // papel diga sobre qué se cobró el porcentaje en vez de dejarlo adivinar.
+  const ajustesEnBase = datos?.ajustes.filter((a) => a.aplicaRoyalty) ?? [];
+  const ajustesFuera = datos?.ajustes.filter((a) => !a.aplicaRoyalty) ?? [];
+  const baseRoyalty =
+    (datos?.comisionGenerada ?? 0) + ajustesEnBase.reduce((t, a) => t + a.monto, 0);
+  const despuesRoyalty = baseRoyalty - (datos?.royalty ?? 0);
+  const creditos = ajustesFuera.filter((a) => a.monto > 0);
+  const debitos = ajustesFuera.filter((a) => a.monto < 0);
+  const totalCreditos = creditos.reduce((t, a) => t + a.monto, 0);
+  // Los MVR son un gasto más para la oficina, aunque vivan en otra tabla.
+  const totalDebitos =
+    debitos.reduce((t, a) => t + Math.abs(a.monto), 0) + (datos?.totalCostos ?? 0);
+
   return (
     <div className="flex flex-col gap-4">
       {/* La barra de control es de la app, no del documento: va en español como el resto del
@@ -328,29 +344,34 @@ function Contenido() {
               </tfoot>
             </table>
 
+            {/* De dónde sale el royalty, a la vista. Antes todo iba en una lista sola -- comisión,
+                bonos, fees y MVR mezclados -- y mirando el papel no había forma de saber sobre qué
+                se cobró el 12%. La base es la comisión generada MÁS los ajustes marcados "lleva
+                royalty", y nada más: es la misma cuenta que hace la base de datos, escrita para
+                que el franquiciado la pueda seguir con el dedo. */}
             <div className="w-full text-[13px] print:break-inside-avoid">
-              <div className="flex justify-between border-b border-border py-2.5 print:py-[5px]">
-                <span className="text-muted">Commission generated</span>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                Subject to royalty
+              </p>
+
+              <div className="mt-2 flex items-baseline justify-between border-b border-border py-2.5 print:py-[5px]">
+                <span className="text-muted">
+                  Commission generated
+                  <span className="ml-1.5 text-[11px] text-muted/70">
+                    {datos.companias.length} {datos.companias.length === 1 ? "carrier" : "carriers"}
+                  </span>
+                </span>
                 <span className="tabular-nums text-foreground">{money(datos.comisionGenerada)}</span>
               </div>
 
-              {/* Cada ajuste va con su nombre y su monto, uno por renglón. Un total de "ajustes"
-                  sin desglosar obliga al franquiciado a llamar para preguntar qué le descontaron,
-                  que es exactamente la llamada que este documento tiene que evitar. */}
-              {datos.ajustes.map((a) => (
-                <div key={a.id} className="flex items-baseline justify-between border-b border-border py-2.5 print:py-[5px]">
+              {ajustesEnBase.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-baseline justify-between border-b border-border py-2.5 print:py-[5px]"
+                >
                   <span className="flex items-center gap-1.5 text-muted">
                     {a.concepto}
-                    {/* El botón de borrar es de la pantalla, no del documento. */}
-                    <button
-                      type="button"
-                      onClick={() => quitarAjuste(a.id, a.concepto)}
-                      className="text-muted/60 transition-colors hover:text-bad-fg print:hidden"
-                      aria-label={`Borrar el ajuste ${a.concepto}`}
-                      title="Borrar este ajuste"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    <BorrarAjuste id={a.id} concepto={a.concepto} onBorrar={quitarAjuste} />
                   </span>
                   <span className="tabular-nums text-foreground">
                     {a.monto < 0 ? "−" : "+"}
@@ -358,52 +379,109 @@ function Contenido() {
                   </span>
                 </div>
               ))}
-              <div className="flex justify-between py-2.5 print:py-[5px]">
+
+              <div className="flex items-baseline justify-between border-b border-foreground/70 py-2.5 print:py-[5px]">
+                <span className="font-medium text-foreground">Royalty base</span>
+                <span className="font-medium tabular-nums text-foreground">{money(baseRoyalty)}</span>
+              </div>
+              <div className="flex items-baseline justify-between border-b border-border py-2.5 print:py-[5px]">
                 <span className="text-muted">
                   Franchise royalty{datos.pctRoyalty != null ? ` (${datos.pctRoyalty}%)` : ""}
                 </span>
                 <span className="tabular-nums text-foreground">−{money(datos.royalty)}</span>
               </div>
-
-              {/* Los MVR van DESPUÉS del royalty y nunca antes: el royalty se cobra sobre la
-                  ganancia bruta y un gasto no baja esa base. Por eso también va el subtotal, que
-                  es el renglón "TOTAL BEFORE SOFTWARES" de la planilla con la que se liquida hoy:
-                  sin él no se ve dónde termina el royalty y dónde empiezan los gastos.
-
-                  Un renglón por compañía, no un total de "MVR": el franquiciado tiene que poder
-                  ver que son $601 de Progressive y $456 de Responsive sin llamar a preguntar. */}
-              {datos.costos.length > 0 && (
-                <>
-                  <div className="flex justify-between border-t border-border py-2.5 print:py-[5px]">
-                    <span className="text-muted">Before expenses</span>
-                    <span className="tabular-nums text-foreground">
-                      {money(datos.comisionGenerada + datos.ajustes.reduce((t, a) => t + a.monto, 0) - datos.royalty)}
-                    </span>
-                  </div>
-                  {datos.costos.map((c) => (
-                    <div
-                      key={c.compania}
-                      className="flex items-baseline justify-between border-b border-border py-2.5 print:py-[5px]"
-                    >
-                      <span className="text-muted">
-                        MVR {c.compania}
-                        <span className="ml-1.5 text-[11px] text-muted/70">
-                          {c.conCargo} of {c.cargos}
-                        </span>
-                      </span>
-                      <span className="tabular-nums text-foreground">−{money(c.monto)}</span>
-                    </div>
-                  ))}
-                </>
-              )}
-              <div className="mt-1 flex items-baseline justify-between border-t-2 border-brand-dark pt-3.5">
-                <span className="text-[14px] font-semibold text-foreground">Net to Office</span>
-                <span className="text-[22px] font-semibold tracking-tight tabular-nums text-brand-dark">
-                  {money(datos.neto)}
-                </span>
+              <div className="flex items-baseline justify-between py-2.5 print:py-[5px]">
+                <span className="font-medium text-foreground">After royalty</span>
+                <span className="font-medium tabular-nums text-foreground">{money(despuesRoyalty)}</span>
               </div>
             </div>
+          </div>
 
+          {/* Lo que NO lleva royalty, en dos columnas: lo que le entra a la oficina y lo que le
+              sale. Letras más chicas a propósito -- no son la cuenta principal, son el detalle de
+              la cuenta principal -- pero cada concepto va con su nombre y su monto, porque un
+              total de "ajustes" sin desglosar es exactamente la llamada que este papel evita.
+
+              Los MVR viven en otra tabla (lineas_costo, no ajustes_oficina) pero para la oficina
+              son un gasto como cualquier otro, así que van en la misma columna, con cuántos de
+              los cargos del mes le tocaron. */}
+          <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-2 print:mt-5 print:grid-cols-2 print:gap-8 print:break-inside-avoid">
+            <section>
+              <div className="flex items-baseline justify-between border-b border-foreground/70 pb-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  Credits · no royalty
+                </p>
+                <p className="text-[11px] font-semibold text-muted">+</p>
+              </div>
+              {creditos.length === 0 && (
+                <p className="py-2 text-[11px] text-muted/70">None this period.</p>
+              )}
+              {creditos.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-baseline justify-between gap-3 border-b border-border py-1.5 text-[11px] print:py-[3px]"
+                >
+                  <span className="flex items-center gap-1.5 text-muted">
+                    {a.concepto}
+                    <BorrarAjuste id={a.id} concepto={a.concepto} onBorrar={quitarAjuste} />
+                  </span>
+                  <span className="tabular-nums text-foreground">+{money(a.monto)}</span>
+                </div>
+              ))}
+              <div className="flex items-baseline justify-between pt-2 text-[11px] font-semibold">
+                <span className="text-foreground">Total credits</span>
+                <span className="tabular-nums text-foreground">+{money(totalCreditos)}</span>
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-baseline justify-between border-b border-foreground/70 pb-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                  Deductions · no royalty
+                </p>
+                <p className="text-[11px] font-semibold text-muted">−</p>
+              </div>
+              {debitos.length === 0 && datos.costos.length === 0 && (
+                <p className="py-2 text-[11px] text-muted/70">None this period.</p>
+              )}
+              {debitos.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-baseline justify-between gap-3 border-b border-border py-1.5 text-[11px] print:py-[3px]"
+                >
+                  <span className="flex items-center gap-1.5 text-muted">
+                    {a.concepto}
+                    <BorrarAjuste id={a.id} concepto={a.concepto} onBorrar={quitarAjuste} />
+                  </span>
+                  <span className="tabular-nums text-foreground">−{money(Math.abs(a.monto))}</span>
+                </div>
+              ))}
+              {datos.costos.map((c) => (
+                <div
+                  key={c.compania}
+                  className="flex items-baseline justify-between gap-3 border-b border-border py-1.5 text-[11px] print:py-[3px]"
+                >
+                  <span className="text-muted">
+                    MVR {c.compania}
+                    <span className="ml-1.5 text-[10px] text-muted/70">
+                      {c.conCargo} of {c.cargos}
+                    </span>
+                  </span>
+                  <span className="tabular-nums text-foreground">−{money(c.monto)}</span>
+                </div>
+              ))}
+              <div className="flex items-baseline justify-between pt-2 text-[11px] font-semibold">
+                <span className="text-foreground">Total deductions</span>
+                <span className="tabular-nums text-foreground">−{money(totalDebitos)}</span>
+              </div>
+            </section>
+          </div>
+
+          <div className="mt-6 flex items-baseline justify-between border-t-2 border-brand-dark pt-3.5 print:mt-4 print:pt-2.5 print:break-inside-avoid">
+            <span className="text-[14px] font-semibold text-foreground">Net to Office</span>
+            <span className="text-[22px] font-semibold tracking-tight tabular-nums text-brand-dark">
+              {money(datos.neto)}
+            </span>
           </div>
 
           {/* Fuera del papel: esto es para armar el documento, no parte de él. print:hidden lo
@@ -500,5 +578,30 @@ function Contenido() {
         </div>
       )}
     </div>
+  );
+}
+
+// El botón de borrar un ajuste. Vive en la pantalla y nunca en el papel (print:hidden): ahora
+// que los ajustes salen repartidos en tres bloques según lleven royalty y según sumen o resten,
+// el mismo botón hacía falta en tres lugares.
+function BorrarAjuste({
+  id,
+  concepto,
+  onBorrar,
+}: {
+  id: string;
+  concepto: string;
+  onBorrar: (id: string, concepto: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onBorrar(id, concepto)}
+      className="text-muted/60 transition-colors hover:text-bad-fg print:hidden"
+      aria-label={`Borrar el ajuste ${concepto}`}
+      title="Borrar este ajuste"
+    >
+      <Trash2 size={12} />
+    </button>
   );
 }
