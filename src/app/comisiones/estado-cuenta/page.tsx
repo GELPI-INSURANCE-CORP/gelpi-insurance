@@ -206,7 +206,7 @@ function Contenido() {
               alt="Gelpi Insurance"
               width={2000}
               height={699}
-              className="h-11 w-auto"
+              className="h-11 w-auto print:h-8"
             />
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-brand-dark">
               Commission Statement
@@ -241,109 +241,112 @@ function Contenido() {
             <dl className="w-full min-w-[220px] text-[12px] sm:w-auto">
               <div className="flex items-baseline justify-between gap-8 border-b border-brand-dark/10 pb-2">
                 <dt className="text-muted">Policies</dt>
-                <dd className="font-medium tabular-nums text-foreground">
+                <dd className="whitespace-nowrap font-medium tabular-nums text-foreground">
                   {datos.totalPolizas.toLocaleString("en-US")}
                 </dd>
               </div>
               <div className="flex items-baseline justify-between gap-8 border-b border-brand-dark/10 py-2">
                 <dt className="text-muted">Premium written</dt>
-                <dd className="font-medium tabular-nums text-foreground">{money(datos.totalPrima)}</dd>
+                <dd className="whitespace-nowrap font-medium tabular-nums text-foreground">{money(datos.totalPrima)}</dd>
               </div>
               <div className="flex items-baseline justify-between gap-8 pt-2">
                 <dt className="text-muted">Carriers</dt>
-                <dd className="font-medium tabular-nums text-foreground">{datos.companias.length}</dd>
+                <dd className="whitespace-nowrap font-medium tabular-nums text-foreground">{datos.companias.length}</dd>
               </div>
             </dl>
           </section>
 
-          {/* La tabla de compañías y el desglose del dinero van en dos columnas. Apilados,
-              el documento medía 1.672px: la hoja se cortaba después del TOTAL, quedaba media
-              página en blanco y el desglose se iba solo a una segunda hoja sin logo ni nombre
-              de oficina. Al lado, mide 1.023px y entra entero en una hoja carta (1.056px). */}
-          <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[1fr_340px] print:mt-5 print:grid-cols-[1fr_260px] print:gap-[26px]">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="border-b border-foreground/70 text-left">
-                  <th className="pb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">Carrier</th>
-                  <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
-                    Policies
-                  </th>
-                  <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
-                    Premium
-                  </th>
-                  <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
-                    Commission
-                  </th>
-                  <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
-                    {mesAnterior}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {datos.companias.map((c) => {
-                  const dif =
-                    c.comisionMesAnterior != null && c.comisionMesAnterior !== 0
-                      ? ((c.comision - c.comisionMesAnterior) / Math.abs(c.comisionMesAnterior)) * 100
-                      : null;
-                  return (
-                    <tr key={c.compania} className="border-b border-border">
-                      <td className="py-3.5 font-medium text-foreground print:py-[7px]">{c.compania}</td>
-                      <td className="py-3.5 text-right tabular-nums text-foreground print:py-[7px]">{c.polizas}</td>
-                      <td className="py-3.5 text-right tabular-nums text-foreground print:py-[7px]">{money(c.prima)}</td>
-                      <td className="py-3.5 text-right font-semibold tabular-nums text-foreground print:py-[7px]">
-                        {money(c.comision)}
-                      </td>
-                      {/* Una compañía sin dato del mes anterior lleva raya y no 0%: casi siempre
-                          significa que ese statement todavía no se cargó, no que la compañía sea
-                          nueva. En un papel que va al franquiciado, decir "new" sería afirmar algo
-                          que no sabemos. */}
-                      <td className="py-3.5 text-right tabular-nums text-muted print:py-[7px]">
-                        {c.comisionMesAnterior == null ? (
-                          <>
-                            —<span className="ml-2 inline-block w-14" />
-                          </>
-                        ) : (
-                          <>
-                            {money(c.comisionMesAnterior)}
-                            {/* El lugar del porcentaje se reserva siempre, para que los montos de
-                                esta columna queden alineados aunque a alguna fila no le toque uno. */}
-                            {dif != null ? (
-                              <span
-                                className={
-                                  dif >= 0
-                                    ? "ml-2 inline-block w-14 text-[11px] font-medium text-ok-fg"
-                                    : "ml-2 inline-block w-14 text-[11px] font-medium text-bad-fg"
-                                }
-                              >
-                                {dif >= 0 ? "▲" : "▼"} {Math.abs(dif).toFixed(0)}%
-                              </span>
-                            ) : (
-                              <span className="ml-2 inline-block w-14" />
-                            )}
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-foreground">
-                  <td className="pt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pt-3">Total</td>
-                  <td className="pt-4 text-right text-[14px] font-semibold tabular-nums text-foreground print:pt-3">
-                    {datos.totalPolizas}
-                  </td>
-                  <td className="pt-4 text-right text-[14px] font-semibold tabular-nums text-foreground print:pt-3">
-                    {money(datos.totalPrima)}
-                  </td>
-                  <td className="pt-4 text-right text-[14px] font-semibold tabular-nums text-foreground print:pt-3">
-                    {money(datos.comisionGenerada)}
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-foreground/70 text-left">
+                <th className="pb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">Carrier</th>
+                <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
+                  Policies
+                </th>
+                <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
+                  Premium
+                </th>
+                <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
+                  Commission
+                </th>
+                <th className="pb-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pb-2">
+                  {mesAnterior}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {datos.companias.map((c) => {
+                const dif =
+                  c.comisionMesAnterior != null && c.comisionMesAnterior !== 0
+                    ? ((c.comision - c.comisionMesAnterior) / Math.abs(c.comisionMesAnterior)) * 100
+                    : null;
+                return (
+                  <tr key={c.compania} className="border-b border-border">
+                    <td className="py-3.5 font-medium text-foreground print:py-[7px]">{c.compania}</td>
+                    <td className="py-3.5 text-right tabular-nums text-foreground print:py-[7px]">{c.polizas}</td>
+                    <td className="py-3.5 text-right tabular-nums text-foreground print:py-[7px]">{money(c.prima)}</td>
+                    <td className="py-3.5 text-right font-semibold tabular-nums text-foreground print:py-[7px]">
+                      {money(c.comision)}
+                    </td>
+                    {/* Una compañía sin dato del mes anterior lleva raya y no 0%: casi siempre
+                        significa que ese statement todavía no se cargó, no que la compañía sea
+                        nueva. En un papel que va al franquiciado, decir "new" sería afirmar algo
+                        que no sabemos. */}
+                    <td className="py-3.5 text-right tabular-nums text-muted print:py-[7px]">
+                      {c.comisionMesAnterior == null ? (
+                        <>
+                          —<span className="ml-2 inline-block w-14" />
+                        </>
+                      ) : (
+                        <>
+                          {money(c.comisionMesAnterior)}
+                          {/* El lugar del porcentaje se reserva siempre, para que los montos de
+                              esta columna queden alineados aunque a alguna fila no le toque uno. */}
+                          {dif != null ? (
+                            <span
+                              className={
+                                dif >= 0
+                                  ? "ml-2 inline-block w-14 text-[11px] font-medium text-ok-fg"
+                                  : "ml-2 inline-block w-14 text-[11px] font-medium text-bad-fg"
+                              }
+                            >
+                              {dif >= 0 ? "▲" : "▼"} {Math.abs(dif).toFixed(0)}%
+                            </span>
+                          ) : (
+                            <span className="ml-2 inline-block w-14" />
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-foreground">
+                <td className="pt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted print:pt-3">Total</td>
+                <td className="pt-4 text-right text-[14px] font-semibold tabular-nums text-foreground print:pt-3">
+                  {datos.totalPolizas}
+                </td>
+                <td className="pt-4 text-right text-[14px] font-semibold tabular-nums text-foreground print:pt-3">
+                  {money(datos.totalPrima)}
+                </td>
+                <td className="pt-4 text-right text-[14px] font-semibold tabular-nums text-foreground print:pt-3">
+                  {money(datos.comisionGenerada)}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
 
+          {/* Las tres columnas del dinero: de dónde sale el royalty, lo que suma y lo que
+              resta. La tabla de arriba va a todo el ancho a propósito -- así los nombres de
+              las compañías no se parten en dos renglones y la tabla pasa de 284px de alto a
+              187px, que es justo lo que hacía falta para que todo entre en una hoja.
+
+              Los montos llevan whitespace-nowrap: en columnas de 200px, un "−$133.60" se
+              parte en el signo y queda el número solo en el renglón de abajo. */}
+          <div className="mt-8 grid grid-cols-1 gap-7 lg:grid-cols-[1fr_195px_255px] print:mt-5 print:grid-cols-[1fr_195px_255px] print:gap-5">
             {/* De dónde sale el royalty, a la vista. Antes todo iba en una lista sola -- comisión,
                 bonos, fees y MVR mezclados -- y mirando el papel no había forma de saber sobre qué
                 se cobró el 12%. La base es la comisión generada MÁS los ajustes marcados "lleva
@@ -355,13 +358,8 @@ function Contenido() {
               </p>
 
               <div className="mt-2 flex items-baseline justify-between border-b border-border py-2.5 print:py-[5px]">
-                <span className="text-muted">
-                  Commission generated
-                  <span className="ml-1.5 text-[11px] text-muted/70">
-                    {datos.companias.length} {datos.companias.length === 1 ? "carrier" : "carriers"}
-                  </span>
-                </span>
-                <span className="tabular-nums text-foreground">{money(datos.comisionGenerada)}</span>
+                <span className="text-muted">Commission generated</span>
+                <span className="whitespace-nowrap tabular-nums text-foreground">{money(datos.comisionGenerada)}</span>
               </div>
 
               {ajustesEnBase.map((a) => (
@@ -373,7 +371,7 @@ function Contenido() {
                     {a.concepto}
                     <BorrarAjuste id={a.id} concepto={a.concepto} onBorrar={quitarAjuste} />
                   </span>
-                  <span className="tabular-nums text-foreground">
+                  <span className="whitespace-nowrap tabular-nums text-foreground">
                     {a.monto < 0 ? "−" : "+"}
                     {money(Math.abs(a.monto))}
                   </span>
@@ -382,30 +380,20 @@ function Contenido() {
 
               <div className="flex items-baseline justify-between border-b border-foreground/70 py-2.5 print:py-[5px]">
                 <span className="font-medium text-foreground">Royalty base</span>
-                <span className="font-medium tabular-nums text-foreground">{money(baseRoyalty)}</span>
+                <span className="whitespace-nowrap font-medium tabular-nums text-foreground">{money(baseRoyalty)}</span>
               </div>
               <div className="flex items-baseline justify-between border-b border-border py-2.5 print:py-[5px]">
                 <span className="text-muted">
                   Franchise royalty{datos.pctRoyalty != null ? ` (${datos.pctRoyalty}%)` : ""}
                 </span>
-                <span className="tabular-nums text-foreground">−{money(datos.royalty)}</span>
+                <span className="whitespace-nowrap tabular-nums text-foreground">−{money(datos.royalty)}</span>
               </div>
               <div className="flex items-baseline justify-between py-2.5 print:py-[5px]">
                 <span className="font-medium text-foreground">After royalty</span>
-                <span className="font-medium tabular-nums text-foreground">{money(despuesRoyalty)}</span>
+                <span className="whitespace-nowrap font-medium tabular-nums text-foreground">{money(despuesRoyalty)}</span>
               </div>
             </div>
-          </div>
 
-          {/* Lo que NO lleva royalty, en dos columnas: lo que le entra a la oficina y lo que le
-              sale. Letras más chicas a propósito -- no son la cuenta principal, son el detalle de
-              la cuenta principal -- pero cada concepto va con su nombre y su monto, porque un
-              total de "ajustes" sin desglosar es exactamente la llamada que este papel evita.
-
-              Los MVR viven en otra tabla (lineas_costo, no ajustes_oficina) pero para la oficina
-              son un gasto como cualquier otro, así que van en la misma columna, con cuántos de
-              los cargos del mes le tocaron. */}
-          <div className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-2 print:mt-5 print:grid-cols-2 print:gap-8 print:break-inside-avoid">
             <section>
               <div className="flex items-baseline justify-between border-b border-foreground/70 pb-1.5">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
@@ -425,12 +413,12 @@ function Contenido() {
                     {a.concepto}
                     <BorrarAjuste id={a.id} concepto={a.concepto} onBorrar={quitarAjuste} />
                   </span>
-                  <span className="tabular-nums text-foreground">+{money(a.monto)}</span>
+                  <span className="whitespace-nowrap tabular-nums text-foreground">+{money(a.monto)}</span>
                 </div>
               ))}
               <div className="flex items-baseline justify-between pt-2 text-[11px] font-semibold">
                 <span className="text-foreground">Total credits</span>
-                <span className="tabular-nums text-foreground">+{money(totalCreditos)}</span>
+                <span className="whitespace-nowrap tabular-nums text-foreground">+{money(totalCreditos)}</span>
               </div>
             </section>
 
@@ -453,7 +441,7 @@ function Contenido() {
                     {a.concepto}
                     <BorrarAjuste id={a.id} concepto={a.concepto} onBorrar={quitarAjuste} />
                   </span>
-                  <span className="tabular-nums text-foreground">−{money(Math.abs(a.monto))}</span>
+                  <span className="whitespace-nowrap tabular-nums text-foreground">−{money(Math.abs(a.monto))}</span>
                 </div>
               ))}
               {datos.costos.map((c) => (
@@ -467,21 +455,20 @@ function Contenido() {
                       {c.conCargo} of {c.cargos}
                     </span>
                   </span>
-                  <span className="tabular-nums text-foreground">−{money(c.monto)}</span>
+                  <span className="whitespace-nowrap tabular-nums text-foreground">−{money(c.monto)}</span>
                 </div>
               ))}
               <div className="flex items-baseline justify-between pt-2 text-[11px] font-semibold">
                 <span className="text-foreground">Total deductions</span>
-                <span className="tabular-nums text-foreground">−{money(totalDebitos)}</span>
+                <span className="whitespace-nowrap tabular-nums text-foreground">−{money(totalDebitos)}</span>
+              </div>
+              <div className="mt-6 flex items-baseline justify-between border-t-2 border-brand-dark pt-3.5 print:mt-4 print:pt-2.5 print:break-inside-avoid">
+                <span className="text-[14px] font-semibold text-foreground">Net to Office</span>
+                <span className="whitespace-nowrap text-[22px] font-semibold tracking-tight tabular-nums text-brand-dark">
+                  {money(datos.neto)}
+                </span>
               </div>
             </section>
-          </div>
-
-          <div className="mt-6 flex items-baseline justify-between border-t-2 border-brand-dark pt-3.5 print:mt-4 print:pt-2.5 print:break-inside-avoid">
-            <span className="text-[14px] font-semibold text-foreground">Net to Office</span>
-            <span className="text-[22px] font-semibold tracking-tight tabular-nums text-brand-dark">
-              {money(datos.neto)}
-            </span>
           </div>
 
           {/* Fuera del papel: esto es para armar el documento, no parte de él. print:hidden lo
@@ -556,7 +543,7 @@ function Contenido() {
           {/* Explicar la cuenta al pie evita la llamada preguntando de dónde salió el número, y el
               aviso de confidencialidad porque este papel lleva la producción completa de una
               oficina: cuánto vende, con qué compañías y cuánto se le retiene. */}
-          <footer className="mt-12 border-t border-border pt-5 text-[10px] leading-relaxed text-muted print:mt-5 print:pt-3 print:leading-snug print:break-inside-avoid">
+          <footer className="mt-12 border-t border-border pt-5 text-[10px] leading-relaxed text-muted print:mt-5 print:pt-3 print:text-[9px] print:leading-snug print:break-inside-avoid">
             <p>
               The franchise royalty is calculated on the total commission generated by the office
               during the period — new business and renewals alike — based on the carrier statements
