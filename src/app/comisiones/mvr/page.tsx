@@ -115,6 +115,8 @@ function enPalabras(c: CargoMvr): string {
       return "La compañía lo manda sin asegurado";
     case "productor_compartido":
       return "El archivo lo pone bajo el usuario compartido";
+    case "varios_con_el_mismo_nombre":
+      return "Hay dos clientes con ese nombre, de agentes distintos";
     case "sin_candidato":
       return "No aparece en las cotizaciones ni en el Book";
     case "score_bajo":
