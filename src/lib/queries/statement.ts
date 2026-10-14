@@ -27,6 +27,9 @@ export function grupoDeEstado(estado: string): GrupoLinea {
 // Y se pasa a ISO antes de devolverla: Progressive escribe "03/06/2027", que mide exactamente 10
 // caracteres, y fecha() le agrega "T00:00:00" a todo lo que mida 10. Sin esto, la pantalla
 // mostraria "Invalid Date". Lo que no se entiende vuelve null, que se ve como un guion.
+//
+// Ese ultimo detalle es tambien el seguro: aunque una clave enganche de mas, el valor tiene que
+// TENER FORMA DE FECHA para salir. Una columna de plata que se colara por el nombre no pasa.
 function delExtra(l: Record<string, unknown>, que: RegExp): string | null {
   const extra = (l.campos_extra as Record<string, unknown>) ?? {};
   for (const [clave, valor] of Object.entries(extra)) {
@@ -179,8 +182,8 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       tasa: (l.tasa as number) ?? null,
       monto: Number(l.monto ?? 0),
       fechaStatement: (l.fecha_statement as string) ?? null,
-      fechaVigencia: (l.fecha_vigencia as string) ?? delExtra(l, /efect|vigen/i),
-      fechaVencimiento: delExtra(l, /expir|venc/i),
+      fechaVigencia: (l.fecha_vigencia as string) ?? delExtra(l, /efect|\beff|vigen|inicio/i),
+      fechaVencimiento: delExtra(l, /expir|\bexp\b|venc|hasta/i),
       productorCrudo: (l.productor_crudo as string) ?? null,
       ramo: (l.ramo as string) ?? null,
       estadoLinea,
