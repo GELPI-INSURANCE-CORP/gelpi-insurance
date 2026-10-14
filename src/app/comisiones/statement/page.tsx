@@ -592,7 +592,9 @@ function StatementContent() {
         TIPOS_TRANSACCION[l.tipoTransaccion] ?? l.tipoTransaccion,
         l.fechaStatement ?? "",
         l.ramo ? (RAMOS[l.ramo] ?? l.ramo) : "",
-        l.prima ?? "",
+        // Con dos decimales igual que la comision: dos columnas de dinero pegadas, una con
+        // "1223" y la otra con "110.07", se leen como si fueran cosas distintas.
+        l.prima != null ? l.prima.toFixed(2) : "",
         // Con el signo de porciento adelante: es lo que el agente viene a mirar, y un "15"
         // suelto en una columna de números no se lee como una tasa.
         l.tasa != null ? pct(l.tasa) : "",
