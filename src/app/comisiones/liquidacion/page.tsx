@@ -287,7 +287,7 @@ function LiquidacionContent() {
           </Link>
           <Button size="sm" variant="primary" onClick={exportarCsv} disabled={filas.length === 0}>
             <Download className="w-3.5 h-3.5" />
-            Exportar CSV
+            Export CSV
           </Button>
         </div>
       </div>
@@ -337,13 +337,13 @@ function LiquidacionContent() {
               onClick={() => setVerAlerta(a.tipo)}
               className="whitespace-nowrap text-xs font-medium underline hover:no-underline"
             >
-              Ver {a.n === 1 ? "the policy" : `las ${a.n}`}
+              View {a.n === 1 ? "the policy" : `all ${a.n}`}
             </button>
           }
         >
           <AlertTriangle className="w-3.5 h-3.5 inline mr-1.5" />
           <strong>Check the Book before paying.</strong> {a.titulo}: {a.detalle}
-          {a.monto !== 0 && <> · {money(a.monto)} en juego</>}
+          {a.monto !== 0 && <> · {money(a.monto)} at stake</>}
         </Banner>
       ))}
 
