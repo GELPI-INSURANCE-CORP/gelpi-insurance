@@ -33,12 +33,12 @@ type Foco = "todas" | "nuevo" | "renovacion" | "sin_clasificar";
 
 const ORIGEN: Record<OrigenVeredicto, { texto: string; tono: "ok" | "info" | "brand" | "warn" | "neutral"; ayuda: string }> = {
   archivo: {
-    texto: "Lo dice la compañía",
+    texto: "The carrier says so",
     tono: "ok",
     ayuda: "El statement trae la línea marcada como negocio nuevo o renovación. Es la fuente más confiable.",
   },
   mismo_statement: {
-    texto: "Por la póliza",
+    texto: "From the policy",
     tono: "info",
     ayuda: "La línea no lo decía, pero otras líneas de la misma póliza en este mismo statement sí.",
   },
@@ -48,7 +48,7 @@ const ORIGEN: Record<OrigenVeredicto, { texto: string; tono: "ok" | "info" | "br
     ayuda: "Alguien clasificó esta póliza a mano. Le gana a lo que deduzca el sistema.",
   },
   otros_statements: {
-    texto: "Por otro statement",
+    texto: "From another statement",
     tono: "warn",
     ayuda: "La misma póliza aparece clasificada en un statement de otro mes. El sistema lo dedujo: si está mal, se corrige acá.",
   },
@@ -68,7 +68,7 @@ export default function DetalleAgenteDrawer({
   nombre: string;
   periodo: string;
   etiquetaPeriodo: string;
-  // Desde la columna "Sin clasificar" se entra directo a lo que hay que resolver.
+  // Desde la columna "Unclassified" se entra directo a lo que hay que resolver.
   focoInicial?: Foco;
   onClose: () => void;
   // Clasificar cambia cuánto se le paga, así que la pantalla de atrás tiene que recargar.
@@ -88,7 +88,7 @@ export default function DetalleAgenteDrawer({
       setLineas(l);
       setSel(new Set());
     } catch (e) {
-      setError(porQue(e, "No se pudo cargar el detalle."));
+      setError(porQue(e, "Could not load the detail."));
     }
   }, [agenteId, periodo]);
 
@@ -130,7 +130,7 @@ export default function DetalleAgenteDrawer({
       setAviso(msg);
       onCambio?.();
     } catch (e) {
-      setError(porQue(e, "No se pudo guardar."));
+      setError(porQue(e, "Could not save."));
     } finally {
       setGuardando(false);
     }
@@ -188,18 +188,18 @@ export default function DetalleAgenteDrawer({
               {new Set(lineas.map((l) => l.compania)).size} compañía
               {new Set(lineas.map((l) => l.compania)).size === 1 ? "" : "s"}
             </div>
-            <Button size="sm" onClick={exportar} disabled={lineas.length === 0}>Exportar a CSV</Button>
+            <Button size="sm" onClick={exportar} disabled={lineas.length === 0}>Export to CSV</Button>
           </div>
 
           {/* Las cajas son botones. La que está activa filtra la tabla. */}
           <div className="grid grid-cols-4 gap-3">
-            <Caja titulo="Todo" detalle="el mes completo" monto={suma(lineas)} n={lineas.length}
+            <Caja titulo="Todo" detalle="the whole month" monto={suma(lineas)} n={lineas.length}
                   comision={sumaComision(lineas)} activa={foco === "todas"} onClick={() => setFoco("todas")} />
-            <Caja titulo="Premium nuevo" detalle="de acá sale el pago" monto={suma(nuevo)} n={nuevo.length}
+            <Caja titulo="Premium nuevo" detalle="this is what the payout comes from" monto={suma(nuevo)} n={nuevo.length}
                   comision={sumaComision(nuevo)} destacado activa={foco === "nuevo"} onClick={() => setFoco("nuevo")} />
-            <Caja titulo="Premium renovación" detalle="no se paga" monto={suma(renovacion)} n={renovacion.length}
+            <Caja titulo="Renewal premium" detalle="not paid out" monto={suma(renovacion)} n={renovacion.length}
                   comision={sumaComision(renovacion)} activa={foco === "renovacion"} onClick={() => setFoco("renovacion")} />
-            <Caja titulo="Sin clasificar" detalle="hay que decidirlo" monto={suma(sinClasificar)} n={sinClasificar.length}
+            <Caja titulo="Unclassified" detalle="needs a decision" monto={suma(sinClasificar)} n={sinClasificar.length}
                   comision={sumaComision(sinClasificar)} alerta={sinClasificar.length > 0}
                   activa={foco === "sin_clasificar"} onClick={() => setFoco("sin_clasificar")} />
           </div>
@@ -208,7 +208,7 @@ export default function DetalleAgenteDrawer({
             <div className="rounded-xl border border-warn-fg/30 bg-warn-bg px-4 py-3 text-[12px] leading-relaxed text-foreground">
               Estas líneas no se pagan ni se descartan: el statement nunca dijo si eran negocio nuevo o
               renovación. Casi todas son cancelaciones y endosos, que por sí solos no dicen a qué término
-              pertenecen. <strong>Lo que decidas se guarda contra la póliza</strong>, así que vale también
+              pertenecen. <strong>What you decide is stored against the policy</strong>, así que vale también
               para sus otras líneas y no se pierde si el statement se vuelve a procesar.
             </div>
           )}
@@ -243,7 +243,7 @@ export default function DetalleAgenteDrawer({
             <div className="text-[13px] text-muted py-6 text-center">
               {lineas.length === 0
                 ? `No hay líneas conciliadas para ${nombre} en ${etiquetaPeriodo}.`
-                : "No hay líneas en esta caja."}
+                : "No lines in this box."}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -260,15 +260,15 @@ export default function DetalleAgenteDrawer({
                         }
                       />
                     </th>
-                    <th className="px-3 py-2 font-medium">Fecha</th>
-                    <th className="px-3 py-2 font-medium">Compañía</th>
-                    <th className="px-3 py-2 font-medium">Póliza</th>
-                    <th className="px-3 py-2 font-medium">Cliente</th>
-                    <th className="px-3 py-2 font-medium">Tipo</th>
-                    <th className="px-3 py-2 font-medium">Cómo se supo</th>
-                    <th className="px-3 py-2 font-medium text-right">Prima</th>
-                    <th className="px-3 py-2 font-medium text-right">Comisión</th>
-                    <th className="px-3 py-2 font-medium text-right w-36">Decidir</th>
+                    <th className="px-3 py-2 font-medium">Date</th>
+                    <th className="px-3 py-2 font-medium">Carrier</th>
+                    <th className="px-3 py-2 font-medium">Policy #</th>
+                    <th className="px-3 py-2 font-medium">Insured</th>
+                    <th className="px-3 py-2 font-medium">Transaction</th>
+                    <th className="px-3 py-2 font-medium">How we know</th>
+                    <th className="px-3 py-2 font-medium text-right">Premium</th>
+                    <th className="px-3 py-2 font-medium text-right">Commission</th>
+                    <th className="px-3 py-2 font-medium text-right w-36">Decide</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -322,7 +322,7 @@ export default function DetalleAgenteDrawer({
                         <td className="px-3 py-2 text-right tabular-nums font-medium">{money(l.comision)}</td>
                         <td className="px-3 py-2 text-right">
                           {!puede ? (
-                            <span className="text-[11px] text-muted" title="Sin número de póliza no hay dónde guardar la decisión">
+                            <span className="text-[11px] text-muted" title="With no policy number there is nowhere to store the decision">
                               sin póliza
                             </span>
                           ) : l.origen === "a_mano" ? (
@@ -333,12 +333,12 @@ export default function DetalleAgenteDrawer({
                           ) : (
                             <div className="flex justify-end gap-1">
                               <Button size="sm" variant={l.negocioNuevo === true ? "secondary" : "primary"}
-                                      disabled={guardando} title="Marcar esta póliza como negocio nuevo"
+                                      disabled={guardando} title="Mark this policy as new business"
                                       onClick={() => clasificar([l.id], true)}>
                                 Nuevo
                               </Button>
                               <Button size="sm" variant="secondary" disabled={guardando}
-                                      title="Marcar esta póliza como renovación"
+                                      title="Mark this policy as a renewal"
                                       onClick={() => clasificar([l.id], false)}>
                                 Renov.
                               </Button>
@@ -389,10 +389,10 @@ function Caja({
 // algo distinto: si nadie más tiene la póliza hay que decidirla a mano, si dos statements se
 // contradicen hay que mirar cuál está mal, y si no hay número de póliza no hay nada que hacer.
 function motivoCorto(motivo: string | null): string {
-  if (!motivo) return "No se pudo saber";
-  if (motivo.includes("no trae numero")) return "Sin número de póliza";
-  if (motivo.includes("aparece como nueva")) return "Los statements se contradicen";
-  return "La compañía no lo dijo";
+  if (!motivo) return "Could not tell";
+  if (motivo.includes("no trae numero")) return "No policy number";
+  if (motivo.includes("aparece como nueva")) return "The statements contradict each other";
+  return "The carrier did not say";
 }
 
 // Los errores de Supabase son objetos planos con message/hint/details, no instancias de Error,

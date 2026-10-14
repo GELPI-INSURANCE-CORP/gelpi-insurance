@@ -18,22 +18,22 @@ import { BOM_CSV } from "@/lib/csv";
 
 const TITULOS: Record<string, { titulo: string; ayuda: string }> = {
   poliza_duplicada: {
-    titulo: "Números de póliza cargados dos veces",
+    titulo: "Policy numbers loaded twice",
     ayuda:
       "En cada caso una cobró en un statement y la otra no. Puede ser la misma póliza escrita de dos maneras —Kemper compró Infinity, así que la misma póliza llega como Infinity desde el Book y como Kemper desde el statement— o pueden ser dos pólizas distintas del mismo cliente, porque un cliente puede tener una póliza con una compañía y después otra con otra. Mirá la columna Cobró: el statement dice cuál puso la plata. La decisión es tuya; el sistema no borra nada.",
   },
   linea_vs_book: {
-    titulo: "Comisión repartida a un agente que ya no es el del Book",
+    titulo: "Commission paid to an agent who is no longer the one on the Book",
     ayuda:
       "Se subió una versión nueva del Book después de conciliar el statement y esas pólizas cambiaron de dueño. La comisión no se movió sola, a propósito: una subida del Book no puede repagarle a nadie en silencio. Cada caso va en dos renglones — arriba dónde está hoy la comisión, abajo lo que dice el Book ahora. Y no es sólo quién cobra: si las dos personas están en oficinas distintas, también cambia el royalty.",
   },
   oficina_cruzada: {
-    titulo: "La oficina de la póliza no es la del agente",
+    titulo: "The policy's office is not the agent's office",
     ayuda:
       "Pasa cuando un agente cambia de oficina y sus pólizas viejas se quedan con la anterior. O la póliza ya no es suya, o la oficina quedó vieja — las dos cosas hay que decidirlas a mano, porque de acá sale el royalty.",
   },
   poliza_sin_dueno: {
-    titulo: "Pólizas sin agente o sin oficina",
+    titulo: "Policies with no agent or no office",
     ayuda: "Una póliza sin agente no se le paga a nadie, y una sin oficina no entra en el royalty de ninguna.",
   },
 };
@@ -47,11 +47,11 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
     setFilas(null);
     getDetalleAlertaDelLibro(tipo)
       .then((f) => { if (vivo) setFilas(f); })
-      .catch((e) => { if (vivo) setError(e instanceof Error ? e.message : "No se pudo cargar el detalle."); });
+      .catch((e) => { if (vivo) setError(e instanceof Error ? e.message : "Could not load the detail."); });
     return () => { vivo = false; };
   }, [tipo]);
 
-  const meta = TITULOS[tipo] ?? { titulo: "Revisar el Book", ayuda: "" };
+  const meta = TITULOS[tipo] ?? { titulo: "Review the Book", ayuda: "" };
 
   // Agrupadas por número de póliza (o por agente, en el caso de la oficina cruzada), para que
   // las dos mitades del par queden pegadas.
@@ -79,7 +79,7 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
   }
 
   return (
-    <SidePanel open onClose={onClose} title={meta.titulo} subtitle="Lo que hay que revisar en el Book" width="1100px">
+    <SidePanel open onClose={onClose} title={meta.titulo} subtitle="What needs reviewing in the Book" width="1100px">
       {error && <div className="mb-3 rounded-lg bg-bad-bg px-3 py-2 text-[13px] text-bad-fg">{error}</div>}
       {!error && filas === null && <Loading />}
       {filas !== null && (
@@ -106,7 +106,7 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
           </div>
 
           {grupos.length === 0 ? (
-            <div className="py-8 text-center text-[13px] text-muted">No hay nada que revisar acá.</div>
+            <div className="py-8 text-center text-[13px] text-muted">Nothing to review here.</div>
           ) : (
             <div className="flex min-w-0 flex-col gap-3">
               {grupos.map((g) => (
@@ -124,14 +124,14 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                     <table className="w-full table-auto text-[12.5px]">
                       <thead>
                         <tr className="text-left text-muted">
-                          <th className="px-3 py-1.5 font-medium">Compañía</th>
-                          <th className="px-3 py-1.5 font-medium">Vino de</th>
-                          <th className="px-3 py-1.5 font-medium">Cliente</th>
-                          <th className="px-3 py-1.5 font-medium">Ramo</th>
-                          <th className="px-3 py-1.5 font-medium">Vigencia</th>
-                          <th className="px-3 py-1.5 font-medium text-right">Prima</th>
-                          <th className="px-3 py-1.5 font-medium text-right">Comisión</th>
-                          <th className="px-3 py-1.5 font-medium">Cobró</th>
+                          <th className="px-3 py-1.5 font-medium">Carrier</th>
+                          <th className="px-3 py-1.5 font-medium">Came from</th>
+                          <th className="px-3 py-1.5 font-medium">Client</th>
+                          <th className="px-3 py-1.5 font-medium">Line of business</th>
+                          <th className="px-3 py-1.5 font-medium">Effective date</th>
+                          <th className="px-3 py-1.5 font-medium text-right">Premium</th>
+                          <th className="px-3 py-1.5 font-medium text-right">Commission</th>
+                          <th className="px-3 py-1.5 font-medium">Collected</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -152,8 +152,8 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                                     contra lo que dice el padrón ahora. */}
                                 {tipo === "linea_vs_book" ? (
                                   <>
-                                    {f.seQueda === true && <Badge tone="ok">la comisión está acá</Badge>}
-                                    {f.seQueda === false && <Badge tone="warn">el Book dice esto</Badge>}
+                                    {f.seQueda === true && <Badge tone="ok">the commission is here</Badge>}
+                                    {f.seQueda === false && <Badge tone="warn">the Book says this</Badge>}
                                   </>
                                 ) : (
                                   <>
@@ -164,7 +164,7 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                               </span>
                             </td>
                             <td className="px-3 py-2 text-muted">
-                              {f.origen === "import" ? "el Book" : f.origen === "alta_manual" ? "carga a mano" : f.origen}
+                              {f.origen === "import" ? "the Book" : f.origen === "alta_manual" ? "carga a mano" : f.origen}
                             </td>
                             <td className="px-3 py-2 break-words">{f.cliente}</td>
                             <td className="px-3 py-2 text-muted">{f.ramo}</td>
@@ -172,7 +172,7 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
                               {f.fechaVigencia ? (
                                 fmtFecha(f.fechaVigencia)
                               ) : (
-                                <span className="text-warn-fg">sin fecha</span>
+                                <span className="text-warn-fg">no date</span>
                               )}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">

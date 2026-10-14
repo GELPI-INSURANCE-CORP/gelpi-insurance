@@ -86,7 +86,7 @@ function LiquidacionContent() {
         setPctPrimaEditado({});
         setError(null);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cargar la liquidación."))
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not load the payout."))
       .finally(() => setLoading(false));
   }, [periodo]);
 
@@ -95,7 +95,7 @@ function LiquidacionContent() {
   async function guardarPct(agenteId: string, valor: string) {
     const pct = Number(valor);
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
-      setError("El porcentaje tiene que ser un número entre 0 y 100.");
+      setError("The percentage has to be a number between 0 and 100.");
       setPctEditado((prev) => {
         const next = { ...prev };
         delete next[agenteId];
@@ -110,7 +110,7 @@ function LiquidacionContent() {
       await actualizarPctSplit(agenteId, pct);
       cargar();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo guardar el porcentaje.");
+      setError(e instanceof Error ? e.message : "Could not save the percentage.");
     } finally {
       setGuardando(null);
     }
@@ -123,7 +123,7 @@ function LiquidacionContent() {
     const texto = valor.trim();
     const pct = texto === "" ? null : Number(texto);
     if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct > 100)) {
-      setError("El porcentaje sobre premium tiene que ser un número entre 0 y 100.");
+      setError("The percentage of premium has to be a number between 0 and 100.");
       setPctPrimaEditado((prev) => {
         const next = { ...prev };
         delete next[agenteId];
@@ -138,7 +138,7 @@ function LiquidacionContent() {
       await actualizarPctSobrePrima(agenteId, pct);
       cargar();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo guardar el porcentaje sobre premium.");
+      setError(e instanceof Error ? e.message : "Could not save the percentage of premium.");
     } finally {
       setGuardando(null);
     }
@@ -161,7 +161,7 @@ function LiquidacionContent() {
       await cerrarLiquidacion(periodo);
       cargar();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cerrar el período.");
+      setError(e instanceof Error ? e.message : "Could not close the period.");
     } finally {
       setCerrandoMes(false);
     }
@@ -177,7 +177,7 @@ function LiquidacionContent() {
       await reabrirLiquidacion(periodo);
       cargar();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo reabrir el período.");
+      setError(e instanceof Error ? e.message : "Could not reopen the period.");
     } finally {
       setCerrandoMes(false);
     }
@@ -239,7 +239,7 @@ function LiquidacionContent() {
         f.primaNuevo.toFixed(2), f.pctPrima == null ? "" : f.pctPrima, f.aPagarPrima.toFixed(2),
         f.pct,
         f.comisionNuevo.toFixed(2), f.comisionRenovacion.toFixed(2),
-        f.esDuenoOficina ? "dueño/a" : f.primaSinClasificar.toFixed(2), f.comisionRecibida.toFixed(2), f.aPagar.toFixed(2),
+        f.esDuenoOficina ? "owner" : f.primaSinClasificar.toFixed(2), f.comisionRecibida.toFixed(2), f.aPagar.toFixed(2),
       ]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`)
         .join(",")
@@ -256,7 +256,7 @@ function LiquidacionContent() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-lg font-semibold text-foreground">Liquidación de comisiones</h1>
+        <h1 className="text-lg font-semibold text-foreground">Agent payout</h1>
         <div className="flex items-center gap-2">
           <Select
             value={periodo}
@@ -264,23 +264,23 @@ function LiquidacionContent() {
             options={periodosDisponibles().map((p) => ({ value: p, label: etiquetaPeriodo(p) }))}
           />
           <Button size="sm" onClick={() => setSoloActivos((v) => !v)}>
-            {soloActivos ? "Ver todos" : "Solo activos"}
+            {soloActivos ? "Show all" : "Solo activos"}
           </Button>
           {data?.cerrada ? (
             <Button size="sm" variant="secondary" onClick={onReabrirMes} disabled={cerrandoMes}>
               <Unlock className="w-3.5 h-3.5" />
-              {cerrandoMes ? "Reabriendo…" : "Reabrir mes"}
+              {cerrandoMes ? "Reabriendo…" : "Reopen month"}
             </Button>
           ) : (
             <Button size="sm" variant="secondary" onClick={onCerrarMes} disabled={cerrandoMes || filas.length === 0}>
               <Lock className="w-3.5 h-3.5" />
-              {cerrandoMes ? "Cerrando…" : "Cerrar mes"}
+              {cerrandoMes ? "Cerrando…" : "Close month"}
             </Button>
           )}
           <Link
             href="/comisiones/cruce/"
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[13px] hover:bg-background"
-            title="Comparar lo que se vendió contra lo que pagaron las compañías"
+            title="Compare what was sold against what the carriers paid"
           >
             <GitCompare className="h-3.5 w-3.5" />
             Cruce con ventas
@@ -293,7 +293,7 @@ function LiquidacionContent() {
       </div>
 
       {error && (
-        <Banner tone="bad" action={<button type="button" className="text-xs underline" onClick={() => setError(null)}>Cerrar</button>}>
+        <Banner tone="bad" action={<button type="button" className="text-xs underline" onClick={() => setError(null)}>Close</button>}>
           {error}
         </Banner>
       )}
@@ -306,10 +306,10 @@ function LiquidacionContent() {
         </Banner>
       ) : (
         <Banner tone="info">
-          El pago sale del <strong>New business premium</strong>: lo que el agente le vendió al cliente. El
-          porcentaje se pone por agente adentro de cada oficina y se guarda solo. A la derecha, en gris, queda
-          el cálculo viejo sobre la comisión que cobra la agencia, para poder comparar. Solo cuenta lo ya
-          conciliado. Cuando le pagues, cerrá el mes para congelar estos números.
+          Payout comes from <strong>New business premium</strong>: what the agent sold the client. The
+          percentage is set per agent inside each office and saves itself. On the right, in grey, is the old
+          calculation on the commission the agency earns, so you can compare. Only reconciled lines count.
+          Once you pay, close the month to freeze these numbers.
         </Banner>
       )}
 
@@ -318,8 +318,8 @@ function LiquidacionContent() {
       {!data?.cerrada && faltaPct > 0 && (
         <Banner tone="warn">
           <AlertTriangle className="w-3.5 h-3.5 inline mr-1.5" />
-          Hay {faltaPct} agente{faltaPct === 1 ? "" : "s"} con ventas y sin % sobre premium definido. Hasta que
-          no se lo pongas, su pago sale en blanco y no entra en el total.
+          {faltaPct} agent{faltaPct === 1 ? " has" : "s have"} sales but no % of premium set. Until you set it,
+          their payout shows blank and does not count toward the total.
         </Banner>
       )}
 
@@ -337,12 +337,12 @@ function LiquidacionContent() {
               onClick={() => setVerAlerta(a.tipo)}
               className="whitespace-nowrap text-xs font-medium underline hover:no-underline"
             >
-              Ver {a.n === 1 ? "la póliza" : `las ${a.n}`}
+              Ver {a.n === 1 ? "the policy" : `las ${a.n}`}
             </button>
           }
         >
           <AlertTriangle className="w-3.5 h-3.5 inline mr-1.5" />
-          <strong>Revisá el Book antes de pagar.</strong> {a.titulo}: {a.detalle}
+          <strong>Check the Book before paying.</strong> {a.titulo}: {a.detalle}
           {a.monto !== 0 && <> · {money(a.monto)} en juego</>}
         </Banner>
       ))}
@@ -367,19 +367,19 @@ function LiquidacionContent() {
           <table className="w-full min-w-[1080px] text-[13px]">
             <thead>
               <tr className="text-left text-muted bg-background/60">
-                <th className="px-4 py-2.5 font-medium">Agente</th>
-                <th className="px-4 py-2.5 font-medium">Estado</th>
+                <th className="px-4 py-2.5 font-medium">Agent</th>
+                <th className="px-4 py-2.5 font-medium">Status</th>
                 {/* LA BASE DE PAGO: lo que vendió el cliente. Va primero porque es el número que
                     manda; lo que cobra la agencia es otra cosa y va después, en gris. */}
                 <th className="px-4 py-2.5 font-medium text-right">New business premium</th>
-                <th className="px-4 py-2.5 font-medium w-28">% s/ premium</th>
-                <th className="px-4 py-2.5 font-medium text-right">A pagar</th>
+                <th className="px-4 py-2.5 font-medium w-28">% of premium</th>
+                <th className="px-4 py-2.5 font-medium text-right">Payout</th>
                 {/* El cálculo viejo, para comparar los primeros meses. La línea a la izquierda
                     separa las dos cuentas para que no se lean como una sola. */}
-                <th className="border-l border-border px-4 py-2.5 font-medium text-right text-muted">Comisión nuevo</th>
-                <th className="px-4 py-2.5 font-medium text-muted w-24">% com.</th>
-                <th className="px-4 py-2.5 font-medium text-right text-muted">A pagar (viejo)</th>
-                <th className="px-4 py-2.5 font-medium text-right">Prima sin clasificar</th>
+                <th className="border-l border-border px-4 py-2.5 font-medium text-right text-muted">New business commission</th>
+                <th className="px-4 py-2.5 font-medium text-muted w-24">Comm. %</th>
+                <th className="px-4 py-2.5 font-medium text-right text-muted">Payout (old)</th>
+                <th className="px-4 py-2.5 font-medium text-right">Unclassified premium</th>
               </tr>
             </thead>
             <tbody>
@@ -408,11 +408,11 @@ function LiquidacionContent() {
                           />
                           {g.oficina}
                           <span className="font-normal text-muted">
-                            {g.agentes.length} agente{g.agentes.length === 1 ? "" : "s"}
+                            {g.agentes.length} agent{g.agentes.length === 1 ? "" : "s"}
                           </span>
                           {g.sinPct > 0 && (
                             <Badge tone="warn">
-                              {g.sinPct} sin %
+                              {g.sinPct} missing %
                             </Badge>
                           )}
                         </span>
@@ -453,7 +453,7 @@ function LiquidacionContent() {
                                 type="button"
                                 onClick={() => setVerDetalle({ id: f.agenteId, nombre: f.nombre, foco: "todas" })}
                                 className="tabular-nums font-medium underline decoration-dotted underline-offset-4 hover:text-brand"
-                                title={`Ver todo lo que vendió ${f.nombre} en ${etiquetaPeriodo(periodo)}`}
+                                title={`See everything ${f.nombre} sold in ${etiquetaPeriodo(periodo)}`}
                               >
                                 {money(f.primaNuevo)}
                               </button>
@@ -464,7 +464,7 @@ function LiquidacionContent() {
                             {/* En un mes cerrado el % es parte del recibo, no un campo: dejarlo
                                 editable daría a entender que cambiarlo corrige lo que ya se pagó. */}
                             {f.esDuenoOficina ? (
-                              <Badge tone="brand">dueño/a</Badge>
+                              <Badge tone="brand">owner</Badge>
                             ) : data?.cerrada ? (
                               <span className="tabular-nums">{f.pctPrima == null ? "—" : `${f.pctPrima}%`}</span>
                             ) : (
@@ -485,7 +485,7 @@ function LiquidacionContent() {
                                   className="w-16 h-8"
                                 />
                                 <span className="text-muted">%</span>
-                                {guardando === f.agenteId && <span className="text-[11px] text-muted">guardando…</span>}
+                                {guardando === f.agenteId && <span className="text-[11px] text-muted">saving…</span>}
                               </div>
                             )}
                           </td>
@@ -493,14 +493,14 @@ function LiquidacionContent() {
                           {/* Sin % definido no se muestra $0.00: eso se leería como "no le toca
                               nada" cuando lo que pasa es que falta configurarlo. */}
                           {/* A una dueña no se le gira un cheque por su producción: se queda con
-                              lo que deja su oficina, menos el royalty. Mostrarle un "a pagar"
+                              lo que deja su oficina, menos el royalty. Mostrarle un "payout"
                               era invitar a pagar dos veces — y con el % en 100 que tenían, el
                               número que salía era el premium entero. */}
                           <td className="px-4 py-2.5 text-right tabular-nums font-medium">
                             {f.esDuenoOficina ? (
-                              <span className="text-[12px] font-normal text-muted">no lleva pago</span>
+                              <span className="text-[12px] font-normal text-muted">no payout</span>
                             ) : f.pctPrima == null && f.primaNuevo !== 0 ? (
-                              <span className="text-[12px] font-normal text-warn-fg">falta el %</span>
+                              <span className="text-[12px] font-normal text-warn-fg">missing %</span>
                             ) : (
                               money(f.aPagarPrima)
                             )}
@@ -544,7 +544,7 @@ function LiquidacionContent() {
                                   setVerDetalle({ id: f.agenteId, nombre: f.nombre, foco: "sin_clasificar" })
                                 }
                                 className="tabular-nums font-medium text-warn-fg underline decoration-dotted underline-offset-4 hover:text-foreground"
-                                title={`Revisar y clasificar lo que falta de ${f.nombre}`}
+                                title={`Review and classify what is missing for ${f.nombre}`}
                               >
                                 {money(f.primaSinClasificar)}
                               </button>
@@ -586,7 +586,7 @@ function LiquidacionContent() {
           </table>
           {loading && <Loading />}
           {!loading && filas.length === 0 && (
-            <EmptyState title="Sin agentes" subtitle="No hay agentes para mostrar en este período." />
+            <EmptyState title="No agents" subtitle="No agents to show for this period." />
           )}
         </div>
       </Card>
