@@ -45,6 +45,7 @@ import {
   rangoDelMes,
   type PuntoSerie,
   type RamoPrima,
+  ultimoMesConStatements,
 } from "@/lib/queries/resumen";
 import { Sparkline, Dona, Cascada, COLORES_GRAFICA, type PorcionDona } from "@/components/dashboard/charts";
 import { hayQueOfrecerSugerencia } from "@/lib/sugerencias";
@@ -130,6 +131,23 @@ export default function ResumenPage() {
   const router = useRouter();
   const { t, idioma } = useI18n();
   const [mes, setMes] = useState<Date>(() => primerDiaDelMes(0));
+  // Si el mes de hoy todavia no tiene statements, el dashboard se corre solo al ultimo que si los
+  // tiene. Sin esto, el dia 1 de cada mes toda la fila de comisiones aparece en $0.00 y parece que
+  // el sistema no supiera nada, cuando lo que pasa es que la compania no mando el archivo aun.
+  // Solo al abrir: una vez que el usuario elige un mes a mano, manda el.
+  const [mesAjustado, setMesAjustado] = useState(false);
+  useEffect(() => {
+    if (mesAjustado) return;
+    let vivo = true;
+    ultimoMesConStatements()
+      .then((ultimo) => {
+        if (!vivo) return;
+        if (ultimo && ultimo < primerDiaDelMes(0)) setMes(ultimo);
+        setMesAjustado(true);
+      })
+      .catch(() => { if (vivo) setMesAjustado(true); });
+    return () => { vivo = false; };
+  }, [mesAjustado]);
   const [menuAbierto, setMenuAbierto] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 

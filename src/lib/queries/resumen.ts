@@ -541,3 +541,29 @@ export async function getEstadoCuentaOficina(
     comisionMesAnterior: [...antes.values()].reduce((s, v) => s + v, 0),
   };
 }
+
+// El ultimo mes que tiene statements de comision cargados.
+//
+// El dashboard arrancaba siempre en el mes de hoy, y el dia 1 de cada mes -- o cualquier dia
+// antes de que lleguen los statements -- toda la fila de comisiones aparecia en $0.00: reconciled
+// $0.00, pending $0.00, duplicates $0.00. No estaba roto, estaba mirando un mes vacio, pero desde
+// afuera se ve igual que si el sistema no supiera nada. Arturo: "hay cosas que no estoy mirando
+// que estan en funcion de commission".
+//
+// Devuelve null si no hay ningun statement todavia, y ahi el dashboard se queda con el mes de hoy.
+export async function ultimoMesConStatements(): Promise<Date | null> {
+  const { data, error } = await supabase
+    .from("v_reportes")
+    .select("mes_statement")
+    .eq("tipo", "comision_aseguradora")
+    .not("mes_statement", "is", null)
+    .order("mes_statement", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const mes = (data ?? [])[0]?.mes_statement as string | undefined;
+  if (!mes) return null;
+  // "2026-09-01" leido en Miami cae el 31 de agosto a la noche, asi que se arma a mediodia UTC
+  // y se baja al dia 1 local -- el mismo cuidado que ya tiene etiquetaMesCorto() en el dashboard.
+  const d = new Date(`${mes.slice(0, 10)}T12:00:00Z`);
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), 1);
+}
