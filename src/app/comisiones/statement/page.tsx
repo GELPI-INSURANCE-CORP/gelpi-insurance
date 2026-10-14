@@ -22,7 +22,7 @@ import {
   TextArea,
   TextInput,
 } from "@/components/agentes/ui";
-import { money, fecha, fechaHora, etiquetaPeriodo, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
+import { money, pct, fecha, fechaHora, etiquetaPeriodo, RAMOS, TIPOS_REPORTE, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
 import BorrarStatement from "@/components/reportes/BorrarStatement";
 import { hayQueOfrecerSugerencia } from "@/lib/sugerencias";
 import {
@@ -558,15 +558,44 @@ function StatementContent() {
 
   function exportarCsv() {
     if (!data) return;
-    const header = ["Fila", "Póliza", "Cliente", "Tipo", "Prima", "Tasa", "Comisión", "Agente", "Oficina", "Estado"];
+    // Las columnas que trae el statement de la compañía, en el orden en que las lee el agente.
+    // Antes salían diez y faltaba casi todo lo que el agente usa para reconocer su póliza: la
+    // vigencia, la fecha de la transacción, el ramo y el nombre con el que la compañía la
+    // firmó. Nada de esto es un cálculo nuevo -- estaba todo guardado y no se pedía.
+    const header = [
+      "Fila",
+      "Póliza",
+      "Asegurado",
+      "Agente del archivo",
+      "Vigencia",
+      "Vencimiento",
+      "Transacción",
+      "Fecha de transacción",
+      "Ramo",
+      "Prima",
+      "% comisión",
+      "Comisión",
+      "Agente asignado",
+      "Oficina",
+      "Estado",
+    ];
     const filas = lineasFiltradas.map((l) =>
       [
         l.fila ?? "",
         l.numeroPoliza ?? l.polizaBook ?? "",
         l.cliente ?? l.clienteBook ?? "",
-        l.tipoTransaccion,
+        l.productorCrudo ?? "",
+        // Las fechas van en ISO y no en "5 sept 2026": así Excel las reconoce como fecha y el
+        // agente las puede ordenar.
+        l.fechaVigencia ?? "",
+        l.fechaVencimiento ?? "",
+        TIPOS_TRANSACCION[l.tipoTransaccion] ?? l.tipoTransaccion,
+        l.fechaStatement ?? "",
+        l.ramo ? (RAMOS[l.ramo] ?? l.ramo) : "",
         l.prima ?? "",
-        l.tasa ?? "",
+        // Con el signo de porciento adelante: es lo que el agente viene a mirar, y un "15"
+        // suelto en una columna de números no se lee como una tasa.
+        l.tasa != null ? pct(l.tasa) : "",
         l.monto.toFixed(2),
         l.agente ?? "",
         l.oficina ?? "",
@@ -992,6 +1021,7 @@ function StatementContent() {
                     comision de una poliza que empezo en marzo, y sin esta columna no habia forma de
                     saberlo sin ir al Book poliza por poliza. */}
                 <th className="px-4 py-2.5 font-medium">Vigencia</th>
+                <th className="px-4 py-2.5 font-medium">Transacción</th>
                 <th className="px-4 py-2.5 font-medium">Tipo</th>
                 <th className="px-4 py-2.5 font-medium text-right">Prima</th>
                 <th className="px-4 py-2.5 font-medium text-right">%</th>
@@ -1424,11 +1454,24 @@ function FilaLinea({
           la casa" no dicen nada, y el nombre del agente de la casa es peor que nada: hace parecer
           que Arturo se ganó -$180 personalmente. Lo que se eligió al marcarla (MVR, fee, ajuste)
           es el dato verdadero, y es el que hay que ver para poder desglosarlo después. */}
+      {/* Las dos fechas de la poliza, una debajo de la otra: "de julio primero a enero" es
+          como el agente piensa su cartera. El vencimiento solo lo mandan algunas companias. */}
       <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-muted">
-        {l.fechaVigencia ? fecha(l.fechaVigencia) : "—"}
+        <div className="flex flex-col gap-0.5">
+          <span>{l.fechaVigencia ? fecha(l.fechaVigencia) : "—"}</span>
+          {l.fechaVencimiento && (
+            <span className="text-[11px] text-muted/70">a {fecha(l.fechaVencimiento)}</span>
+          )}
+        </div>
+      </td>
+      <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-muted">
+        {l.fechaStatement ? fecha(l.fechaStatement) : "—"}
       </td>
       <td className="px-4 py-2.5 text-muted">
-        {etiquetaAjuste ?? TIPOS_TRANSACCION[l.tipoTransaccion] ?? l.tipoTransaccion}
+        <div className="flex flex-col gap-0.5">
+          <span>{etiquetaAjuste ?? TIPOS_TRANSACCION[l.tipoTransaccion] ?? l.tipoTransaccion}</span>
+          {l.ramo && <span className="text-[11px] text-muted/70">{RAMOS[l.ramo] ?? l.ramo}</span>}
+        </div>
       </td>
       <td className="px-4 py-2.5 text-right tabular-nums">{l.prima != null ? money(l.prima) : "—"}</td>
       <td className="px-4 py-2.5 text-right tabular-nums">{l.tasa != null ? `${l.tasa}%` : "—"}</td>
@@ -1444,6 +1487,15 @@ function FilaLinea({
             <>
               <span className="whitespace-nowrap text-foreground">{l.agente ?? "—"}</span>
               {l.oficina && <span className="text-[11px] text-muted">{l.oficina}</span>}
+              {/* Quien firma la poliza SEGUN LA COMPANIA. Se muestra solo cuando no es el mismo
+                  que decidio el sistema: si coincide no aporta nada, y cuando NO coincide es
+                  justo lo que hay que ver antes de pagarle a alguien. */}
+              {l.productorCrudo &&
+                l.productorCrudo.trim().toUpperCase() !== (l.agente ?? "").trim().toUpperCase() && (
+                  <span className="text-[11px] text-muted/70">
+                    Archivo: {l.productorCrudo}
+                  </span>
+                )}
             </>
           )}
         </div>

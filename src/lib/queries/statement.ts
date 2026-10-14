@@ -19,6 +19,27 @@ export function grupoDeEstado(estado: string): GrupoLinea {
   return "pendiente";
 }
 
+// Una fecha que la compania mando pero que nadie mapeo a su propia columna. Kemper, United y
+// Ascendant no traen vigencia en ninguna columna conocida; Progressive manda "Policy Expiration
+// Date" y nadie la pedia. En vez de una lista de nombres por compania -- que habria que ampliar
+// con cada archivo nuevo -- se busca por lo que la clave DICE.
+//
+// Y se pasa a ISO antes de devolverla: Progressive escribe "03/06/2027", que mide exactamente 10
+// caracteres, y fecha() le agrega "T00:00:00" a todo lo que mida 10. Sin esto, la pantalla
+// mostraria "Invalid Date". Lo que no se entiende vuelve null, que se ve como un guion.
+function delExtra(l: Record<string, unknown>, que: RegExp): string | null {
+  const extra = (l.campos_extra as Record<string, unknown>) ?? {};
+  for (const [clave, valor] of Object.entries(extra)) {
+    if (!que.test(clave) || valor == null) continue;
+    const texto = String(valor).trim();
+    if (!texto) continue;
+    if (/^\d{4}-\d{2}-\d{2}/.test(texto)) return texto.slice(0, 10);
+    const m = texto.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (m) return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  }
+  return null;
+}
+
 export interface LineaStatement {
   id: string;
   fila: number | null;
@@ -41,6 +62,14 @@ export interface LineaStatement {
   // transaccion. Arturo la necesita para saber de cuando es la poliza que se esta pagando:
   // un statement de agosto puede traer comision de una poliza que empezo en marzo.
   fechaVigencia: string | null;
+  // Hasta cuando corre la poliza. Ninguna compania la mapea a una columna propia, pero
+  // Progressive y Next la mandan igual y queda en campos_extra: de ahi se rescata.
+  fechaVencimiento: string | null;
+  // El agente TAL CUAL lo escribe la compania en su archivo. No es lo mismo que `agente`, que
+  // es a quien el sistema le adjudico la linea: cuando difieren, esa diferencia es el dato.
+  productorCrudo: string | null;
+  // auto / hogar / comercial / ... Sirve para saber si la poliza es comercial o personal.
+  ramo: string | null;
   estadoLinea: string;
   grupo: GrupoLinea;
   // Con qué regla la resolvió el motor, o por qué no pudo. El estado dice "pendiente"; esto dice
@@ -113,7 +142,7 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       .single(),
     fetchTodo<Record<string, unknown>>(
       "v_lineas_comision",
-      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, tipo_transaccion, prima, tasa, monto, fecha_statement, fecha_vigencia, estado, regla_match, score, agente_id, agente, oficina_id, oficina, cliente, poliza_abb, poliza_id, campos_extra, origen",
+      "id, fila, numero_poliza_crudo, nombre_asegurado_crudo, productor_crudo, ramo, tipo_transaccion, prima, tasa, monto, fecha_statement, fecha_vigencia, estado, regla_match, score, agente_id, agente, oficina_id, oficina, cliente, poliza_abb, poliza_id, campos_extra, origen",
       reporteId
     ),
     fetchTodo<Record<string, unknown>>(
@@ -150,7 +179,10 @@ export async function getStatementDetalle(reporteId: string): Promise<StatementD
       tasa: (l.tasa as number) ?? null,
       monto: Number(l.monto ?? 0),
       fechaStatement: (l.fecha_statement as string) ?? null,
-      fechaVigencia: (l.fecha_vigencia as string) ?? null,
+      fechaVigencia: (l.fecha_vigencia as string) ?? delExtra(l, /efect|vigen/i),
+      fechaVencimiento: delExtra(l, /expir|venc/i),
+      productorCrudo: (l.productor_crudo as string) ?? null,
+      ramo: (l.ramo as string) ?? null,
       estadoLinea,
       grupo: grupoDeEstado(estadoLinea),
       regla: (l.regla_match as string) ?? null,
