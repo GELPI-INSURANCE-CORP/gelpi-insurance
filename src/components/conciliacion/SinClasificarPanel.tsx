@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Download, RotateCcw, Sparkles } from "lucide-react";
 import { Card, CardHead, Button, Badge, Chip, Loading, EmptyState } from "@/components/agentes/ui";
 import { money, fecha as fmtFecha } from "@/lib/format";
+import { BOM_CSV } from "@/lib/csv";
 import {
   getLineasSinClasificar,
   clasificarNegocio,
@@ -112,7 +113,7 @@ export default function SinClasificarPanel({ onCount }: { onCount?: (n: number) 
   }
 
   function exportar() {
-    const header = ["Fecha", "Compañía", "Statement", "Póliza", "Cliente", "Tipo", "Agente", "Prima", "Comisión", "Sugerencia", "Por qué"];
+    const header = ["Date", "Carrier", "Statement", "Policy #", "Insured", "Transaction", "Agent", "Premium", "Commission", "Suggestion", "Why"];
     const filas = visibles.map((l) =>
       [l.fecha ?? "", l.compania, l.periodo, l.numeroPoliza, l.cliente, l.tipo, l.agente,
        l.prima ?? "", l.comision.toFixed(2),
@@ -120,7 +121,7 @@ export default function SinClasificarPanel({ onCount }: { onCount?: (n: number) 
         .map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")
     );
     const csv = [header.join(","), ...filas].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const url = URL.createObjectURL(new Blob([BOM_CSV + csv], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = "sin-clasificar.csv";

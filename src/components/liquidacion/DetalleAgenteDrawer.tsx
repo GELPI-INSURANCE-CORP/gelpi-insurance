@@ -6,6 +6,7 @@ import { SidePanel, Badge, Chip, Loading, Button } from "@/components/agentes/ui
 import { money, fecha as fmtFecha } from "@/lib/format";
 import { getDetalleAgente, type LineaDeAgente, type OrigenVeredicto } from "@/lib/queries/liquidacion";
 import { clasificarNegocio, desclasificarNegocio } from "@/lib/queries/conciliacion";
+import { BOM_CSV } from "@/lib/csv";
 
 // Qué hay detrás del número de un agente en Liquidación, y de dónde salió cada peso.
 //
@@ -156,15 +157,15 @@ export default function DetalleAgenteDrawer({
   }
 
   function exportar() {
-    const header = ["Fecha", "Compañía", "Póliza", "Cliente", "Tipo", "Negocio nuevo", "Cómo se supo", "Prima", "Comisión", "Statement"];
+    const header = ["Date", "Carrier", "Policy #", "Insured", "Transaction", "New business", "How we know", "Premium", "Commission", "Statement"];
     const filas = (lineas ?? []).map((l) =>
       [l.fecha ?? "", l.compania, l.numeroPoliza, l.cliente, l.tipo,
-       l.negocioNuevo === true ? "Sí" : l.negocioNuevo === false ? "No" : "Sin clasificar",
+       l.negocioNuevo === true ? "Yes" : l.negocioNuevo === false ? "No" : "Unclassified",
        ORIGEN[l.origen].texto, l.prima ?? "", l.comision.toFixed(2), l.statement ?? ""]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")
     );
     const csv = [header.join(","), ...filas].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const url = URL.createObjectURL(new Blob([BOM_CSV + csv], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = `${nombre.replace(/\s+/g, "-")}-${periodo}.csv`;

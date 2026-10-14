@@ -41,6 +41,7 @@ import {
 } from "@/lib/queries/statement";
 import { listAgentes, resolverExcepcion, type AgenteSimple } from "@/lib/queries/conciliacion";
 import { actualizarPeriodoReporte, reprocesarReporte, type Reporte } from "@/lib/queries/subir";
+import { BOM_CSV } from "@/lib/csv";
 
 // "Todas" no es un número de filas, así que el estado se guarda como string y se resuelve más
 // abajo (ver pageSizeEfectivo) contra la cantidad real de líneas filtradas.
@@ -563,21 +564,21 @@ function StatementContent() {
     // vigencia, la fecha de la transacción, el ramo y el nombre con el que la compañía la
     // firmó. Nada de esto es un cálculo nuevo -- estaba todo guardado y no se pedía.
     const header = [
-      "Fila",
-      "Póliza",
-      "Asegurado",
-      "Agente del archivo",
-      "Vigencia",
-      "Vencimiento",
-      "Transacción",
-      "Fecha de transacción",
-      "Ramo",
-      "Prima",
-      "% comisión",
-      "Comisión",
-      "Agente asignado",
-      "Oficina",
-      "Estado",
+      "Row",
+      "Policy #",
+      "Insured",
+      "Writing agent",
+      "Effective date",
+      "Expiration date",
+      "Transaction",
+      "Transaction date",
+      "Line of business",
+      "Premium",
+      "Commission rate",
+      "Commission",
+      "Assigned agent",
+      "Office",
+      "Status",
     ];
     const filas = lineasFiltradas.map((l) =>
       [
@@ -607,7 +608,7 @@ function StatementContent() {
         .join(",")
     );
     const csv = [header.join(","), ...filas].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const url = URL.createObjectURL(new Blob([BOM_CSV + csv], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
     // El nombre lleva la oficina o el agente filtrado: si el CSV es para mandárselo a Miami Lakes,

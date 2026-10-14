@@ -9,6 +9,7 @@ import AltaManualModal from "@/components/clientes/AltaManualModal";
 import SubirLibroButton from "@/components/clientes/SubirLibroButton";
 import ReprocesarLibroButton from "@/components/clientes/ReprocesarLibroButton";
 import { fecha, RAMOS } from "@/lib/format";
+import { BOM_CSV } from "@/lib/csv";
 import {
   listPolizas,
   countPolizasSinAsignar,
@@ -112,7 +113,7 @@ function ClientesContent() {
         if (r.length === 0) break;
         p += 1;
       }
-      const header = ["Cliente", "N° póliza", "Aseguradora", "Ramo", "Agente", "Oficina", "Vigencia", "Estado", "Origen"];
+      const header = ["Client", "Policy #", "Carrier", "Line of business", "Agent", "Office", "Effective date", "Status", "Source"];
       const csv = [
         header.join(","),
         ...all.map((r) =>
@@ -121,7 +122,7 @@ function ClientesContent() {
             .join(",")
         ),
       ].join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const blob = new Blob([BOM_CSV + csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

@@ -18,6 +18,7 @@ import {
 } from "@/lib/queries/liquidacion";
 import DetalleAgenteDrawer from "@/components/liquidacion/DetalleAgenteDrawer";
 import AlertasLibroPanel from "@/components/liquidacion/AlertasLibroPanel";
+import { BOM_CSV } from "@/lib/csv";
 
 const MESES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -228,9 +229,9 @@ function LiquidacionContent() {
 
   function exportarCsv() {
     const header = [
-      "Agente", "Oficina",
-      "New business premium", "% sobre premium", "A pagar",
-      "% comisión", "Negocio nuevo", "Renovación", "Sin clasificar", "Comisión total", "A pagar (cálculo viejo)",
+      "Agent", "Office",
+      "New business premium", "% of premium", "Payout",
+      "Commission %", "New business", "Renewal", "Unclassified", "Total commission", "Payout (old calculation)",
     ];
     const lineas = filas.map((f) =>
       [
@@ -244,7 +245,7 @@ function LiquidacionContent() {
         .join(",")
     );
     const csv = [header.join(","), ...lineas].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const url = URL.createObjectURL(new Blob([BOM_CSV + csv], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = `liquidacion-${periodo}.csv`;

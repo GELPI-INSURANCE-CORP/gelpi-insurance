@@ -31,6 +31,7 @@ import {
   type CargoMvr,
 } from "@/lib/queries/mvr";
 import { listAgentes, type AgenteSimple } from "@/lib/queries/conciliacion";
+import { BOM_CSV } from "@/lib/csv";
 
 // Esta pantalla se trabaja igual que un statement, y a propósito: es el mismo trabajo. Arturo
 // filtra por oficina, revisa renglón por renglón, asigna lo que falta y exporta la lista para
@@ -138,16 +139,16 @@ function bajarCsv(datos: MvrDetalle, filas: CargoMvr[], paraQuien: string) {
   const total = filas.reduce((s, c) => s + Number(c.monto ?? 0), 0);
 
   const out: string[] = [];
-  out.push(linea([`Cargos por MVR - ${datos.aseguradora ?? "sin compañía"}`]));
-  out.push(linea([etiquetaPeriodo(datos.periodo) ?? "sin período"]));
+  out.push(linea([`MVR charges - ${datos.aseguradora ?? "no carrier"}`]));
+  out.push(linea([etiquetaPeriodo(datos.periodo) ?? "no period"]));
   if (paraQuien) out.push(linea([paraQuien]));
-  out.push(linea([`${filas.length} cargos`, `TOTAL`, total.toFixed(2)]));
+  out.push(linea([`${filas.length} charges`, `TOTAL`, total.toFixed(2)]));
   out.push("");
 
   // Si se está exportando todo, el reparto por oficina va primero: es la foto completa.
   // Filtrado a una sola oficina sobra, porque el total de arriba ya es el suyo.
   if (!paraQuien) {
-    out.push(linea(["OFICINA", "CARGOS", "MONTO"]));
+    out.push(linea(["OFFICE", "CHARGES", "AMOUNT"]));
     for (const o of repartir(filas)) out.push(linea([o.oficina, o.cargos, o.monto.toFixed(2)]));
     out.push("");
   }
@@ -163,14 +164,14 @@ function bajarCsv(datos: MvrDetalle, filas: CargoMvr[], paraQuien: string) {
     porCompania.set(k, p);
   }
   if (porCompania.size > 0) {
-    out.push(linea(["COMPAÑÍA", "CARGOS", "MONTO"]));
+    out.push(linea(["CARRIER", "CHARGES", "AMOUNT"]));
     for (const [k, v] of [...porCompania.entries()].sort((a, b) => b[1].monto - a[1].monto)) {
       out.push(linea([k, v.n, v.monto.toFixed(2)]));
     }
     out.push("");
   }
 
-  out.push(linea(["Cliente", "Conductor", "Lic.", "Fecha", "Compañía", "Agente", "Oficina", "Monto", "Situación"]));
+  out.push(linea(["Insured", "Driver", "Lic.", "Date", "Carrier", "Agent", "Office", "Amount", "Status"]));
   for (const c of filas) {
     out.push(
       linea([
@@ -182,7 +183,7 @@ function bajarCsv(datos: MvrDetalle, filas: CargoMvr[], paraQuien: string) {
         c.agente ?? SIN_AGENTE,
         oficinaDe(c),
         Number(c.monto ?? 0).toFixed(2),
-        c.estado === "cuenta_casa" ? "Cuenta de la casa" : c.agente ? "Repartido" : "Falta decidir",
+        c.estado === "cuenta_casa" ? "House account" : c.agente ? "Assigned" : "Pending decision",
       ])
     );
   }
@@ -190,7 +191,7 @@ function bajarCsv(datos: MvrDetalle, filas: CargoMvr[], paraQuien: string) {
   out.push(linea(["", "", "", "", "", "", "TOTAL", total.toFixed(2)]));
 
   // El BOM va adelante o Excel abre "Martínez" como "MartÃ­nez".
-  const blob = new Blob(["﻿" + out.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob([BOM_CSV + out.join("\r\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download =

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { BOM_CSV } from "../csv";
 
 // =========================================================
 // Tipos
@@ -486,18 +487,18 @@ function csvEscape(value: unknown): string {
 
 export function exportExcepcionesCsv(rows: ExcepcionRow[], filename = "cola-conciliacion.csv"): void {
   const headers = [
-    "Tipo",
-    "Aseguradora",
-    "N° póliza",
-    "Nombre en el reporte",
-    "Productor del reporte",
-    "Monto",
-    "Oficina sugerida",
-    "Agente sugerido",
-    "Fecha statement",
-    "Antigüedad (días)",
-    "Atrasada",
-    "Estado línea",
+    "Type",
+    "Carrier",
+    "Policy #",
+    "Name on report",
+    "Producer on report",
+    "Amount",
+    "Suggested office",
+    "Suggested agent",
+    "Statement date",
+    "Age (days)",
+    "Overdue",
+    "Line status",
   ];
   const lines = [headers.join(",")];
   for (const r of rows) {
@@ -521,7 +522,7 @@ export function exportExcepcionesCsv(rows: ExcepcionRow[], filename = "cola-conc
     );
   }
   const csv = "﻿" + lines.join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob([BOM_CSV + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

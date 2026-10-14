@@ -22,6 +22,7 @@ import {
 } from "./ui";
 import { money, fecha, pct } from "@/lib/format";
 import type { AgenteRow } from "@/lib/queries/agentes";
+import { BOM_CSV } from "@/lib/csv";
 import {
   getAgenteKpis,
   listLineasComisionAgente,
@@ -183,7 +184,7 @@ function ExportarEstadoCuenta({ agenteId, agenteNombre }: { agenteId: string; ag
         if (res.rows.length === 0) break;
         page += 1;
       }
-      const header = ["Aseguradora", "N° póliza", "Cliente", "Tipo", "Fecha statement", "Prima", "Tasa", "Comisión", "Estado"];
+      const header = ["Carrier", "Policy #", "Insured", "Transaction", "Statement date", "Premium", "Rate", "Commission", "Status"];
       const csv = [
         header.join(","),
         ...rows.map((r) =>
@@ -202,7 +203,7 @@ function ExportarEstadoCuenta({ agenteId, agenteNombre }: { agenteId: string; ag
             .join(",")
         ),
       ].join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const blob = new Blob([BOM_CSV + csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

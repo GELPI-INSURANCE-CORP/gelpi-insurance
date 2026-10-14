@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowLeft, Download } from "lucide-react";
 import { Card, Select, Chip, Badge, Loading, EmptyState, Button } from "@/components/agentes/ui";
 import { money, fecha as fmtFecha } from "@/lib/format";
 import { getCruce, type FilaCruce, type EstadoCruce } from "@/lib/queries/cruce";
+import { BOM_CSV } from "@/lib/csv";
 
 // Lo que se vendió contra lo que pagaron, en las dos direcciones.
 //
@@ -107,14 +108,14 @@ export default function CrucePage() {
   }
 
   function exportar() {
-    const header = ["Estado", "Cliente", "Agente", "Oficina", "Ramo", "Compañías", "Fecha de venta", "Prima vendida", "Prima cobrada", "Comisión", "Pólizas"];
+    const header = ["Status", "Client", "Agent", "Office", "Line of business", "Carriers", "Sale date", "Premium sold", "Premium collected", "Commission", "Policies"];
     const cuerpo = visibles.map((f) =>
       [f.estado, f.cliente, f.agente, f.oficina, f.ramo, f.companias, f.fechaVenta ?? "",
        f.primaVendida.toFixed(2), f.primaCobrada.toFixed(2), f.comision.toFixed(2), f.polizas]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")
     );
     const csv = [header.join(","), ...cuerpo].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const url = URL.createObjectURL(new Blob([BOM_CSV + csv], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = `cruce-ventas-${periodo}.csv`;

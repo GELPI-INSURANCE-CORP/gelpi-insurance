@@ -28,6 +28,7 @@ import {
 } from "@/lib/queries/subir";
 import ReporteDrawer from "@/components/reportes/ReporteDrawer";
 import BorrarSeleccionados from "@/components/reportes/BorrarSeleccionados";
+import { BOM_CSV } from "@/lib/csv";
 
 const ESTADOS_REPORTE: Record<string, string> = {
   subido: "Subido",
@@ -240,7 +241,7 @@ export default function SubirPage() {
         .join(",")
     );
     const csv = [encabezado.join(","), ...filas].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const url = URL.createObjectURL(new Blob([BOM_CSV + csv], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = `statements-${filtroMes || "todos"}.csv`;

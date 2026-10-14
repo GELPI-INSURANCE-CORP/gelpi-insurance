@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowLeft, Download, X } from "lucide-react";
 import { Card, CardHead, Badge, Button, Select, TextInput, Loading, EmptyState } from "@/components/agentes/ui";
 import { money, fecha as fmtFecha, etiquetaPeriodo, TIPOS_TRANSACCION, ESTADOS_LINEA } from "@/lib/format";
 import { getStatementsConsolidados, type StatementConsolidado, type LineaConsolidada } from "@/lib/queries/statement";
+import { BOM_CSV } from "@/lib/csv";
 
 // Varios statements mirados como uno.
 //
@@ -118,7 +119,7 @@ function Contenido() {
   }, [filtradas]);
 
   function exportar() {
-    const cab = ["Compañía", "Statement", "Póliza", "Cliente", "Vigencia", "Tipo", "Agente", "Oficina", "Prima", "Comisión", "Estado"];
+    const cab = ["Carrier", "Statement", "Policy #", "Insured", "Effective date", "Transaction", "Agent", "Office", "Premium", "Commission", "Status"];
     const filas = filtradas.map((l) =>
       [l.compania, etiquetaPeriodo(l.periodo) ?? "", l.numeroPoliza ?? "", l.cliente ?? "",
        l.fechaVigencia ?? "", TIPOS_TRANSACCION[l.tipoTransaccion] ?? l.tipoTransaccion,
@@ -126,7 +127,7 @@ function Contenido() {
        ESTADOS_LINEA[l.estadoLinea]?.label ?? l.estadoLinea]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")
     );
-    const url = URL.createObjectURL(new Blob([[cab.join(","), ...filas].join("\n")], { type: "text/csv;charset=utf-8;" }));
+    const url = URL.createObjectURL(new Blob([BOM_CSV + [cab.join(","), ...filas].join("\n")], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = `consolidado-${new Date().toISOString().slice(0, 10)}.csv`;

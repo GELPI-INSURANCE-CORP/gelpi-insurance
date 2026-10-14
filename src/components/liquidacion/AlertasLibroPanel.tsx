@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { SidePanel, Badge, Loading } from "@/components/agentes/ui";
 import { money, fecha as fmtFecha } from "@/lib/format";
 import { getDetalleAlertaDelLibro, type FilaAlertaLibro } from "@/lib/queries/liquidacion";
+import { BOM_CSV } from "@/lib/csv";
 
 // Las pólizas detrás de la alerta roja del pago.
 //
@@ -62,14 +63,14 @@ export default function AlertasLibroPanel({ tipo, onClose }: { tipo: string; onC
   }
 
   function exportar() {
-    const header = ["Clave", "Compañía", "Grupo", "Origen", "Cliente", "Ramo", "Vigencia", "Prima", "Líneas", "Comisión", "Cobró", "Agente", "Oficina", "Cobró en algún statement"];
+    const header = ["Key", "Carrier", "Group", "Source", "Client", "Line of business", "Effective date", "Premium", "Lines", "Commission", "Collected", "Agent", "Office", "Paid on any statement"];
     const cuerpo = (filas ?? []).map((f) =>
       [f.clave, f.compania, f.grupo, f.origen, f.cliente, f.ramo, f.fechaVigencia ?? "", f.prima ?? "",
-       f.lineas, f.comision.toFixed(2), f.cobro, f.agente, f.oficina, f.seQueda === true ? "Sí" : f.seQueda === false ? "No" : ""]
+       f.lineas, f.comision.toFixed(2), f.cobro, f.agente, f.oficina, f.seQueda === true ? "Yes" : f.seQueda === false ? "No" : ""]
         .map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")
     );
     const csv = [header.join(","), ...cuerpo].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const url = URL.createObjectURL(new Blob([BOM_CSV + csv], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = `revisar-book-${tipo}.csv`;
